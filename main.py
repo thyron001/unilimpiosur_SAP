@@ -1,3 +1,7 @@
+# main.py
+# Servidor Flask + lógica de parseo/matching/persistencia en español
+# Integra el escuchador IMAP desde escucha_correos.iniciar_escucha_correos(al_encontrar_pdf)
+
 import os
 import io
 import re
@@ -10,99 +14,113 @@ import pandas as pd
 import unicodedata
 
 from threading import Thread
-import escucha_correos
+import escucha_correos  # tu módulo de escucha IMAP (en español)
 
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify
 
 app = Flask(__name__)
 
 # =========================
-#   PARSER DEL PDF (tuyo)
+#   PARSEADOR DEL PDF
 # =========================
-UNIT_WORDS = {
+
+# Palabras típicas de unidad que aparecen en la columna "Unidad" del PDF
+PALABRAS_UNIDAD = {
     "Unidad", "RESMA", "Caja", "Rollo", "Paquete",
     "Funda", "Galon", "Kilo", "Par", "Unidad."
 }
 
-LINE_W_UNIT = re.compile(
+# Expresiones para detectar filas del cuadro (dos variantes)
+PATRON_FILA_CON_UNIDAD = re.compile(
     r"^(?P<uni>\S+)\s+(?P<desc>.+?)\s+(?P<cant>\d{1,4})\s+(?P<puni>\d+(?:[.,]\d+)?)\s+(?P<ptotal>\d+(?:[.,]\d+)?)$"
 )
-LINE_WO_UNIT = re.compile(
+PATRON_FILA_SIN_UNIDAD = re.compile(
     r"^(?P<desc>.+?)\s+(?P<cant>\d{1,4})\s+(?P<puni>\d+(?:[.,]\d+)?)\s+(?P<ptotal>\d+(?:[.,]\d+)?)$"
 )
 
-SKIP_IF_CONTAINS = (
+# Líneas a omitir (encabezados, subtotales, bloques de datos de proveedor, etc.)
+PALABRAS_OMITIR = (
     "Uni. Descripción", "Subtotal", "TOTAL", "IVA", "Proveedor",
     "ORDEN DE COMPRA", "Fecha:", "Dirección:", "Teléfono:", "Política:",
-    "Razón", "RUC:", "E-mail", "Datos de facturación", "Aprueba:", "Recibe:", "Analiza:", "Solicita:"
+    "Razón", "RUC:", "E-mail", "Datos de facturación", "Aprueba:",
+    "Recibe:", "Analiza:", "Solicita:"
 )
 
-def should_skip(line: str) -> bool:
-    s = line.strip()
+def es_linea_omitible(linea: str) -> bool:
+    """Devuelve True si la línea es vacía o contiene texto que no es parte de filas de productos."""
+    s = (linea or "").strip()
     if not s:
         return True
-    for kw in SKIP_IF_CONTAINS:
-        if kw in s:
-            return True
-    return False
+    return any(palabra in s for palabra in PALABRAS_OMITIR)
 
-def clean_unit(u: str) -> str:
-    return u.rstrip(".")
+def limpiar_unidad(u: str) -> str:
+    """Normaliza el texto de unidad eliminando punto final."""
+    return (u or "").rstrip(".")
 
-def process_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
-    rows = []
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        pending_unit = None
-        for page in pdf.pages:
-            text = page.extract_text(x_tolerance=2, y_tolerance=2) or ""
-            for raw in text.splitlines():
-                line = raw.strip()
-                if should_skip(line):
+def extraer_filas_pdf(pdf_en_bytes: bytes) -> list[dict]:
+    """
+    Lee el PDF (bytes) y devuelve una lista de filas:
+    { 'uni': str, 'desc': str, 'cant': str, 'puni': str, 'ptotal': str }
+    """
+    filas: list[dict] = []
+    with pdfplumber.open(io.BytesIO(pdf_en_bytes)) as pdf:
+        unidad_en_espera = None
+        for pagina in pdf.pages:
+            texto = pagina.extract_text(x_tolerance=2, y_tolerance=2) or ""
+            for bruta in texto.splitlines():
+                linea = bruta.strip()
+                if es_linea_omitible(linea):
                     continue
 
-                if line in UNIT_WORDS:
-                    pending_unit = clean_unit(line)
+                # Caso A: la línea es solo la unidad (p.ej. "Paquete", "Unidad")
+                if linea in PALABRAS_UNIDAD:
+                    unidad_en_espera = limpiar_unidad(linea)
                     continue
 
-                m = LINE_W_UNIT.match(line)
-                if m and clean_unit(m.group("uni")) in UNIT_WORDS:
+                # Caso B: la fila trae unidad al inicio
+                m = PATRON_FILA_CON_UNIDAD.match(linea)
+                if m and limpiar_unidad(m.group("uni")) in PALABRAS_UNIDAD:
                     d = m.groupdict()
-                    d["uni"] = clean_unit(d["uni"])
-                    rows.append(d)
-                    pending_unit = None
+                    d["uni"] = limpiar_unidad(d["uni"])
+                    filas.append(d)
+                    unidad_en_espera = None
                     continue
 
-                if pending_unit:
-                    m2 = LINE_WO_UNIT.match(line)
+                # Caso C: la unidad vino en la línea anterior
+                if unidad_en_espera:
+                    m2 = PATRON_FILA_SIN_UNIDAD.match(linea)
                     if m2:
                         d = m2.groupdict()
-                        d["uni"] = pending_unit
-                        rows.append(d)
-                        pending_unit = None
+                        d["uni"] = unidad_en_espera
+                        filas.append(d)
+                        unidad_en_espera = None
                         continue
-    return rows
+    return filas
 
-def print_rows(rows: list[dict]) -> None:
-    if not rows:
+def imprimir_filas(filas: list[dict]) -> None:
+    """Imprime en consola las filas crudas detectadas del PDF (para diagnóstico)."""
+    if not filas:
         print("⚠️ No se detectaron filas en el PDF.")
         return
     print(f"{'Uni.':<10} | {'Descripción':<70} | {'Cant':>4} | {'P. Uni':>8} | {'P. Total':>9}")
     print("-" * 110)
-    for r in rows:
-        desc = r["desc"].strip()
-        cant = r["cant"]
-        puni = r["puni"].replace(",", ".")
-        ptotal = r["ptotal"].replace(",", ".")
-        uni = r["uni"]
+    for f in filas:
+        desc = (f["desc"] or "").strip()
+        cant = f["cant"]
+        puni = f["puni"].replace(",", ".")
+        ptotal = f["ptotal"].replace(",", ".")
+        uni = f["uni"]
         print(f"{uni:<10} | {desc[:70]:<70} | {cant:>4} | {puni:>8} | {ptotal:>9}")
 
 # =========================
-#   CATALOGO & MATCHING
+#   CATÁLOGO & EMPAREJADO
 # =========================
-CATALOG_PATH = os.getenv("PRODUCT_CSV", "productos_roldan.csv")
-_CATALOG = None
 
-def _norm_text(s: str) -> str:
+RUTA_CATALOGO = os.getenv("PRODUCT_CSV", "productos_roldan.csv")
+CATALOGO_CACHE: pd.DataFrame | None = None
+
+def normalizar_texto(s: str) -> str:
+    """Mayúsculas, sin tildes, solo [A-Z0-9 espacio], espacios colapsados."""
     if s is None:
         return ""
     s = str(s).strip().upper()
@@ -112,128 +130,146 @@ def _norm_text(s: str) -> str:
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
-def _token_overlap(a: str, b: str) -> int:
+def solapamiento_tokens(a: str, b: str) -> int:
+    """Cuenta cuántos tokens (>=3 chars) de 'a' aparecen en 'b'."""
     toks = [t for t in a.split() if len(t) >= 3]
     bset = set(b.split())
     return sum(1 for t in toks if t in bset)
 
-def _load_catalog(path: str = CATALOG_PATH) -> pd.DataFrame:
-    global _CATALOG
-    if _CATALOG is not None:
-        return _CATALOG
-    df = pd.read_csv(path, dtype=str)
-    for c in ["Unidad", "NOMBRE DE ARTICULO EN LA ORDEN", "CODIGO DE PRODUCTO SAP", "BODEGA DESDE DONDE SE DESPACHA"]:
+def cargar_catalogo(ruta: str = RUTA_CATALOGO) -> pd.DataFrame:
+    """Carga el catálogo (con cache en memoria) y agrega columnas normalizadas."""
+    global CATALOGO_CACHE
+    if CATALOGO_CACHE is not None:
+        return CATALOGO_CACHE
+    df = pd.read_csv(ruta, dtype=str)
+    columnas_requeridas = [
+        "Unidad",
+        "NOMBRE DE ARTICULO EN LA ORDEN",
+        "CODIGO DE PRODUCTO SAP",
+        "BODEGA DESDE DONDE SE DESPACHA",
+    ]
+    for c in columnas_requeridas:
         if c not in df.columns:
             raise RuntimeError(f"CSV de catálogo no tiene la columna requerida: {c}")
-    df["name_norm"]   = df["NOMBRE DE ARTICULO EN LA ORDEN"].map(_norm_text)
-    df["unidad_norm"] = df["Unidad"].map(_norm_text)
-    _CATALOG = df
-    return _CATALOG
+    df["nombre_norm"]  = df["NOMBRE DE ARTICULO EN LA ORDEN"].map(normalizar_texto)
+    df["unidad_norm"]  = df["Unidad"].map(normalizar_texto)
+    CATALOGO_CACHE = df
+    return CATALOGO_CACHE
 
-def _build_name_index(df: pd.DataFrame) -> dict[str, list[int]]:
-    idx = {}
-    for i, s in enumerate(df["name_norm"]):
+def construir_indice_nombres(df: pd.DataFrame) -> dict[str, list[int]]:
+    """Devuelve un índice nombre_norm -> [índices en df]."""
+    idx: dict[str, list[int]] = {}
+    for i, s in enumerate(df["nombre_norm"]):
         idx.setdefault(s, []).append(i)
     return idx
 
-def match_rows_with_catalog(rows: list[dict], csv_path: str = CATALOG_PATH) -> list[dict]:
-    df = _load_catalog(csv_path)
-    name_index = _build_name_index(df)
+def emparejar_filas_con_catalogo(filas: list[dict], ruta_csv: str = RUTA_CATALOGO) -> list[dict]:
+    """
+    Devuelve filas enriquecidas con:
+      - 'sku' (CODIGO DE PRODUCTO SAP)
+      - 'bodega' (BODEGA DESDE DONDE SE DESPACHA)
+      - 'tipo_emparejado' en {'exacto','contiene','contiene+unidad','ambiguo','sin_match'}
+      - 'candidatos' (opcional) lista de SKUs cuando quedó ambiguo
+    """
+    df = cargar_catalogo(ruta_csv)
+    indice = construir_indice_nombres(df)
 
-    enriched = []
-    for r in rows:
-        desc_raw = r.get("desc", "")
-        unit_raw = r.get("uni", "")
-        desc_n   = _norm_text(desc_raw)
-        unit_n   = _norm_text(unit_raw)
+    enriquecidas: list[dict] = []
+    for f in filas:
+        desc_n = normalizar_texto(f.get("desc", ""))
+        uni_n  = normalizar_texto(f.get("uni", ""))
 
         sku = None
         bodega = None
-        match_type = "unmatched"
-        candidates = []
+        tipo = "sin_match"
+        candidatos: list[str] = []
 
-        if desc_n in name_index:
-            cand_idx = name_index[desc_n]
+        if desc_n in indice:
+            posibles = indice[desc_n]
         else:
-            cand_idx = [
-                i for i, nm in enumerate(df["name_norm"])
+            posibles = [
+                i for i, nm in enumerate(df["nombre_norm"])
                 if desc_n and (desc_n in nm or nm in desc_n)
             ]
 
-        if cand_idx:
-            if unit_n:
-                by_unit = [i for i in cand_idx if df.loc[i, "unidad_norm"] == unit_n]
-                if by_unit:
-                    cand_idx = by_unit
-                    match_type = "contains+unit" if match_type != "exact" else "exact"
+        if posibles:
+            if uni_n:
+                por_unidad = [i for i in posibles if df.loc[i, "unidad_norm"] == uni_n]
+                if por_unidad:
+                    posibles = por_unidad
+                    tipo = "contiene+unidad" if tipo != "exacto" else "exacto"
                 else:
-                    by_name_unit = [i for i in cand_idx if unit_n and unit_n in df.loc[i, "name_norm"]]
-                    if by_name_unit:
-                        cand_idx = by_name_unit
-                        match_type = "contains+unit"
+                    por_nombre_unidad = [i for i in posibles if uni_n and uni_n in df.loc[i, "nombre_norm"]]
+                    if por_nombre_unidad:
+                        posibles = por_nombre_unidad
+                        tipo = "contiene+unidad"
 
-            if len(cand_idx) > 1:
-                overlaps = [(i, _token_overlap(desc_n, df.loc[i, "name_norm"])) for i in cand_idx]
+            if len(posibles) > 1:
+                overlaps = [(i, solapamiento_tokens(desc_n, df.loc[i, "nombre_norm"])) for i in posibles]
                 max_ol = max(o for _, o in overlaps)
-                best = [i for i, o in overlaps if o == max_ol]
-                if len(best) == 1:
-                    cand_idx = best
+                mejores = [i for i, o in overlaps if o == max_ol]
+                if len(mejores) == 1:
+                    posibles = mejores
                 else:
-                    candidates = [df.loc[i, "CODIGO DE PRODUCTO SAP"] for i in best]
-                    match_type = "ambiguous"
+                    candidatos = [df.loc[i, "CODIGO DE PRODUCTO SAP"] for i in mejores]
+                    tipo = "ambiguo"
 
-            if not candidates:
-                i = cand_idx[0]
+            if not candidatos:
+                i = posibles[0]
                 sku = df.loc[i, "CODIGO DE PRODUCTO SAP"]
                 bodega = df.loc[i, "BODEGA DESDE DONDE SE DESPACHA"]
-                if match_type == "unmatched":
-                    match_type = "exact" if desc_n in name_index else "contains"
+                if tipo == "sin_match":
+                    tipo = "exacto" if desc_n in indice else "contiene"
 
-        enriched.append({
-            **r,
+        enriquecidas.append({
+            **f,
             "sku": sku,
             "bodega": bodega,
-            "match_type": match_type,
-            **({"candidates": candidates} if candidates else {})
+            "tipo_emparejado": tipo,
+            **({"candidatos": candidatos} if candidatos else {})
         })
-    return enriched
+    return enriquecidas
 
-def print_rows_with_match(rows_enriched: list[dict]) -> None:
-    if not rows_enriched:
+def imprimir_filas_emparejadas(filas_enriquecidas: list[dict]) -> None:
+    """Imprime filas ya enriquecidas con SKU/Bodega/Tipo de match."""
+    if not filas_enriquecidas:
         print("⚠️ No hay filas para imprimir.")
         return
-    print(f"{'Uni.':<8} | {'Descripción':<60} | {'Cant':>4} | {'SKU':<10} | {'Bod':>3} | {'Tipo':<10}")
-    print("-" * 110)
-    for r in rows_enriched:
-        desc   = (r.get("desc") or "").strip()
-        cant   = r.get("cant") or ""
-        sku    = r.get("sku") or ""
-        bodeg  = (r.get("bodega") or "")
-        mtype  = r.get("match_type") or ""
-        print(f"{(r.get('uni') or ''):<8} | {desc[:60]:<60} | {cant:>4} | {sku:<10} | {str(bodeg):>3} | {mtype:<10}")
-        if r.get("candidates"):
-            print(f"      ↳ candidatos: {', '.join(r['candidates'])}")
+    print(f"{'Uni.':<8} | {'Descripción':<60} | {'Cant':>4} | {'SKU':<10} | {'Bod':>3} | {'Match':<12}")
+    print("-" * 112)
+    for f in filas_enriquecidas:
+        desc = (f.get("desc") or "").strip()
+        cant = f.get("cant") or ""
+        sku  = f.get("sku") or ""
+        bod  = f.get("bodega") or ""
+        tip  = f.get("tipo_emparejado") or ""
+        print(f"{(f.get('uni') or ''):<8} | {desc[:60]:<60} | {cant:>4} | {sku:<10} | {str(bod):>3} | {tip:<12}")
+        if f.get("candidatos"):
+            print(f"      ↳ candidatos: {', '.join(f['candidatos'])}")
 
 # =========================
-#   UTILIDADES PERSISTENCIA
+#   UTILIDADES DE PERSISTENCIA
 # =========================
-def save_assignments_csv(rows_enriched: list[dict], out_path="pedido_asignado.csv"):
+
+def guardar_asignaciones_csv(filas_enriquecidas: list[dict], ruta_salida="pedido_asignado.csv"):
+    """Guarda un CSV con las asignaciones (para auditoría)."""
     import csv
-    cols = ["uni","desc","cant","puni","ptotal","sku","bodega","match_type","candidates"]
-    with open(out_path, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=cols)
+    columnas = ["uni","desc","cant","puni","ptotal","sku","bodega","tipo_emparejado","candidatos"]
+    with open(ruta_salida, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=columnas)
         w.writeheader()
-        for r in rows_enriched:
-            row = {k: r.get(k) for k in cols}
-            if isinstance(row.get("candidates"), list):
-                row["candidates"] = " | ".join(row["candidates"])
-            w.writerow(row)
-    print(f"💾 Guardado: {out_path}")
+        for r in filas_enriquecidas:
+            fila = {k: r.get(k) for k in columnas}
+            if isinstance(fila.get("candidatos"), list):
+                fila["candidatos"] = " | ".join(fila["candidatos"])
+            w.writerow(fila)
+    print(f"💾 Guardado CSV: {ruta_salida}")
 
-def to_decimal(s) -> Decimal | None:
-    if s is None:
+def a_decimal(valor) -> Decimal | None:
+    """Convierte '12,50' o '12.50' a Decimal; None si no aplica."""
+    if valor is None:
         return None
-    s = str(s).strip()
+    s = str(valor).strip()
     if not s:
         return None
     s = s.replace(",", ".")
@@ -242,20 +278,28 @@ def to_decimal(s) -> Decimal | None:
     except Exception:
         return None
 
-def get_pg_conn():
+def obtener_conexion_pg():
+    """Crea conexión a PostgreSQL usando PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE del entorno."""
     return psycopg.connect()
 
-def persist_order_to_pg(rows_enriched: list[dict], meta: dict):
-    if not rows_enriched:
+def guardar_pedido_en_pg(filas_enriquecidas: list[dict], meta: dict):
+    """
+    Inserta en PostgreSQL:
+      - pedidos(fecha, total, pdf_filename, email_uid, email_from, email_subject)
+      - pedido_items(pedido_id, descripcion, sku, bodega, cantidad, precio_unitario, precio_total)
+    """
+    if not filas_enriquecidas:
         print("⚠️ No hay filas enriquecidas para guardar en PostgreSQL.")
         return
 
+    # Total del pedido (si el PDF no trae total explícito)
     total = Decimal("0")
-    for r in rows_enriched:
-        pt = to_decimal(r.get("ptotal"))
+    for f in filas_enriquecidas:
+        pt = a_decimal(f.get("ptotal"))
         if pt is not None:
             total += pt
 
+    # Fecha preferida: la del correo (ENVELOPE), si no existe usa ahora()
     fecha = meta.get("fecha")
     if isinstance(fecha, str):
         try:
@@ -270,7 +314,7 @@ def persist_order_to_pg(rows_enriched: list[dict], meta: dict):
     email_from    = meta.get("email_from")
     email_subject = meta.get("email_subject")
 
-    with get_pg_conn() as conn:
+    with obtener_conexion_pg() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -282,7 +326,7 @@ def persist_order_to_pg(rows_enriched: list[dict], meta: dict):
             )
             pedido_id, numero_pedido = cur.fetchone()
 
-            for r in rows_enriched:
+            for f in filas_enriquecidas:
                 cur.execute(
                     """
                     INSERT INTO pedido_items
@@ -291,20 +335,25 @@ def persist_order_to_pg(rows_enriched: list[dict], meta: dict):
                     """,
                     (
                         pedido_id,
-                        (r.get("desc") or "").strip(),
-                        r.get("sku"),
-                        r.get("bodega"),
-                        int(r.get("cant") or 0),
-                        to_decimal(r.get("puni")),
-                        to_decimal(r.get("ptotal")),
+                        (f.get("desc") or "").strip(),
+                        f.get("sku"),
+                        f.get("bodega"),
+                        int(f.get("cant") or 0),
+                        a_decimal(f.get("puni")),
+                        a_decimal(f.get("ptotal")),
                     )
                 )
-    print(f"✅ Pedido guardado en PostgreSQL. ID={pedido_id}  | N° orden llegada={numero_pedido}  | Ítems={len(rows_enriched)}")
+    print(f"✅ Pedido guardado en PostgreSQL. ID={pedido_id} | N° orden llegada={numero_pedido} | Ítems={len(filas_enriquecidas)}")
 
 # =========================
-#   CALLBACK PARA ESCUCHA
+#   CALLBACK DEL ESCUCHADOR
 # =========================
-def al_encontrar_pdf(meta: dict, nombre_pdf: str, bytes_pdf: bytes) -> None:
+
+def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
+    """
+    Callback invocado por escucha_correos.iniciar_escucha_correos cuando llega un correo con PDF.
+    meta: { uid:int, fecha:datetime|None, asunto:str, remitente:str }
+    """
     print("\n=== 📬 Nuevo correo (callback) ===")
     print(f"De:      {meta.get('remitente','')}")
     print(f"Asunto:  {meta.get('asunto','')}")
@@ -312,14 +361,14 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, bytes_pdf: bytes) -> None:
     print(f"UID:     {meta.get('uid')}")
     print(f"📎 PDF:  {nombre_pdf}")
 
-    filas = process_pdf_bytes(bytes_pdf)
+    filas = extraer_filas_pdf(pdf_en_bytes)
     if not filas:
         print("⚠️ No se detectaron filas en el PDF.")
         return
 
-    filas_enriquecidas = match_rows_with_catalog(filas, CATALOG_PATH)
-    print_rows_with_match(filas_enriquecidas)
-    save_assignments_csv(filas_enriquecidas)
+    filas_enriquecidas = emparejar_filas_con_catalogo(filas, RUTA_CATALOGO)
+    imprimir_filas_emparejadas(filas_enriquecidas)
+    guardar_asignaciones_csv(filas_enriquecidas)
 
     meta_pedido = {
         "fecha": meta.get("fecha"),
@@ -328,41 +377,49 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, bytes_pdf: bytes) -> None:
         "email_from": meta.get("remitente"),
         "email_subject": meta.get("asunto"),
     }
-    persist_order_to_pg(filas_enriquecidas, meta_pedido)
+    guardar_pedido_en_pg(filas_enriquecidas, meta_pedido)
 
 # =========================
 #   RUTAS FLASK
 # =========================
+
 @app.route("/pedidos")
-def pedidos():
-    with get_pg_conn() as conn, conn.cursor() as cur:
-        cur.execute("SELECT numero_pedido, fecha, total FROM pedidos ORDER BY id DESC LIMIT 200;")
-        rows = [
-            {"numero_pedido": n, "fecha": f, "total": t}
-            for (n, f, t) in cur.fetchall()
-        ]
-    return render_template("orders.html", orders=rows, now=datetime.utcnow())
+def ver_pedidos():
+    """HTML con la tabla de pedidos (últimos 200)."""
+    with obtener_conexion_pg() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT numero_pedido, fecha, total
+            FROM pedidos
+            ORDER BY id DESC
+            LIMIT 200;
+        """)
+        filas = [{"numero_pedido": n, "fecha": f, "total": t}
+                 for (n, f, t) in cur.fetchall()]
+    return render_template("orders.html", orders=filas, now=datetime.utcnow())
 
 @app.route("/api/orders/summary")
-def orders_summary():
-    with get_pg_conn() as conn, conn.cursor() as cur:
+def resumen_pedidos():
+    """API mínima para avisar cantidad de pedidos (para indicador de nuevos)."""
+    with obtener_conexion_pg() as conn, conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM pedidos;")
-        (count,) = cur.fetchone()
-    return {"count": int(count)}
+        (cantidad,) = cur.fetchone()
+    return jsonify({"count": int(cantidad)})
 
 # =========================
 #   ARRANQUE
 # =========================
+
 if __name__ == "__main__":
+    # Evita lanzar dos hilos con el reloader en modo debug
     es_proceso_principal = (os.environ.get("WERKZEUG_RUN_MAIN") == "true") or (not app.debug)
     if es_proceso_principal:
-        t = Thread(
+        hilo_imap = Thread(
             target=escucha_correos.iniciar_escucha_correos,
             args=(al_encontrar_pdf,),
             name="hilo-escucha-imap",
             daemon=True
         )
-        t.start()
+        hilo_imap.start()
         print("🧵 Hilo IMAP iniciado.")
 
     app.run(host="0.0.0.0", port=5000, debug=True)
