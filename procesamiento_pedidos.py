@@ -1,0 +1,235 @@
+# procesamiento_pedidos.py
+# Parseo del PDF (filas de productos), normalización, emparejado con catálogo y utilidades de diagnóstico/CSV.
+
+import os
+import io
+import re
+import pdfplumber
+import pandas as pd
+import unicodedata
+
+# ===== Configurable por entorno =====
+RUTA_CATALOGO = os.getenv("PRODUCT_CSV", "productos_roldan.csv")
+
+# ======== PARSEADOR DEL PDF ========
+
+PALABRAS_UNIDAD = {
+    "Unidad", "RESMA", "Caja", "Rollo", "Paquete",
+    "Funda", "Galon", "Kilo", "Par", "Unidad."
+}
+
+PATRON_FILA_CON_UNIDAD = re.compile(
+    r"^(?P<uni>\S+)\s+(?P<desc>.+?)\s+(?P<cant>\d{1,4})\s+(?P<puni>\d+(?:[.,]\d+)?)\s+(?P<ptotal>\d+(?:[.,]\d+)?)$"
+)
+PATRON_FILA_SIN_UNIDAD = re.compile(
+    r"^(?P<desc>.+?)\s+(?P<cant>\d{1,4})\s+(?P<puni>\d+(?:[.,]\d+)?)\s+(?P<ptotal>\d+(?:[.,]\d+)?)$"
+)
+
+PALABRAS_OMITIR = (
+    "Uni. Descripción", "Subtotal", "TOTAL", "IVA", "Proveedor",
+    "ORDEN DE COMPRA", "Fecha:", "Dirección:", "Teléfono:", "Política:",
+    "Razón", "RUC:", "E-mail", "Datos de facturación", "Aprueba:",
+    "Recibe:", "Analiza:", "Solicita:"
+)
+
+def es_linea_omitible(linea: str) -> bool:
+    s = (linea or "").strip()
+    if not s:
+        return True
+    return any(p in s for p in PALABRAS_OMITIR)
+
+def limpiar_unidad(u: str) -> str:
+    return (u or "").rstrip(".")
+
+def extraer_filas_pdf(pdf_en_bytes: bytes) -> list[dict]:
+    """
+    Devuelve filas de la tabla del PDF con forma:
+    { 'uni': str, 'desc': str, 'cant': str, 'puni': str, 'ptotal': str }
+    """
+    filas: list[dict] = []
+    with pdfplumber.open(io.BytesIO(pdf_en_bytes)) as pdf:
+        unidad_en_espera = None
+        for pagina in pdf.pages:
+            texto = pagina.extract_text(x_tolerance=2, y_tolerance=2) or ""
+            for bruta in texto.splitlines():
+                linea = bruta.strip()
+                if es_linea_omitible(linea):
+                    continue
+
+                if linea in PALABRAS_UNIDAD:
+                    unidad_en_espera = limpiar_unidad(linea)
+                    continue
+
+                m = PATRON_FILA_CON_UNIDAD.match(linea)
+                if m and limpiar_unidad(m.group("uni")) in PALABRAS_UNIDAD:
+                    d = m.groupdict()
+                    d["uni"] = limpiar_unidad(d["uni"])
+                    filas.append(d)
+                    unidad_en_espera = None
+                    continue
+
+                if unidad_en_espera:
+                    m2 = PATRON_FILA_SIN_UNIDAD.match(linea)
+                    if m2:
+                        d = m2.groupdict()
+                        d["uni"] = unidad_en_espera
+                        filas.append(d)
+                        unidad_en_espera = None
+                        continue
+    return filas
+
+def imprimir_filas(filas: list[dict]) -> None:
+    if not filas:
+        print("⚠️ No se detectaron filas en el PDF.")
+        return
+    print(f"{'Uni.':<10} | {'Descripción':<70} | {'Cant':>4} | {'P. Uni':>8} | {'P. Total':>9}")
+    print("-" * 110)
+    for f in filas:
+        desc = (f["desc"] or "").strip()
+        cant = f["cant"]
+        puni = f["puni"].replace(",", ".")
+        ptotal = f["ptotal"].replace(",", ".")
+        uni = f["uni"]
+        print(f"{uni:<10} | {desc[:70]:<70} | {cant:>4} | {puni:>8} | {ptotal:>9}")
+
+# ======== EMPAREJADO CON CATÁLOGO ========
+
+_CATALOGO_CACHE: pd.DataFrame | None = None
+
+def normalizar_texto(s: str) -> str:
+    if s is None:
+        return ""
+    s = str(s).strip().upper()
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    s = re.sub(r"[^A-Z0-9 ]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+def solapamiento_tokens(a: str, b: str) -> int:
+    toks = [t for t in a.split() if len(t) >= 3]
+    bset = set(b.split())
+    return sum(1 for t in toks if t in bset)
+
+def cargar_catalogo(ruta: str = RUTA_CATALOGO) -> pd.DataFrame:
+    global _CATALOGO_CACHE
+    if _CATALOGO_CACHE is not None:
+        return _CATALOGO_CACHE
+    df = pd.read_csv(ruta, dtype=str)
+    requeridas = [
+        "Unidad",
+        "NOMBRE DE ARTICULO EN LA ORDEN",
+        "CODIGO DE PRODUCTO SAP",
+        "BODEGA DESDE DONDE SE DESPACHA",
+    ]
+    for c in requeridas:
+        if c not in df.columns:
+            raise RuntimeError(f"CSV de catálogo no tiene la columna requerida: {c}")
+    df["nombre_norm"] = df["NOMBRE DE ARTICULO EN LA ORDEN"].map(normalizar_texto)
+    df["unidad_norm"] = df["Unidad"].map(normalizar_texto)
+    _CATALOGO_CACHE = df
+    return _CATALOGO_CACHE
+
+def construir_indice_nombres(df: pd.DataFrame) -> dict[str, list[int]]:
+    idx: dict[str, list[int]] = {}
+    for i, s in enumerate(df["nombre_norm"]):
+        idx.setdefault(s, []).append(i)
+    return idx
+
+def emparejar_filas_con_catalogo(filas: list[dict], ruta_csv: str = RUTA_CATALOGO) -> list[dict]:
+    """
+    Enriquecer filas con:
+      - sku
+      - bodega
+      - tipo_emparejado in {'exacto','contiene','contiene+unidad','ambiguo','sin_match'}
+      - candidatos (opcional)
+    """
+    df = cargar_catalogo(ruta_csv)
+    indice = construir_indice_nombres(df)
+
+    enriquecidas: list[dict] = []
+    for f in filas:
+        desc_n = normalizar_texto(f.get("desc", ""))
+        uni_n  = normalizar_texto(f.get("uni", ""))
+
+        sku = None
+        bodega = None
+        tipo = "sin_match"
+        candidatos: list[str] = []
+
+        if desc_n in indice:
+            posibles = indice[desc_n]
+        else:
+            posibles = [
+                i for i, nm in enumerate(df["nombre_norm"])
+                if desc_n and (desc_n in nm or nm in desc_n)
+            ]
+
+        if posibles:
+            if uni_n:
+                por_unidad = [i for i in posibles if df.loc[i, "unidad_norm"] == uni_n]
+                if por_unidad:
+                    posibles = por_unidad
+                    tipo = "contiene+unidad" if tipo != "exacto" else "exacto"
+                else:
+                    por_nombre_unidad = [i for i in posibles if uni_n and uni_n in df.loc[i, "nombre_norm"]]
+                    if por_nombre_unidad:
+                        posibles = por_nombre_unidad
+                        tipo = "contiene+unidad"
+
+            if len(posibles) > 1:
+                overlaps = [(i, solapamiento_tokens(desc_n, df.loc[i, "nombre_norm"])) for i in posibles]
+                max_ol = max(o for _, o in overlaps)
+                mejores = [i for i, o in overlaps if o == max_ol]
+                if len(mejores) == 1:
+                    posibles = mejores
+                else:
+                    candidatos = [df.loc[i, "CODIGO DE PRODUCTO SAP"] for i in mejores]
+                    tipo = "ambiguo"
+
+            if not candidatos:
+                i = posibles[0]
+                sku = df.loc[i, "CODIGO DE PRODUCTO SAP"]
+                bodega = df.loc[i, "BODEGA DESDE DONDE SE DESPACHA"]
+                if tipo == "sin_match":
+                    tipo = "exacto" if desc_n in indice else "contiene"
+
+        enriquecidas.append({
+            **f,
+            "sku": sku,
+            "bodega": bodega,
+            "tipo_emparejado": tipo,
+            **({"candidatos": candidatos} if candidatos else {})
+        })
+    return enriquecidas
+
+def imprimir_filas_emparejadas(filas_enriquecidas: list[dict]) -> None:
+    if not filas_enriquecidas:
+        print("⚠️ No hay filas para imprimir.")
+        return
+    print(f"{'Uni.':<8} | {'Descripción':<60} | {'Cant':>4} | {'SKU':<10} | {'Bod':>3} | {'Match':<12}")
+    print("-" * 112)
+    for f in filas_enriquecidas:
+        desc = (f.get("desc") or "").strip()
+        cant = f.get("cant") or ""
+        sku  = f.get("sku") or ""
+        bod  = f.get("bodega") or ""
+        tip  = f.get("tipo_emparejado") or ""
+        print(f"{(f.get('uni') or ''):<8} | {desc[:60]:<60} | {cant:>4} | {sku:<10} | {str(bod):>3} | {tip:<12}")
+        if f.get("candidatos"):
+            print(f"      ↳ candidatos: {', '.join(f['candidatos'])}")
+
+# ======== CSV opcional para auditoría ========
+
+def guardar_asignaciones_csv(filas_enriquecidas: list[dict], ruta_salida="pedido_asignado.csv"):
+    import csv
+    columnas = ["uni","desc","cant","puni","ptotal","sku","bodega","tipo_emparejado","candidatos"]
+    with open(ruta_salida, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=columnas)
+        w.writeheader()
+        for r in filas_enriquecidas:
+            fila = {k: r.get(k) for k in columnas}
+            if isinstance(fila.get("candidatos"), list):
+                fila["candidatos"] = " | ".join(fila["candidatos"])
+            w.writerow(fila)
+    print(f"💾 Guardado CSV: {ruta_salida}")
