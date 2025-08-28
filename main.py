@@ -10,6 +10,7 @@ from flask import Flask, render_template, jsonify
 
 import escucha_correos                  # escucha IMAP (módulo en español)
 import procesamiento_pedidos as proc    # parseo + emparejado
+import persistencia_postgresql as db
 
 app = Flask(__name__)
 
@@ -96,20 +97,15 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     print(f"UID:     {meta.get('uid')}")
     print(f"📎 PDF:  {nombre_pdf}")
 
-    # 1) Parsear PDF
     filas = proc.extraer_filas_pdf(pdf_en_bytes)
     if not filas:
         print("⚠️ No se detectaron filas en el PDF.")
         return
 
-    # 2) Emparejar con catálogo
     filas_enriquecidas = proc.emparejar_filas_con_catalogo(filas, proc.RUTA_CATALOGO)
     proc.imprimir_filas_emparejadas(filas_enriquecidas)
-
-    # 3) CSV opcional (auditoría)
     proc.guardar_asignaciones_csv(filas_enriquecidas)
 
-    # 4) Guardar en PostgreSQL
     meta_pedido = {
         "fecha": meta.get("fecha"),
         "pdf_filename": nombre_pdf,
@@ -117,13 +113,14 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
         "email_from": meta.get("remitente"),
         "email_subject": meta.get("asunto"),
     }
-    guardar_pedido_en_pg(filas_enriquecidas, meta_pedido)
+    db.guardar_pedido(filas_enriquecidas, meta_pedido)
+
 
 # ========= RUTAS FLASK =========
 
 @app.route("/pedidos")
 def ver_pedidos():
-    with obtener_conexion_pg() as conn, conn.cursor() as cur:
+    with db.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
             SELECT numero_pedido, fecha, total
             FROM pedidos
@@ -136,7 +133,7 @@ def ver_pedidos():
 
 @app.route("/api/orders/summary")
 def resumen_pedidos():
-    with obtener_conexion_pg() as conn, conn.cursor() as cur:
+    with db.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM pedidos;")
         (cantidad,) = cur.fetchone()
     return jsonify({"count": int(cantidad)})
