@@ -8,6 +8,16 @@ from email import message_from_bytes
 from email.header import decode_header, make_header
 from imapclient import IMAPClient
 
+from datetime import datetime
+from decimal import Decimal
+import psycopg
+
+
+from flask import Flask, render_template
+from datetime import datetime
+
+app = Flask(__name__)
+
 # =========================
 #   CATALOGO & MATCHING
 # =========================
@@ -358,6 +368,19 @@ def fetch_and_print_new(client, since_uid):
                     print_rows_with_match(rows_enriched)
                     # 💾 Guardar a CSV
                     save_assignments_csv(rows_enriched)
+                    
+                    
+                    # 💾💾 NUEVO: Guardar en PostgreSQL
+                    order_meta = {
+                        # Usa la fecha del ENVELOPE si está; si no, la función pondrá now()
+                        "fecha": env.date if env and getattr(env, "date", None) else None,
+                        "pdf_filename": pdf_name,
+                        "email_uid": int(uid),
+                        "email_from": from_addr,
+                        "email_subject": subject,
+                    }
+                    persist_order_to_pg(rows_enriched, order_meta)
+                    
             except Exception as e:
                 print(f"⚠️  Error al procesar el PDF: {e}")
         else:
@@ -380,7 +403,99 @@ def save_assignments_csv(rows_enriched: list[dict], out_path="pedido_asignado.cs
     print(f"💾 Guardado: {out_path}")
 
 
-def main():
+
+def to_decimal(s) -> Decimal | None:
+    if s is None:
+        return None
+    s = str(s).strip()
+    if not s:
+        return None
+    # Cambia coma por punto (e.g., "12,50" -> "12.50")
+    s = s.replace(",", ".")
+    try:
+        return Decimal(s)
+    except Exception:
+        return None
+
+def get_pg_conn():
+    # Usa las variables de entorno que ya configuraste (PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE)
+    return psycopg.connect()
+
+
+def persist_order_to_pg(rows_enriched: list[dict], meta: dict):
+    """
+    Inserta en PostgreSQL:
+      - pedidos(id, numero_pedido [DEFAULT], fecha, total, pdf_filename, email_uid, email_from, email_subject)
+      - pedido_items(...)
+    'meta' debe traer: fecha(datetime), pdf_filename, email_uid, email_from, email_subject
+    """
+    if not rows_enriched:
+        print("⚠️ No hay filas enriquecidas para guardar en PostgreSQL.")
+        return
+
+    # Calcular total = suma de ptotal de ítems (si no tienes un 'TOTAL' del PDF)
+    total = Decimal("0")
+    for r in rows_enriched:
+        pt = to_decimal(r.get("ptotal"))
+        if pt is not None:
+            total += pt
+
+    # Fecha del pedido (desde el correo si la tenemos)
+    fecha = meta.get("fecha")
+    if isinstance(fecha, str):
+        # Intento parsear por si llega string
+        try:
+            fecha = datetime.fromisoformat(fecha)
+        except Exception:
+            fecha = datetime.now()
+    elif not isinstance(fecha, datetime):
+        fecha = datetime.now()
+
+    pdf_filename  = meta.get("pdf_filename")
+    email_uid     = meta.get("email_uid")
+    email_from    = meta.get("email_from")
+    email_subject = meta.get("email_subject")
+
+    # Insertar en BD
+    with get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            # Insert pedido (numero_pedido se autogenera por DEFAULT con la secuencia)
+            cur.execute(
+                """
+                INSERT INTO pedidos (fecha, total, pdf_filename, email_uid, email_from, email_subject)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id, numero_pedido;
+                """,
+                (fecha, total, pdf_filename, email_uid, email_from, email_subject)
+            )
+            pedido_id, numero_pedido = cur.fetchone()
+
+            # Insert items
+            for r in rows_enriched:
+                cur.execute(
+                    """
+                    INSERT INTO pedido_items
+                    (pedido_id, descripcion, sku, bodega, cantidad, precio_unitario, precio_total)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s);
+                    """,
+                    (
+                        pedido_id,
+                        (r.get("desc") or "").strip(),
+                        r.get("sku"),
+                        r.get("bodega"),
+                        int(r.get("cant") or 0),
+                        to_decimal(r.get("puni")),
+                        to_decimal(r.get("ptotal")),
+                    )
+                )
+        # with conn: hace commit automáticamente si no hay excepción
+
+    print(f"✅ Pedido guardado en PostgreSQL. ID={pedido_id}  | N° orden llegada={numero_pedido}  | Ítems={len(rows_enriched)}")
+
+
+
+
+def imap_loop():
     if not IMAP_USER or not IMAP_PASS:
         raise SystemExit("Faltan variables de entorno IMAP_USER y/o IMAP_PASS.")
 
@@ -417,5 +532,31 @@ def main():
             print(f"⚠️  Error: {e}. Reintentando en 10s…")
             time.sleep(10)
 
+@app.route("/pedidos")
+def pedidos():
+    with get_pg_conn() as conn, conn.cursor() as cur:
+        cur.execute("SELECT numero_pedido, fecha, total FROM pedidos ORDER BY id DESC LIMIT 200;")
+        rows = [
+            {"numero_pedido": n, "fecha": f, "total": t}
+            for (n, f, t) in cur.fetchall()
+        ]
+    return render_template("orders.html", orders=rows, now=datetime.utcnow())
+
+@app.route("/api/orders/summary")
+def orders_summary():
+    with get_pg_conn() as conn, conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM pedidos;")
+        (count,) = cur.fetchone()
+    return {"count": int(count)}
+
+
+from threading import Thread
+            
 if __name__ == "__main__":
-    main()
+    # Evita lanzar dos hilos con el reloader de Flask
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
+        t = Thread(target=imap_loop, name="imap-listener", daemon=True)
+        t.start()
+        print("🧵 Hilo IMAP iniciado.")
+
+    app.run(host="0.0.0.0", port=5000, debug=True)
