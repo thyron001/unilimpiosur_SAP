@@ -1,14 +1,25 @@
 # escucha_correos.py
-# Módulo que escucha la bandeja IMAP y detecta el PRIMER PDF de cada correo nuevo.
-# Llama a un callback con los metadatos y los bytes del PDF.
+# Escucha IMAP; cuando llega un correo con PDF, lo parsea, imprime resumen y guarda en PostgreSQL.
 
 import os
 import ssl
 import time
 from typing import Callable, Dict, Any, Tuple
+from datetime import datetime
 from imapclient import IMAPClient
 from email import message_from_bytes
 from email.header import decode_header, make_header
+
+# --- módulos del proyecto ---
+from procesamiento_pedidos import (
+    extraer_filas_pdf,
+    emparejar_filas_con_catalogo,
+    imprimir_filas,
+    imprimir_filas_emparejadas,
+    extraer_sucursal_y_totales,
+    imprimir_resumen_pedido,
+)
+from persistencia_postgresql import guardar_pedido
 
 # --- Configuración (desde variables de entorno) ---
 IMAP_SERVIDOR = os.getenv("IMAP_HOST", "imap.gmail.com")
@@ -59,11 +70,6 @@ def extraer_primer_pdf(mensaje_crudo: bytes) -> Tuple[str | None, bytes | None]:
 
 # ---------- Núcleo del listener ----------
 def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Callable[[Dict[str, Any], str, bytes], None]) -> int:
-    """
-    Revisa correos NO LEÍDOS con UID > ultimo_uid.
-    Si hay PDF, llama al callback: al_encontrar_pdf(meta, nombre_pdf, bytes_pdf).
-    Retorna el nuevo ultimo_uid.
-    """
     nuevos_uids = [uid for uid in cliente.search(["UNSEEN"]) if uid > ultimo_uid]
     if not nuevos_uids:
         return ultimo_uid
@@ -72,11 +78,10 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
 
     for uid in sorted(nuevos_uids):
         sobre = respuesta[uid].get(b"ENVELOPE")
-        crudo = respuesta[uid].get(b"RFC822", b"")
+        crudo = respuesta[uid].get(b"RFCENUM", b"") if False else respuesta[uid].get(b"RFC822", b"")  # compat
         if not sobre:
             continue
 
-        # Metadatos básicos
         asunto = decodificar(sobre.subject.decode() if isinstance(sobre.subject, bytes) else sobre.subject)
         remitente = ""
         if sobre.from_:
@@ -106,9 +111,6 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
     return max(ultimo_uid, max(nuevos_uids))
 
 def iniciar_escucha_correos(al_encontrar_pdf: Callable[[Dict[str, Any], str, bytes], None]) -> None:
-    """
-    Bucle infinito que mantiene la sesión IMAP activa y llama al callback cuando llega un PDF.
-    """
     if not IMAP_USUARIO or not IMAP_CLAVE:
         print("❌ Faltan IMAP_USER/IMAP_PASS en variables de entorno. Escucha no iniciada.")
         return
@@ -145,3 +147,41 @@ def iniciar_escucha_correos(al_encontrar_pdf: Callable[[Dict[str, Any], str, byt
         except Exception as e:
             print(f"⚠️  Error en escucha IMAP: {e}. Reintentando en 10s…")
             time.sleep(10)
+
+# ---------- Pipeline por defecto (para usar directamente este archivo) ----------
+
+def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -> None:
+    print("\n================= NUEVO PDF DETECTADO =================")
+    print(f"Asunto: {meta.get('asunto')} | Remitente: {meta.get('remitente')} | UID: {meta.get('uid')}")
+    print(f"Adjunto: {nombre_pdf}")
+
+    # 1) Filas de productos
+    filas = extraer_filas_pdf(bytes_pdf)
+    imprimir_filas(filas)
+
+    # 2) Emparejado con catálogo
+    filas_enriquecidas = emparejar_filas_con_catalogo(filas)
+    imprimir_filas_emparejadas(filas_enriquecidas)
+
+    # 3) Sucursal y totales
+    resumen = extraer_sucursal_y_totales(bytes_pdf)
+    imprimir_resumen_pedido(resumen)
+
+    # 4) Guardar en PostgreSQL (sin calcular TOTAL)
+    pedido = {
+        "fecha": meta.get("fecha") or datetime.now(),
+        "sucursal": resumen.get("sucursal"),
+        "subtotal_bruto": resumen.get("subtotal_bruto"),
+        "descuento": resumen.get("descuento"),
+        "subtotal_neto": resumen.get("subtotal_neto"),
+        "iva_0": resumen.get("iva_0"),
+        "iva_15": resumen.get("iva_15"),
+        "total": resumen.get("total"),
+    }
+    try:
+        guardar_pedido(pedido, filas_enriquecidas)
+    except Exception as e:
+        print(f"❌ No se guardó el pedido: {e}")
+
+if __name__ == "__main__":
+    iniciar_escucha_correos(_pipeline_guardar)

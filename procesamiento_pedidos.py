@@ -1,5 +1,5 @@
 # procesamiento_pedidos.py
-# Parseo del PDF (filas de productos), normalización, emparejado con catálogo y utilidades de diagnóstico/CSV.
+# Parseo del PDF (filas de productos), sucursal y totales; normalización, emparejado con catálogo y utilidades.
 
 import os
 import io
@@ -7,11 +7,36 @@ import re
 import pdfplumber
 import pandas as pd
 import unicodedata
+from decimal import Decimal
 
 # ===== Configurable por entorno =====
 RUTA_CATALOGO = os.getenv("PRODUCT_CSV", "productos_roldan.csv")
 
-# ======== PARSEADOR DEL PDF ========
+# ======== UTILIDADES DECIMALES (ES) ========
+
+_DECIM_SAN = re.compile(r"[^0-9,.\-]")
+
+def to_decimal_es(valor: str | None) -> Decimal | None:
+    """Convierte '$1.234,56' o '168,09' a Decimal(1234.56). Devuelve None si no aplica."""
+    if valor is None:
+        return None
+    s = _DECIM_SAN.sub("", str(valor)).strip()
+    if s == "" or s == "-":
+        return None
+    # Solo coma -> decimal
+    if s.count(",") == 1 and s.count(".") == 0:
+        s = s.replace(",", ".")
+    else:
+        s = s.replace(".", "").replace(",", ".")
+    try:
+        return Decimal(s)
+    except Exception:
+        return None
+
+def fmt2(x: Decimal | None) -> str:
+    return "-" if x is None else f"{x:.2f}"
+
+# ======== PARSEADOR DEL PDF: FILAS ========
 
 PALABRAS_UNIDAD = {
     "Unidad", "RESMA", "Caja", "Rollo", "Paquete",
@@ -91,6 +116,92 @@ def imprimir_filas(filas: list[dict]) -> None:
         ptotal = f["ptotal"].replace(",", ".")
         uni = f["uni"]
         print(f"{uni:<10} | {desc[:70]:<70} | {cant:>4} | {puni:>8} | {ptotal:>9}")
+
+# ======== PARSEADOR DEL PDF: SUCURSAL Y TOTALES ========
+
+def _texto_completo(pdf_en_bytes: bytes) -> str:
+    with pdfplumber.open(io.BytesIO(pdf_en_bytes)) as pdf:
+        textos = [(p.extract_text(x_tolerance=2, y_tolerance=2) or "") for p in pdf.pages]
+    return "\n".join(textos)
+
+def _buscar_valor(label_regex: str, texto: str, max_saltos: int = 2) -> str | None:
+    """
+    Busca un valor numérico justo a la derecha/abajo de la etiqueta.
+    Acepta hasta 'max_saltos' saltos de línea entre etiqueta y valor.
+    """
+    # valor como números con . y , o un '-'
+    VAL = r"\$?\s*([0-9][0-9\.\,]*|-)"
+    patron = rf"{label_regex}(?:[^\S\r\n]|\n){{0,{max_saltos}}}{VAL}"
+    m = re.search(patron, texto, flags=re.IGNORECASE)
+    return m.group(1).strip() if m else None
+
+def extraer_sucursal_y_totales(pdf_en_bytes: bytes) -> dict:
+    """
+    Extrae:
+      sucursal, subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total
+    con tolerancia a saltos de línea entre etiqueta y valor.
+    """
+    texto = _texto_completo(pdf_en_bytes)
+
+    # --- Sucursal (línea "Solicita:" o siguiente línea) ---
+    sucursal = None
+    m = re.search(r"Solicita:\s*(.+)", texto, re.IGNORECASE)
+    if m:
+        sucursal = m.group(1).strip()
+    else:
+        lineas = [l.strip() for l in texto.splitlines()]
+        for i, l in enumerate(lineas):
+            if l.upper().startswith("SOLICITA:"):
+                resto = l.split(":", 1)[-1].strip()
+                if resto:
+                    sucursal = resto
+                else:
+                    for j in range(i + 1, min(i + 3, len(lineas))):
+                        if lineas[j]:
+                            sucursal = lineas[j]
+                            break
+                break
+
+    # --- Totales del panel derecho ---
+    # Dos "Subtotal": bruto (antes de descuento) y neto (después de descuento)
+    subtotales_raw = re.findall(
+        r"Subtotal(?:[^\S\r\n]|\n){0,2}\$?\s*([0-9][0-9\.\,]*|-)",
+        texto,
+        flags=re.IGNORECASE
+    )
+    raw_descuento = _buscar_valor(r"Descuento", texto, max_saltos=2)
+    raw_iva0      = _buscar_valor(r"IVA\s*0%",   texto, max_saltos=2)
+    raw_iva15     = _buscar_valor(r"IVA\s*15%",  texto, max_saltos=2)
+    raw_total     = _buscar_valor(r"\bTOTAL\b",  texto, max_saltos=2)
+
+    subtotal_bruto = to_decimal_es(subtotales_raw[0]) if len(subtotales_raw) >= 1 else None
+    subtotal_neto  = to_decimal_es(subtotales_raw[1]) if len(subtotales_raw) >= 2 else None
+
+    descuento = to_decimal_es(raw_descuento)
+    # En muchos PDFs, IVA 0% aparece como '-'
+    iva_0     = Decimal("0") if (raw_iva0 is None or raw_iva0 == "-") else to_decimal_es(raw_iva0)
+    iva_15    = to_decimal_es(raw_iva15)
+    total     = to_decimal_es(raw_total)
+
+    return {
+        "sucursal": sucursal,
+        "subtotal_bruto": subtotal_bruto,
+        "descuento": descuento,
+        "subtotal_neto": subtotal_neto,
+        "iva_0": iva_0,
+        "iva_15": iva_15,
+        "total": total,
+    }
+
+def imprimir_resumen_pedido(res: dict) -> None:
+    print("\nResumen del pedido (extraído del PDF):")
+    print(f"  Sucursal:        {res.get('sucursal') or '-'}")
+    print(f"  Subtotal bruto:  {fmt2(res.get('subtotal_bruto'))}")
+    print(f"  Descuento:       {fmt2(res.get('descuento'))}")
+    print(f"  Subtotal neto:   {fmt2(res.get('subtotal_neto'))}")
+    print(f"  IVA 0%:          {fmt2(res.get('iva_0'))}")
+    print(f"  IVA 15%:         {fmt2(res.get('iva_15'))}")
+    print(f"  TOTAL:           {fmt2(res.get('total'))}")
 
 # ======== EMPAREJADO CON CATÁLOGO ========
 

@@ -1,5 +1,5 @@
 # persistencia_postgresql.py
-# Utilidades para guardar pedidos y sus ítems en PostgreSQL
+# Utilidades para guardar pedidos y sus ítems en PostgreSQL (incluye sucursal y totales).
 
 import psycopg
 from datetime import datetime
@@ -21,10 +21,9 @@ def a_decimal(valor) -> Decimal | None:
     """Convierte strings como '12,50' o '12.50' en Decimal. Devuelve None si no aplica."""
     if valor is None:
         return None
-    s = str(valor).strip()
-    if not s:
+    s = str(valor).strip().replace(",", ".")
+    if s == "" or s == "-":
         return None
-    s = s.replace(",", ".")
     try:
         return Decimal(s)
     except Exception:
@@ -34,27 +33,22 @@ def a_decimal(valor) -> Decimal | None:
 #  GUARDAR PEDIDO
 # ========================
 
-def guardar_pedido(filas_enriquecidas: list[dict], meta: dict):
+def guardar_pedido(pedido: dict, items: list[dict]):
     """
     Inserta en PostgreSQL:
-      - Tabla pedidos(fecha, total, pdf_filename, email_uid, email_from, email_subject)
-      - Tabla pedido_items(pedido_id, descripcion, sku, bodega, cantidad, precio_unitario, precio_total)
 
-    filas_enriquecidas: lista de dicts con desc, cant, puni, ptotal, sku, bodega
-    meta: {fecha, pdf_filename, email_uid, email_from, email_subject}
+      Tabla pedidos:
+        (fecha, sucursal, subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total)
+
+      Tabla pedido_items:
+        (pedido_id, descripcion, sku, bodega, cantidad, precio_unitario, precio_total)
+
+    pedido: dict con claves:
+      fecha (datetime), sucursal (str),
+      subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total (Decimal/str)
     """
-    if not filas_enriquecidas:
-        print("⚠️ No hay filas para guardar en PostgreSQL.")
-        return
-
-    # Calcular total (si no viene del PDF)
-    total = Decimal("0")
-    for f in filas_enriquecidas:
-        pt = a_decimal(f.get("ptotal"))
-        if pt is not None:
-            total += pt
-
-    fecha = meta.get("fecha")
+    # Normalizar fecha
+    fecha = pedido.get("fecha")
     if isinstance(fecha, str):
         try:
             fecha = datetime.fromisoformat(fecha)
@@ -63,40 +57,63 @@ def guardar_pedido(filas_enriquecidas: list[dict], meta: dict):
     elif not isinstance(fecha, datetime):
         fecha = datetime.now()
 
-    pdf_filename  = meta.get("pdf_filename")
-    email_uid     = meta.get("email_uid")
-    email_from    = meta.get("email_from")
-    email_subject = meta.get("email_subject")
+    # Totales
+    subtotal_bruto = a_decimal(pedido.get("subtotal_bruto"))
+    descuento      = a_decimal(pedido.get("descuento"))
+    subtotal_neto  = a_decimal(pedido.get("subtotal_neto"))
+    iva_0          = a_decimal(pedido.get("iva_0"))
+    iva_15         = a_decimal(pedido.get("iva_15"))
+    total          = a_decimal(pedido.get("total"))
+
+    # ⚠️ Política: NO calcular el total si no viene del PDF.
+    if total is None:
+        raise ValueError("TOTAL no detectado en el PDF; se aborta el guardado para evitar cálculos automáticos.")
+
+    sucursal = (pedido.get("sucursal") or "").strip() or None
 
     with obtener_conexion() as conn:
         with conn.cursor() as cur:
-            # Insert pedido
+            # Insert pedido con nuevas columnas
             cur.execute(
                 """
-                INSERT INTO pedidos (fecha, total, pdf_filename, email_uid, email_from, email_subject)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO pedidos
+                  (fecha, sucursal, subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total)
+                VALUES
+                  (%s,    %s,       %s,             %s,        %s,            %s,   %s,    %s)
                 RETURNING id, numero_pedido;
                 """,
-                (fecha, total, pdf_filename, email_uid, email_from, email_subject)
+                (fecha, sucursal, subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total)
             )
             pedido_id, numero_pedido = cur.fetchone()
 
             # Insert ítems
-            for f in filas_enriquecidas:
+            for f in items:
                 cur.execute(
                     """
                     INSERT INTO pedido_items
-                    (pedido_id, descripcion, sku, bodega, cantidad, precio_unitario, precio_total)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s);
+                      (pedido_id, descripcion, sku, bodega, cantidad, precio_unitario, precio_total)
+                    VALUES
+                      (%s,        %s,          %s,  %s,     %s,       %s,              %s);
                     """,
                     (
                         pedido_id,
-                        (f.get("desc") or "").strip(),
+                        (f.get("descripcion") or f.get("desc") or "").strip(),
                         f.get("sku"),
                         f.get("bodega"),
-                        int(f.get("cant") or 0),
-                        a_decimal(f.get("puni")),
-                        a_decimal(f.get("ptotal")),
+                        int(f.get("cantidad") or f.get("cant") or 0),
+                        a_decimal(f.get("precio_unitario") or f.get("puni")),
+                        a_decimal(f.get("precio_total") or f.get("ptotal")),
                     )
                 )
-    print(f"✅ Pedido guardado en PostgreSQL. ID={pedido_id} | N° orden llegada={numero_pedido} | Ítems={len(filas_enriquecidas)}")
+    # --- Impresión en terminal con los nuevos valores ---
+    print("✅ Pedido guardado en PostgreSQL:")
+    print(f"   → ID={pedido_id} | N° orden llegada={numero_pedido} | Ítems={len(items)}")
+    print(f"   → Sucursal:        {sucursal or '-'}")
+    print(f"   → Subtotal bruto:  {subtotal_bruto if subtotal_bruto is not None else '-'}")
+    print(f"   → Descuento:       {descuento if descuento is not None else '-'}")
+    print(f"   → Subtotal neto:   {subtotal_neto if subtotal_neto is not None else '-'}")
+    print(f"   → IVA 0%:          {iva_0 if iva_0 is not None else '-'}")
+    print(f"   → IVA 15%:         {iva_15 if iva_15 is not None else '-'}")
+    print(f"   → TOTAL:           {total if total is not None else '-'}")
+
+    return pedido_id, numero_pedido
