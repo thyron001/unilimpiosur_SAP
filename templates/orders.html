@@ -1,97 +1,136 @@
+<!-- =============================
+Pedidos Dashboard — Glassmorphism (oscuro fijo)
+Sección 1: HTML (templates/pedidos.html)
+Sección 2: CSS  (static/css/glass.css)
+============================= -->
+
+<!-- ======= Sección 1: templates/pedidos.html ======= -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Pedidos — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/glass.css') }}">
 </head>
-<body class="bg">
-  <div class="app-shell">
-    <header class="topbar glass">
-      <div class="brand">
-        <span class="dot red"></span>
-        <span class="dot yellow"></span>
-        <span class="dot green"></span>
-        <h1>Pedidos</h1>
-      </div>
-
-      <!-- Indicador global de nuevos -->
-      <div class="new-indicator" id="globalNewIndicator" aria-live="polite" hidden>
-        <span class="ping"></span>
-        <span class="label">¡Nuevo!</span>
-      </div>
-    </header>
-
-    <main class="content">
-      <section class="card glass">
-        <div class="card-head">
-          <h2>Pedidos entrantes</h2>
-          <div class="legend">
-            <span class="badge badge-new">Nuevo</span>
-            <span class="legend-text">= recibido hace &lt; 5 min</span>
-          </div>
-        </div>
-
-        <div class="table-wrap">
-          <table class="table glass-table" id="ordersTable">
-            <thead>
-              <tr>
-                <th># Pedido</th>
-                <th>Cliente</th>
-                <th>Sucursal</th>
-                <th>Fecha</th>
-                <th>Total</th>
-                <th>Origen</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for o in orders %}
-              {% set is_new = (now - o.fecha).total_seconds() < 300 %}
-              <tr class="{{ 'row-new' if is_new }}">
-                <td class="mono">
-                  {{ o.numero_pedido }}
-                  {% if is_new %}
-                    <span class="badge badge-new">Nuevo</span>
-                  {% endif %}
-                </td>
-                <td>Roldan</td>
-                <td>Cuenca</td>
-                <td>{{ o.fecha.strftime('%Y-%m-%d %H:%M:%S') if o.fecha else '' }}</td>
-                <td class="mono">{{ "{:,.2f}".format(o.total or 0) }}</td>
-                <td>Email</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </main>
+<body>
+  <!-- Fondo de video (opcional) -->
+  <div class="video-bg" aria-hidden="true">
+    <video autoplay loop muted playsinline>
+      <source src="https://assets.codepen.io/3364143/7btrrd.mp4" type="video/mp4" />
+    </video>
   </div>
 
-  <!-- Mini polling para avisar de nuevos pedidos (opcional) -->
-  <script>
-    (function () {
-      let lastCount = {{ orders|length }};
-      const badge = document.getElementById('globalNewIndicator');
+  <div class="app">
+    <!-- Header superior (sin menu-circle, sin profile, sin toggle de tema) -->
+    <div class="header">
+      <nav class="header-menu" aria-label="Secciones">
+        <a class="menu-link is-active" href="#">Pedidos</a>
+        <a class="menu-link" href="#">Clientes</a>
+        <a class="menu-link" href="#">Productos</a>
+        <a class="menu-link" href="#">Reportes</a>
+      </nav>
+      <div class="search-bar">
+        <input type="text" id="quickSearch" placeholder="Buscar en pedidos…">
+      </div>
+    </div>
 
-      async function checkNew() {
-        try {
-          const r = await fetch('/api/orders/summary', { cache: 'no-store' });
-          if (!r.ok) return;
-          const data = await r.json();
-          const count = Number(data.count || 0);
-          if (count > lastCount) {
-            badge.hidden = false;        // muestra “¡Nuevo!”
-            lastCount = count;
-            // Opcional: puedes recargar la página o pedir solo las filas nuevas
-            // location.reload();
-          }
-        } catch (e) {
-          // Silencioso
-        }
-      }
-      setInterval(checkNew, 10000); // cada 10s
+    <div class="wrapper">
+      <!-- Sidebar izquierda -->
+      <aside class="left-side">
+        <section class="side-wrapper">
+          <h3 class="side-title">Vistas</h3>
+          <nav class="side-menu">
+            <a href="#">📥 Todos los pedidos</a>
+            <a href="#">⚡ Recientes</a>
+            <a href="#">⭐ Destacados</a>
+          </nav>
+        </section>
+        <section class="side-wrapper">
+          <h3 class="side-title">Filtros rápidos</h3>
+          <div class="side-menu">
+            <span class="chip">Origen: Email</span>
+            <span class="chip">Sucursal: Cuenca</span>
+          </div>
+        </section>
+        <section class="side-wrapper">
+          <h3 class="side-title">Atajos</h3>
+          <nav class="side-menu">
+            <a href="#">⬇️ Exportar CSV</a>
+            <a href="#">📊 Ver reportes</a>
+          </nav>
+        </section>
+      </aside>
+
+      <!-- Contenido principal -->
+      <div class="main-container">
+        <div class="main-header">
+          <a class="menu-link main-header-link is-active" href="#">Entrantes</a>
+          <a class="menu-link main-header-link" href="#">En proceso</a>
+          <a class="menu-link main-header-link" href="#">Completados</a>
+        </div>
+
+        <div class="content-wrapper">
+          <!-- (Se removió el content-wrapper-header / hero) -->
+
+          <!-- Sección de la tabla -->
+          <section class="content-section" id="pedidos">
+            <h4 class="content-section-title">Listado</h4>
+            <div class="card">
+              <div class="card-head">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <strong>Pedidos</strong>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table id="ordersTable" class="glass-table">
+                  <thead>
+                    <tr>
+                      <th># Pedido</th>
+                      <th>Cliente</th>
+                      <th>Sucursal</th>
+                      <th>Fecha</th>
+                      <th>Total</th>
+                      <th>Origen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for o in orders %}
+                    <tr>
+                      <td class="mono" data-label="# Pedido">{{ o.numero_pedido }}</td>
+                      <td data-label="Cliente">Roldan</td>
+                      <td data-label="Sucursal">Cuenca</td>
+                      <td data-label="Fecha">{{ o.fecha.strftime('%Y-%m-%d %H:%M:%S') if o.fecha else '' }}</td>
+                      <td class="mono" data-label="Total">{{ "{:,.2f}".format(o.total or 0) }}</td>
+                      <td data-label="Origen">Email</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Búsqueda rápida en la tabla
+    (function(){
+      const input = document.getElementById('quickSearch');
+      const rows = () => Array.from(document.querySelectorAll('#ordersTable tbody tr'));
+      function normalize(s){ return (s||'').toString().toLowerCase(); }
+      input.addEventListener('input', ()=>{
+        const q = normalize(input.value);
+        rows().forEach(tr => {
+          const text = normalize(tr.innerText);
+          tr.style.display = text.includes(q) ? '' : 'none';
+        });
+      });
     })();
   </script>
 </body>
