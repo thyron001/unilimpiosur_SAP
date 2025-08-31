@@ -7,118 +7,251 @@ Sección 2: CSS  (static/css/glass.css)
 <!-- ======= Sección 1: templates/pedidos.html ======= -->
 <!DOCTYPE html>
 <html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Pedidos — Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/glass.css') }}">
-</head>
-<body>
-  <!-- Fondo de video (opcional) -->
-  <div class="video-bg" aria-hidden="true">
-    <video autoplay loop muted playsinline>
-      <source src="https://assets.codepen.io/3364143/7btrrd.mp4" type="video/mp4" />
-    </video>
-  </div>
-
-  <div class="app">
-    <!-- Header superior (sin menu-circle, sin profile, sin toggle de tema) -->
-    <div class="header">
-      <nav class="header-menu" aria-label="Secciones">
-        <a class="menu-link is-active" href="#">Pedidos</a>
-        <a class="menu-link" href="#">Clientes</a>
-        <a class="menu-link" href="#">Productos</a>
-        <a class="menu-link" href="#">Reportes</a>
-      </nav>
-      <div class="search-bar">
-        <input type="text" id="quickSearch" placeholder="Buscar en pedidos…">
-      </div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pedidos — Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap"
+      rel="stylesheet">
+    <link rel="stylesheet"
+      href="{{ url_for('static', filename='css/glass.css') }}">
+  </head>
+  <body>
+    <!-- Fondo de video (opcional) -->
+    <div class="video-bg" aria-hidden="true">
+      <video autoplay loop muted playsinline>
+        <source src="https://assets.codepen.io/3364143/7btrrd.mp4"
+          type="video/mp4" />
+      </video>
     </div>
 
-    <div class="wrapper">
-      <!-- Sidebar izquierda -->
-      <aside class="left-side">
-        <section class="side-wrapper">
-          <h3 class="side-title">Vistas</h3>
-          <nav class="side-menu">
-            <a href="#">📥 Todos los pedidos</a>
-            <a href="#">⚡ Recientes</a>
-            <a href="#">⭐ Destacados</a>
-          </nav>
-        </section>
-        <section class="side-wrapper">
-          <h3 class="side-title">Filtros rápidos</h3>
-          <div class="side-menu">
-            <span class="chip">Origen: Email</span>
-            <span class="chip">Sucursal: Cuenca</span>
-          </div>
-        </section>
-        <section class="side-wrapper">
-          <h3 class="side-title">Atajos</h3>
-          <nav class="side-menu">
-            <a href="#">⬇️ Exportar CSV</a>
-            <a href="#">📊 Ver reportes</a>
-          </nav>
-        </section>
-      </aside>
-
-      <!-- Contenido principal -->
-      <div class="main-container">
-        <div class="main-header">
-          <a class="menu-link main-header-link is-active" href="#">Entrantes</a>
-          <a class="menu-link main-header-link" href="#">En proceso</a>
-          <a class="menu-link main-header-link" href="#">Completados</a>
+    <div class="app">
+      <!-- Header superior (sin menu-circle, sin profile, sin toggle de tema) -->
+      <div class="header">
+        <nav class="header-menu" aria-label="Secciones">
+          <a class="menu-link is-active" href="#">Pedidos</a>
+          <a class="menu-link" href="#">Clientes</a>
+          <a class="menu-link" href="#">Productos</a>
+          <a class="menu-link" href="#">Reportes</a>
+        </nav>
+        <div class="search-bar">
+          <input type="text" id="quickSearch" placeholder="Buscar en pedidos…">
         </div>
+      </div>
 
-        <div class="content-wrapper">
-          <!-- (Se removió el content-wrapper-header / hero) -->
-
-          <!-- Sección de la tabla -->
-          <section class="content-section" id="pedidos">
-            <h4 class="content-section-title">Listado</h4>
-            <div class="card">
-              <div class="card-head">
-                <div style="display:flex; align-items:center; gap:10px;">
-                  <strong>Pedidos</strong>
-                </div>
-              </div>
-              <div class="table-wrap">
-                <table id="ordersTable" class="glass-table">
-                  <thead>
-                    <tr>
-                      <th># Pedido</th>
-                      <th>Cliente</th>
-                      <th>Sucursal</th>
-                      <th>Fecha</th>
-                      <th>Total</th>
-                      <th>Origen</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for o in orders %}
-                    <tr>
-                      <td class="mono" data-label="# Pedido">{{ o.numero_pedido }}</td>
-                      <td data-label="Cliente">Roldan</td>
-                      <td data-label="Sucursal">{{ o.sucursal or '-' }}</td>
-                      <td data-label="Fecha">{{ o.fecha.strftime('%Y-%m-%d %H:%M:%S') if o.fecha else '' }}</td>
-                      <td class="mono" data-label="Total">{{ "{:,.2f}".format(o.total or 0) }}</td>
-                      <td data-label="Origen">Email</td>
-                    </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
+      <div class="wrapper">
+        <!-- Sidebar izquierda -->
+        <aside class="left-side">
+          <section class="side-wrapper">
+            <h3 class="side-title">Vistas</h3>
+            <nav class="side-menu">
+              <a href="#">📥 Todos los pedidos</a>
+              <a href="#">⚡ Recientes</a>
+              <a href="#">⭐ Destacados</a>
+            </nav>
+          </section>
+          <section class="side-wrapper">
+            <h3 class="side-title">Filtros rápidos</h3>
+            <div class="side-menu">
+              <span class="chip">Origen: Email</span>
+              <span class="chip">Sucursal: Cuenca</span>
             </div>
           </section>
+          <section class="side-wrapper">
+            <h3 class="side-title">Atajos</h3>
+            <nav class="side-menu">
+              <a href="#">⬇️ Exportar CSV</a>
+              <a href="#">📊 Ver reportes</a>
+            </nav>
+          </section>
+        </aside>
+
+        <!-- Contenido principal -->
+        <div class="main-container">
+          <div class="main-header">
+            <a class="menu-link main-header-link is-active"
+              href="#">Entrantes</a>
+            <a class="menu-link main-header-link" href="#">En proceso</a>
+            <a class="menu-link main-header-link" href="#">Completados</a>
+          </div>
+
+          <div class="content-wrapper">
+            <!-- (Se removió el content-wrapper-header / hero) -->
+
+            <!-- Sección de la tabla -->
+            <section class="content-section" id="pedidos">
+              <h4 class="content-section-title">Listado</h4>
+              <div class="card">
+                <div class="card-head">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <strong>Pedidos</strong>
+                  </div>
+                </div>
+                <div class="table-wrap">
+                  <table id="ordersTable" class="glass-table">
+                    <thead>
+                      <tr>
+                        <th># Pedido</th>
+                        <th>Cliente</th>
+                        <th>Sucursal</th>
+                        <th>Fecha</th>
+                        <th>Total</th>
+                        <th>Origen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for o in orders %}
+                      <tr class="row-pedido" data-pedido-id="{{ o.id }}" role="button" tabindex="0" title="Ver detalle">
+                        <td class="mono" data-label="# Pedido">{{ o.numero_pedido }}</td>
+                        <td data-label="Cliente">Roldan</td>
+                        <td data-label="Sucursal">{{ o.sucursal or '-' }}</td>
+                        <td data-label="Fecha">{{ o.fecha.strftime('%Y-%m-%d %H:%M:%S') if o.fecha else '' }}</td>
+                        <td class="mono" data-label="Total">{{ "{:,.2f}".format(o.total or 0) }}</td>
+                        <td data-label="Origen">Email</td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
       </div>
     </div>
-  </div>
+    <!-- Overlay + Modal Detalle Pedido -->
+    <div id="modalOverlay" class="glass-overlay hidden"></div>
 
-  <script>
+    <div id="modalDetalle" class="glass-modal hidden" role="dialog"
+      aria-modal="true" aria-labelledby="modalTitle">
+      <div class="glass-modal-card">
+        <div class="glass-modal-head">
+          <h3 id="modalTitle" class="mono">Pedido <span
+              id="m-numero"></span></h3>
+          <button id="m-cerrar" class="btn-close" aria-label="Cerrar">✕</button>
+        </div>
+
+        <div class="glass-modal-sub">
+          <div><strong>Sucursal:</strong> <span id="m-sucursal">-</span></div>
+          <div><strong>Fecha:</strong> <span id="m-fecha">-</span></div>
+        </div>
+
+        <div class="glass-modal-body">
+          <div class="table-wrap">
+            <table class="glass-table">
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Descripción</th>
+                  <th class="num">Cant.</th>
+                  <th class="num">P. Unit.</th>
+                  <th class="num">P. Total</th>
+                </tr>
+              </thead>
+              <tbody id="m-items"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="glass-modal-totals">
+          <div class="line"><span>Subtotal bruto</span><strong class="mono"
+              id="t-subbr">-</strong></div>
+          <div class="line"><span>Descuento</span><strong class="mono"
+              id="t-desc">-</strong></div>
+          <div class="line"><span>Subtotal neto</span><strong class="mono"
+              id="t-subnt">-</strong></div>
+          <div class="line"><span>IVA 0%</span><strong class="mono"
+              id="t-iva0">-</strong></div>
+          <div class="line"><span>IVA 15%</span><strong class="mono"
+              id="t-iva15">-</strong></div>
+          <div class="line total"><span>Total</span><strong class="mono"
+              id="t-total">-</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+    (function(){
+      const $$ = (sel, ctx=document) => ctx.querySelector(sel);
+      const $$$ = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
+
+      const overlay = $$("#modalOverlay");
+      const modal   = $$("#modalDetalle");
+      const btnX    = $$("#m-cerrar");
+
+      const fmtMoney = (n) => (n===null || n===undefined) ? "-" : n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+      const fmtDate  = (iso) => {
+        if(!iso) return "-";
+        const d = new Date(iso);
+        if(isNaN(d)) return iso;
+        return d.toLocaleString();
+      };
+
+      function abrirModal(){ overlay.classList.remove("hidden"); modal.classList.remove("hidden"); }
+      function cerrarModal(){ overlay.classList.add("hidden"); modal.classList.add("hidden"); }
+
+      overlay.addEventListener("click", cerrarModal);
+      btnX.addEventListener("click", cerrarModal);
+      window.addEventListener("keydown", (e)=>{ if(e.key==="Escape") cerrarModal(); });
+
+      async function cargarDetalle(pedidoId){
+        const resp = await fetch(`/api/pedidos/${pedidoId}`);
+        if(!resp.ok) throw new Error("No se pudo obtener el detalle");
+        return resp.json();
+      }
+
+      function renderDetalle(data){
+        $$("#m-numero").textContent = data.numero_pedido ?? "";
+        $$("#m-sucursal").textContent = data.sucursal ?? "-";
+        $$("#m-fecha").textContent = fmtDate(data.fecha);
+
+        const tb = $$("#m-items");
+        tb.innerHTML = "";
+        for(const it of (data.items || [])){
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td class="mono">${it.sku || ""}</td>
+            <td>${(it.descripcion || "").replace(/</g,"&lt;")}</td>
+            <td class="num mono">${it.cantidad ?? ""}</td>
+            <td class="num mono">${fmtMoney(it.precio_unitario)}</td>
+            <td class="num mono">${fmtMoney(it.precio_total)}</td>
+          `;
+          tb.appendChild(tr);
+        }
+
+        const t = data.totales || {};
+        $$("#t-subbr").textContent = fmtMoney(t.subtotal_bruto);
+        $$("#t-desc").textContent  = fmtMoney(t.descuento);
+        $$("#t-subnt").textContent = fmtMoney(t.subtotal_neto);
+        $$("#t-iva0").textContent  = fmtMoney(t.iva_0);
+        $$("#t-iva15").textContent = fmtMoney(t.iva_15);
+        $$("#t-total").textContent = fmtMoney(t.total);
+      }
+
+      // Clic en fila para abrir el modal
+      $$$(".row-pedido").forEach(tr=>{
+        tr.addEventListener("click", async ()=>{
+          const id = tr.getAttribute("data-pedido-id");
+          try{
+            const data = await cargarDetalle(id);
+            renderDetalle(data);
+            abrirModal();
+          }catch(e){
+            console.error(e);
+            alert("No se pudo cargar el detalle del pedido.");
+          }
+        });
+        tr.addEventListener("keydown", (e)=>{
+          if(e.key==="Enter" || e.key===" "){ e.preventDefault(); tr.click(); }
+        });
+      });
+    })();
+    </script>
+
+    <script>
     // Búsqueda rápida en la tabla
     (function(){
       const input = document.getElementById('quickSearch');
@@ -133,5 +266,5 @@ Sección 2: CSS  (static/css/glass.css)
       });
     })();
   </script>
-</body>
+  </body>
 </html>

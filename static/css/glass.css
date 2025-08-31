@@ -335,3 +335,86 @@ body {
   border-radius: 10px;
 }
 
+/* ===== Modal Glass ===== */
+.hidden { display: none !important; }
+
+.glass-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(3,6,12, .55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  z-index: 50;
+}
+
+.glass-modal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 51;
+  padding: 24px;
+}
+
+.glass-modal-card {
+  width: min(980px, 96vw);
+  max-height: min(86vh, 860px);
+  display: flex;
+  flex-direction: column;
+  background: var(--content-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 18px 60px rgba(0,0,0,.45);
+  backdrop-filter: var(--glass);
+  -webkit-backdrop-filter: var(--glass);
+  overflow: hidden;
+}
+
+.glass-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--border-color);
+  background: rgba(0,0,0,.12);
+}
+
+.glass-modal-sub {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  padding: 12px 16px; color: var(--content-title-color);
+}
+
+.glass-modal-body {
+  padding: 8px 12px 6px;
+  overflow: auto;
+  border-top: 1px solid transparent;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.glass-modal-totals {
+  padding: 12px 16px;
+  display: grid;
+  gap: 6px;
+  background: rgba(0,0,0,.08);
+}
+
+.glass-modal-totals .line {
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px dashed var(--border-color);
+  padding: 6px 0;
+}
+
+.glass-modal-totals .line.total {
+  border-bottom: none;
+  font-size: 1.05rem;
+}
+
+.btn-close {
+  appearance: none;
+  border: 1px solid var(--border-color);
+  background: var(--hover-menu-bg);
+  color: var(--theme-color);
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.btn-close:hover { filter: brightness(1.08); }
+
+.glass-table th .num, .glass-table td.num { text-align: right; }

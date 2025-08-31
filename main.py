@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import psycopg
 from threading import Thread
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, abort
 
 import escucha_correos                  # escucha IMAP (módulo en español)
 import procesamiento_pedidos as proc    # parseo + emparejado
@@ -122,14 +122,17 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
 def ver_pedidos():
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT numero_pedido, fecha, total, sucursal
+            SELECT id, numero_pedido, fecha, total, sucursal
             FROM pedidos
             ORDER BY id DESC
             LIMIT 200;
         """)
-        filas = [{"numero_pedido": n, "fecha": f, "total": t, "sucursal": s}
-                for (n, f, t, s) in cur.fetchall()]
+        filas = [
+            {"id": i, "numero_pedido": n, "fecha": f, "total": t, "sucursal": s}
+            for (i, n, f, t, s) in cur.fetchall()
+        ]
     return render_template("orders.html", orders=filas, now=datetime.utcnow())
+
 
 @app.route("/api/orders/summary")
 def resumen_pedidos():
@@ -140,8 +143,57 @@ def resumen_pedidos():
 
 
 # ====== DETALLE PEDIDO =======
+@app.route("/api/pedidos/<int:pedido_id>")
+def api_detalle_pedido(pedido_id: int):
+    with db.obtener_conexion() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT numero_pedido, fecha, sucursal,
+                   subtotal_bruto, descuento, subtotal_neto,
+                   iva_0, iva_15, total
+            FROM pedidos
+            WHERE id = %s;
+        """, (pedido_id,))
+        row = cur.fetchone()
+        if not row:
+            return abort(404)
 
+        (numero_pedido, fecha, sucursal,
+         subtotal_bruto, descuento, subtotal_neto,
+         iva_0, iva_15, total) = row
 
+        cur.execute("""
+            SELECT descripcion, sku, bodega, cantidad, precio_unitario, precio_total
+            FROM pedido_items
+            WHERE pedido_id = %s
+            ORDER BY id ASC;
+        """, (pedido_id,))
+        items = [
+            {
+                "descripcion": d or "",
+                "sku": s or "",
+                "bodega": b or "",
+                "cantidad": int(c or 0),
+                "precio_unitario": float(pu) if pu is not None else None,
+                "precio_total":   float(pt) if pt is not None else None,
+            }
+            for (d, s, b, c, pu, pt) in cur.fetchall()
+        ]
+
+    return jsonify({
+        "id": pedido_id,
+        "numero_pedido": numero_pedido,
+        "fecha": fecha.isoformat() if fecha else None,
+        "sucursal": sucursal,
+        "totales": {
+            "subtotal_bruto": float(subtotal_bruto) if subtotal_bruto is not None else None,
+            "descuento":      float(descuento) if descuento is not None else None,
+            "subtotal_neto":  float(subtotal_neto) if subtotal_neto is not None else None,
+            "iva_0":          float(iva_0) if iva_0 is not None else None,
+            "iva_15":         float(iva_15) if iva_15 is not None else None,
+            "total":          float(total) if total is not None else None,
+        },
+        "items": items
+    })
 
 # ========= ARRANQUE =========
 
