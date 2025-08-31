@@ -122,13 +122,13 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
 def ver_pedidos():
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT numero_pedido, fecha, total
+            SELECT numero_pedido, fecha, total, sucursal
             FROM pedidos
             ORDER BY id DESC
             LIMIT 200;
         """)
-        filas = [{"numero_pedido": n, "fecha": f, "total": t}
-                 for (n, f, t) in cur.fetchall()]
+        filas = [{"numero_pedido": n, "fecha": f, "total": t, "sucursal": s}
+                for (n, f, t, s) in cur.fetchall()]
     return render_template("orders.html", orders=filas, now=datetime.utcnow())
 
 @app.route("/api/orders/summary")
@@ -137,6 +137,11 @@ def resumen_pedidos():
         cur.execute("SELECT COUNT(*) FROM pedidos;")
         (cantidad,) = cur.fetchone()
     return jsonify({"count": int(cantidad)})
+
+
+# ====== DETALLE PEDIDO =======
+
+
 
 # ========= ARRANQUE =========
 

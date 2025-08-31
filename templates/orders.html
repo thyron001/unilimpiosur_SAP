@@ -102,7 +102,7 @@ Sección 2: CSS  (static/css/glass.css)
                     <tr>
                       <td class="mono" data-label="# Pedido">{{ o.numero_pedido }}</td>
                       <td data-label="Cliente">Roldan</td>
-                      <td data-label="Sucursal">Cuenca</td>
+                      <td data-label="Sucursal">{{ o.sucursal or '-' }}</td>
                       <td data-label="Fecha">{{ o.fecha.strftime('%Y-%m-%d %H:%M:%S') if o.fecha else '' }}</td>
                       <td class="mono" data-label="Total">{{ "{:,.2f}".format(o.total or 0) }}</td>
                       <td data-label="Origen">Email</td>
