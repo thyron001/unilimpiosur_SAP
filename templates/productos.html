@@ -1,0 +1,456 @@
+<!-- templates/productos.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Productos — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/glass.css') }}">
+</head>
+<body>
+  <!-- Fondo -->
+  <div class="video-bg" aria-hidden="true">
+    <video autoplay loop muted playsinline>
+      <source src="https://assets.codepen.io/3364143/7btrrd.mp4" type="video/mp4" />
+    </video>
+  </div>
+
+  <div class="app">
+    <!-- Header -->
+    <div class="header">
+      <nav class="header-menu" aria-label="Secciones">
+        <a class="menu-link" href="/pedidos">Pedidos</a>
+        <a class="menu-link" href="/clientes">Clientes</a>
+        <a class="menu-link is-active" href="/productos">Productos</a>
+        <a class="menu-link" href="/reportes">Reportes</a>
+      </nav>
+      <div class="search-bar">
+        <input type="text" id="busquedaRapida" placeholder="Buscar en productos…">
+      </div>
+    </div>
+
+    <div class="wrapper">
+      <!-- Sidebar izquierda -->
+      <aside class="left-side">
+        <section class="side-wrapper">
+          <h3 class="side-title">Opciones</h3>
+          <div class="side-menu">
+            <label class="chip" style="cursor:pointer; user-select:none;">
+              <input type="checkbox" id="toggleEdicion" style="accent-color:#9fd5ff; margin-right:6px;">
+              🖊️ Modo edición
+            </label>
+            <button id="btnRefrescar" class="chip" title="Recargar datos">↻ Refrescar</button>
+          </div>
+        </section>
+        <section class="side-wrapper">
+          <h3 class="side-title">Atajos</h3>
+          <nav class="side-menu">
+            <a href="/clientes">👥 Ir a clientes</a>
+            <a href="/pedidos">📥 Ir a pedidos</a>
+          </nav>
+        </section>
+      </aside>
+
+      <!-- Contenido principal -->
+      <div class="main-container">
+        <div class="main-header">
+          <a class="menu-link main-header-link is-active" href="#">Productos</a>
+        </div>
+
+        <div class="content-wrapper">
+          <!-- Bloque 1: productos mapeados POR CLIENTE -->
+          <section class="content-section" id="secPorCliente">
+            <h4 class="content-section-title">Bodega por producto — POR CLIENTE</h4>
+            <div id="listaPorCliente" style="display:grid; gap:16px;"></div>
+          </section>
+
+          <!-- Bloque 2: productos mapeados POR SUCURSAL Y CLIENTE -->
+          <section class="content-section" id="secPorSucursal">
+            <h4 class="content-section-title">Bodega por producto — POR SUCURSAL Y CLIENTE</h4>
+            <div id="listaPorSucursal" style="display:grid; gap:16px;"></div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Datalist con catálogo (SKU / Nombre) para ayudar a escribir -->
+  <datalist id="dlSkus"></datalist>
+  <datalist id="dlNombres"></datalist>
+
+  <style>
+    .celda-editable { outline: 1px dashed var(--border-color); border-radius: 6px; }
+    .marcada-borrado { opacity:.55; filter: grayscale(.4); }
+    .btn-mini {
+      appearance: none; cursor: pointer;
+      border: 1px solid var(--border-color);
+      background: var(--hover-menu-bg);
+      color: var(--theme-color);
+      border-radius: 8px; padding: 4px 8px; font-size: 12px;
+    }
+    .btn-mini:hover { filter: brightness(1.1); }
+    .fila-nueva td { background: rgba(255,255,255,.03); }
+    .subtitulo { color: var(--inactive-color); font-size: 13px; margin: 0 0 8px; }
+  </style>
+
+  <script>
+  (function(){
+    // ============================
+    // Utilidades generales
+    // ============================
+    const $$  = (sel, ctx=document) => ctx.querySelector(sel);
+    const $$$ = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
+    const esc = (s)=> (s??"").toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    function normalizarTexto(s){
+      return (s||"").toString().toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+        .replace(/\s+/g," ").trim();
+    }
+
+    function configurarCeldaEditable(td, habilitar){
+      if(habilitar){
+        td.contentEditable = "true";
+        td.classList.add("celda-editable");
+      } else {
+        td.removeAttribute("contenteditable");
+        td.classList.remove("celda-editable");
+      }
+    }
+
+    const toggleEdicion   = $$("#toggleEdicion");
+    const btnRefrescar    = $$("#btnRefrescar");
+    const inputBusqueda   = $$("#busquedaRapida");
+    const contPorCliente  = $$("#listaPorCliente");
+    const contPorSucursal = $$("#listaPorSucursal");
+
+    // ============================
+    // Datalist (catálogo productos)
+    // ============================
+    async function cargarCatalogo(){
+      const resp = await fetch("/api/productos_catalogo");
+      if(!resp.ok) throw new Error("No se pudo cargar el catálogo de productos.");
+      const data = await resp.json(); // [{sku, nombre}]
+      const dlSkus = $$("#dlSkus");   dlSkus.innerHTML = "";
+      const dlNom  = $$("#dlNombres");dlNom.innerHTML  = "";
+      for(const p of data){
+        const opt1 = document.createElement("option"); opt1.value = p.sku;    dlSkus.appendChild(opt1);
+        const opt2 = document.createElement("option"); opt2.value = p.nombre; dlNom.appendChild(opt2);
+      }
+      return data;
+    }
+
+    // ============================
+    // Construcción de tablas
+    // ============================
+    function thsProductos(){ return `
+      <tr>
+        <th>SKU</th>
+        <th>Nombre del Producto</th>
+        <th>Alias</th>
+        <th>Bodega</th>
+        <th></th>
+      </tr>`; }
+
+    function construirFilaProducto(row, editable){
+      const tr = document.createElement("tr");
+      tr.dataset.mapeoId = row.mapeo_id ?? "";
+      tr.dataset.productoId = row.producto_id ?? "";
+      tr.innerHTML = `
+        <td data-label="SKU"><span contenteditable="false" class="sku">${esc(row.sku||"")}</span></td>
+        <td data-label="Nombre del Producto"><span contenteditable="false" class="nombre">${esc(row.nombre_producto||"")}</span></td>
+        <td data-label="Alias"><span contenteditable="false" class="alias">${esc(row.alias||"")}</span></td>
+        <td data-label="Bodega"><span contenteditable="false" class="bodega">${esc(row.bodega||"")}</span></td>
+        <td style="width:1%; white-space:nowrap;">
+          <button class="btn-mini" data-accion="borrar" title="Marcar para borrar">🗑️</button>
+        </td>
+      `;
+      // Modo edición ON/OFF
+      const spans = ["sku","nombre","alias","bodega"].map(c=>tr.querySelector("."+c));
+      spans.forEach(sp => {
+        if(editable){
+          sp.setAttribute("contenteditable","true");
+          sp.classList.add("celda-editable");
+          if(sp.classList.contains("sku"))    sp.setAttribute("list","dlSkus");
+          if(sp.classList.contains("nombre")) sp.setAttribute("list","dlNombres");
+        } else {
+          sp.removeAttribute("contenteditable");
+          sp.classList.remove("celda-editable");
+        }
+      });
+      tr.querySelector("[data-accion='borrar']").addEventListener("click", ()=>tr.classList.toggle("marcada-borrado"));
+      return tr;
+    }
+
+    function agregarFilaNueva(tbody){
+      const tr = document.createElement("tr");
+      tr.className = "fila-nueva";
+      tr.innerHTML = `
+        <td data-label="SKU"><span contenteditable="true" class="sku celda-editable" list="dlSkus"></span></td>
+        <td data-label="Nombre del Producto"><span contenteditable="true" class="nombre celda-editable" list="dlNombres"></span></td>
+        <td data-label="Alias"><span contenteditable="true" class="alias celda-editable"></span></td>
+        <td data-label="Bodega"><span contenteditable="true" class="bodega celda-editable"></span></td>
+        <td style="width:1%; white-space:nowrap;"><button class="btn-mini" data-accion="agregar">＋</button></td>
+      `;
+      tbody.appendChild(tr);
+      tr.querySelector("[data-accion='agregar']").addEventListener("click", ()=>{
+        const sku   = tr.querySelector(".sku").textContent.trim();
+        const nombre= tr.querySelector(".nombre").textContent.trim();
+        const alias = tr.querySelector(".alias").textContent.trim();
+        const bodega= tr.querySelector(".bodega").textContent.trim();
+        if(!sku && !nombre){
+          alert("Debes indicar al menos el SKU o el Nombre del producto.");
+          return;
+        }
+        const nueva = construirFilaProducto({sku, nombre_producto:nombre, alias, bodega}, true);
+        tr.before(nueva);
+        // limpiar
+        tr.querySelector(".sku").textContent = "";
+        tr.querySelector(".nombre").textContent = "";
+        tr.querySelector(".alias").textContent = "";
+        tr.querySelector(".bodega").textContent = "";
+      });
+    }
+
+    // Cards por cliente (caso POR CLIENTE)
+    function construirCardPorCliente(bloque){
+      const card = document.createElement("div");
+      card.className = "card";
+      const head = document.createElement("div");
+      head.className = "card-head";
+      head.innerHTML = `
+        <div style="display:flex; align-items:center; gap:10px;">
+          <strong>${esc(bloque.cliente.nombre)}</strong>
+          <span class="chip mono">RUC: ${esc(bloque.cliente.ruc||"-")}</span>
+        </div>
+        <div class="chip">Bodega por Cliente</div>
+      `;
+      const wrap = document.createElement("div");
+      wrap.className = "table-wrap";
+      wrap.innerHTML = `
+        <table class="glass-table tabla-por-cliente" data-cliente-id="${bloque.cliente.id}">
+          <thead>${thsProductos()}</thead>
+          <tbody></tbody>
+        </table>
+      `;
+      card.appendChild(head); card.appendChild(wrap);
+
+      const tbody = wrap.querySelector("tbody");
+      for(const r of (bloque.filas||[])){
+        tbody.appendChild(construirFilaProducto(r, toggleEdicion.checked));
+      }
+      if(toggleEdicion.checked) agregarFilaNueva(tbody);
+      return card;
+    }
+
+    // Cards por cliente → subtablas por sucursal (caso POR SUCURSAL Y CLIENTE)
+    function construirCardPorSucursal(grupo){
+      // Contenedor por CLIENTE (puede tener varias sucursales)
+      const card = document.createElement("div");
+      card.className = "card";
+      const head = document.createElement("div");
+      head.className = "card-head";
+      head.innerHTML = `
+        <div style="display:flex; align-items:center; gap:10px;">
+          <strong>${esc(grupo.cliente.nombre)}</strong>
+          <span class="chip mono">RUC: ${esc(grupo.cliente.ruc||"-")}</span>
+        </div>
+        <div class="chip">Bodega por Sucursal</div>
+      `;
+      card.appendChild(head);
+
+      // Sucursales anidadas
+      const cont = document.createElement("div");
+      cont.className = "table-wrap";
+
+      // agrupamos por sucursal_id dentro del grupo
+      const porSuc = {};
+      for(const b of (grupo.bloques||[])){
+        (porSuc[b.sucursal.id] ||= { sucursal: b.sucursal, filas: [] }).filas.push(...(b.filas||[]));
+      }
+
+      for(const sid of Object.keys(porSuc)){
+        const data = porSuc[sid];
+        const subtitulo = document.createElement("p");
+        subtitulo.className = "subtitulo";
+        subtitulo.textContent = `Sucursal: ${data.sucursal.nombre}`;
+        cont.appendChild(subtitulo);
+
+        const tabla = document.createElement("table");
+        tabla.className = "glass-table tabla-por-sucursal";
+        tabla.setAttribute("data-sucursal-id", data.sucursal.id);
+        tabla.innerHTML = `<thead>${thsProductos()}</thead><tbody></tbody>`;
+        const tbody = tabla.tBodies[0];
+        for(const r of (data.filas||[])){
+          tbody.appendChild(construirFilaProducto(r, toggleEdicion.checked));
+        }
+        if(toggleEdicion.checked) agregarFilaNueva(tbody);
+        cont.appendChild(tabla);
+      }
+
+      card.appendChild(cont);
+      return card;
+    }
+
+    // ============================
+    // Carga y render
+    // ============================
+    function aplicarFiltroBusqueda(q){
+      const nq = normalizarTexto(q);
+      for(const card of $$$(".card")){
+        const texto = normalizarTexto(card.innerText);
+        card.style.display = texto.includes(nq) ? "" : "none";
+      }
+    }
+
+    function renderizar(data){
+      contPorCliente.innerHTML  = "";
+      contPorSucursal.innerHTML = "";
+      for(const bloque of (data.por_cliente || [])){
+        contPorCliente.appendChild(construirCardPorCliente(bloque));
+      }
+      for(const grupo of (data.por_sucursal || [])){
+        contPorSucursal.appendChild(construirCardPorSucursal(grupo));
+      }
+      aplicarFiltroBusqueda(inputBusqueda.value);
+    }
+
+    async function cargarDatos(){
+      const resp = await fetch("/api/productos_mapeos");
+      if(!resp.ok) throw new Error("No se pudo cargar el mapeo de productos.");
+      return resp.json();
+    }
+
+    // ============================
+    // Guardado (bulk)
+    // ============================
+    function recolectarCambiosPorCliente(){
+      const cambios = [];
+      for(const t of $$$(".tabla-por-cliente")){
+        const clienteId = Number(t.dataset.clienteId);
+        for(const tr of $$$("tbody tr", t)){
+          if(tr.classList.contains("fila-nueva")) continue;
+          const sku    = tr.querySelector(".sku").textContent.trim();
+          const nombre = tr.querySelector(".nombre").textContent.trim();
+          const alias  = tr.querySelector(".alias").textContent.trim();
+          const bodega = tr.querySelector(".bodega").textContent.trim();
+          const borrar = tr.classList.contains("marcada-borrado");
+          const mapeoId= tr.dataset.mapeoId ? Number(tr.dataset.mapeoId) : null;
+          cambios.push({ cliente_id: clienteId, producto_sku: sku, producto_nombre: nombre, alias, bodega, mapeo_id: mapeoId, borrar });
+        }
+      }
+      return cambios;
+    }
+
+    function recolectarCambiosPorSucursal(){
+      const cambios = [];
+      for(const t of $$$(".tabla-por-sucursal")){
+        const sucursalId = Number(t.dataset.sucursalId);
+        for(const tr of $$$("tbody tr", t)){
+          if(tr.classList.contains("fila-nueva")) continue;
+          const sku    = tr.querySelector(".sku").textContent.trim();
+          const nombre = tr.querySelector(".nombre").textContent.trim();
+          const alias  = tr.querySelector(".alias").textContent.trim();
+          const bodega = tr.querySelector(".bodega").textContent.trim();
+          const borrar = tr.classList.contains("marcada-borrado");
+          const mapeoId= tr.dataset.mapeoId ? Number(tr.dataset.mapeoId) : null;
+          cambios.push({ sucursal_id: sucursalId, producto_sku: sku, producto_nombre: nombre, alias, bodega, mapeo_id: mapeoId, borrar });
+        }
+      }
+      return cambios;
+    }
+
+    async function guardarCambios(){
+      const porCli = recolectarCambiosPorCliente();
+      const porSuc = recolectarCambiosPorSucursal();
+      if(porCli.length===0 && porSuc.length===0) return;
+
+      const peticiones = [];
+      if(porCli.length > 0){
+        peticiones.push(fetch("/api/productos_por_cliente/bulk", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cambios: porCli })
+        }));
+      }
+      if(porSuc.length > 0){
+        peticiones.push(fetch("/api/productos_por_sucursal/bulk", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cambios: porSuc })
+        }));
+      }
+
+      const rs = await Promise.all(peticiones);
+      for(const r of rs){
+        if(!r.ok){
+          const tx = await r.text().catch(()=> "");
+          throw new Error("Fallo al guardar: " + tx);
+        }
+      }
+    }
+
+    function activarEdicionUI(habilitar){
+      // Alternar celdas + fila nueva
+      for(const tabla of $$$(".tabla-por-cliente, .tabla-por-sucursal")){
+        const tbody = tabla.tBodies[0];
+        for(const tr of $$$("tr", tbody)){
+          if(tr.classList.contains("fila-nueva")) continue;
+          ["sku","nombre","alias","bodega"].forEach(cls=>{
+            const sp = tr.querySelector("."+cls);
+            configurarCeldaEditable(sp, habilitar);
+            if(habilitar && (cls==="sku"||cls==="nombre")){
+              sp.setAttribute("list", cls==="sku" ? "dlSkus" : "dlNombres");
+            } else {
+              sp.removeAttribute("list");
+            }
+          });
+        }
+        const existe = tbody.querySelector(".fila-nueva");
+        if(habilitar){
+          if(!existe) agregarFilaNueva(tbody);
+        }else{
+          if(existe) existe.remove();
+        }
+      }
+    }
+
+    // ============================
+    // Inicialización
+    // ============================
+    async function inicializar(){
+      try{
+        await cargarCatalogo();
+        const data = await cargarDatos();
+        renderizar(data);
+      }catch(e){
+        console.error(e);
+        alert(e.message || "Error al inicializar Productos.");
+      }
+    }
+
+    toggleEdicion.addEventListener("change", async ()=>{
+      if(!toggleEdicion.checked){
+        // Al apagar edición, guardamos
+        try{
+          await guardarCambios();
+          await inicializar(); // recargar para refrescar IDs
+        }catch(e){
+          console.error(e);
+          alert(e.message || "Error al guardar.");
+          toggleEdicion.checked = true;
+          activarEdicionUI(true);
+          return;
+        }
+      }
+      activarEdicionUI(toggleEdicion.checked);
+    });
+
+    inputBusqueda.addEventListener("input", ()=>aplicarFiltroBusqueda(inputBusqueda.value));
+    btnRefrescar.addEventListener("click", inicializar);
+
+    inicializar();
+  })();
+  </script>
+</body>
+</html>

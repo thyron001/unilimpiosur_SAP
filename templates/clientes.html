@@ -1,0 +1,367 @@
+<!-- templates/clientes.html -->
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clientes — Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap"
+      rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/glass.css') }}">
+  </head>
+  <body>
+    <!-- Fondo de video (opcional, mismo de pedidos) -->
+    <div class="video-bg" aria-hidden="true">
+      <video autoplay loop muted playsinline>
+        <source src="https://assets.codepen.io/3364143/7btrrd.mp4" type="video/mp4" />
+      </video>
+    </div>
+
+    <div class="app">
+      <!-- Header -->
+      <div class="header">
+        <nav class="header-menu" aria-label="Secciones">
+          <a class="menu-link" href="/pedidos">Pedidos</a>
+          <a class="menu-link is-active" href="/clientes">Clientes</a>
+          <a class="menu-link" href="/productos">Productos</a>
+          <a class="menu-link" href="/reportes">Reportes</a>
+        </nav>
+        <div class="search-bar">
+          <input type="text" id="busquedaRapida" placeholder="Buscar en clientes/sucursales…">
+        </div>
+      </div>
+
+      <div class="wrapper">
+        <!-- Sidebar izquierda -->
+        <aside class="left-side">
+          <section class="side-wrapper">
+            <h3 class="side-title">Opciones</h3>
+            <div class="side-menu">
+              <label class="chip" style="cursor:pointer; user-select:none;">
+                <input type="checkbox" id="toggleEdicion" style="accent-color:#9fd5ff; margin-right:6px;">
+                🖊️ Modo edición
+              </label>
+              <button id="btnRefrescar" class="chip" title="Recargar datos">↻ Refrescar</button>
+            </div>
+          </section>
+
+          <section class="side-wrapper">
+            <h3 class="side-title">Atajos</h3>
+            <nav class="side-menu">
+              <a href="/pedidos">📥 Ir a pedidos</a>
+              <a href="/productos">📦 Catálogo productos</a>
+            </nav>
+          </section>
+        </aside>
+
+        <!-- Contenido principal -->
+        <div class="main-container">
+          <div class="main-header">
+            <a class="menu-link main-header-link is-active" href="#">Clientes</a>
+          </div>
+
+          <div class="content-wrapper">
+            <section class="content-section" id="seccionClientes">
+              <h4 class="content-section-title">Sucursales por cliente</h4>
+              <!-- Contenedor donde se inyectarán las tarjetas por cliente -->
+              <div id="listaClientes" style="display:grid; gap:16px;"></div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+    (function(){
+      // ============================
+      // Utilidades
+      // ============================
+      const $$  = (sel, ctx=document) => ctx.querySelector(sel);
+      const $$$ = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
+
+      const listaClientes = $$("#listaClientes");
+      const toggleEdicion = $$("#toggleEdicion");
+      const inputBusqueda = $$("#busquedaRapida");
+      const btnRefrescar  = $$("#btnRefrescar");
+
+      // Normalizar texto para búsquedas
+      function normalizarTexto(s){
+        return (s||"").toString().toLowerCase()
+          .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+          .replace(/\s+/g," ").trim();
+      }
+
+      // Formatear una celda como editable/no editable
+      function configurarCeldaEditable(td, habilitar){
+        if(habilitar){
+          td.contentEditable = "true";
+          td.classList.add("celda-editable");
+        }else{
+          td.removeAttribute("contenteditable");
+          td.classList.remove("celda-editable");
+        }
+      }
+
+      // Crear fila vacía al final de la tabla cuando está en modo edición
+      function agregarFilaVacia(tbody, cliente){
+        const tr = document.createElement("tr");
+        tr.className = "fila-nueva";
+        tr.innerHTML = `
+          <td data-label="Nombre (sistema)"></td>
+          <td data-label="Alias (PDF)"></td>
+          <td data-label="Dirección"></td>
+          <td data-label="Teléfono"></td>
+          <td style="width:1%; white-space:nowrap;">
+            <button class="btn-mini" data-accion="agregar">＋</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+
+        // Hacer celdas editables
+        $$$("td", tr).slice(0,4).forEach(td=>configurarCeldaEditable(td, true));
+
+        // Acción guardar nueva fila a la tabla (no envía todavía al backend)
+        $$("[data-accion='agregar']", tr).addEventListener("click", ()=>{
+          const celdas = $$$("td", tr).slice(0,4);
+          const [nombre, alias, direccion, telefono] = celdas.map(td=>td.textContent.trim());
+          if(!nombre){
+            alert("La sucursal debe tener un Nombre (sistema).");
+            return;
+          }
+          const nueva = construirFilaSucursal({
+            id: null, // se creará en backend
+            nombre, alias, direccion, telefono
+          }, /*editable=*/true);
+          tr.before(nueva);
+          // limpiar la fila vacía
+          celdas.forEach(td=>td.textContent = "");
+        });
+      }
+
+      // Construir una fila de sucursal
+      function construirFilaSucursal(suc, editable){
+        const tr = document.createElement("tr");
+        tr.dataset.sucursalId = suc.id ?? "";
+        tr.innerHTML = `
+          <td data-label="Nombre (sistema)">${esc(suc.nombre)}</td>
+          <td data-label="Alias (PDF)">${esc(suc.alias || "")}</td>
+          <td data-label="Dirección">${esc(suc.direccion || "")}</td>
+          <td data-label="Teléfono">${esc(suc.telefono || "")}</td>
+          <td style="width:1%; white-space:nowrap;">
+            <button class="btn-mini" data-accion="borrar" title="Marcar para borrar">🗑️</button>
+          </td>
+        `;
+        // editable ON/OFF
+        $$$("td", tr).slice(0,4).forEach(td=>configurarCeldaEditable(td, editable));
+        // borrar (solo marca; se eliminará al guardar)
+        $$("[data-accion='borrar']", tr).addEventListener("click", ()=>{
+          tr.classList.toggle("marcada-borrado");
+        });
+        return tr;
+      }
+
+      // Construir tarjeta de un cliente con su tabla
+      function construirTarjetaCliente(cliente){
+        const card = document.createElement("div");
+        card.className = "card";
+
+        // Encabezado
+        const head = document.createElement("div");
+        head.className = "card-head";
+        head.innerHTML = `
+          <div style="display:flex; align-items:center; gap:10px;">
+            <strong>${esc(cliente.nombre)}</strong>
+            <span class="chip mono">RUC: ${esc(cliente.ruc)}</span>
+          </div>
+          <div class="chip">${cliente.usa_bodega_por_sucursal ? "Bodega por Sucursal" : "Bodega por Cliente"}</div>
+        `;
+        card.appendChild(head);
+
+        // Tabla
+        const wrap = document.createElement("div");
+        wrap.className = "table-wrap";
+        wrap.innerHTML = `
+          <table class="glass-table tabla-sucursales" data-cliente-id="${cliente.id}">
+            <thead>
+              <tr>
+                <th>Nombre (sistema)</th>
+                <th>Alias (PDF)</th>
+                <th>Dirección</th>
+                <th>Teléfono</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        `;
+        card.appendChild(wrap);
+
+        // Cargar filas
+        const tbody = $$("tbody", wrap);
+        for(const s of (cliente.sucursales || [])){
+          tbody.appendChild(construirFilaSucursal(s, /*editable=*/toggleEdicion.checked));
+        }
+        // Agregar fila vacía si edición activa
+        if(toggleEdicion.checked){
+          agregarFilaVacia(tbody, cliente);
+        }
+        return card;
+      }
+
+      // Escapar HTML
+      function esc(s){ return (s??"").toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+      // Renderizar lista completa
+      function renderizarClientes(data){
+        listaClientes.innerHTML = "";
+        for(const cli of data){
+          listaClientes.appendChild(construirTarjetaCliente(cli));
+        }
+        aplicarFiltroBusqueda(inputBusqueda.value);
+      }
+
+      // Filtro de búsqueda en tiempo real
+      function aplicarFiltroBusqueda(q){
+        const nq = normalizarTexto(q);
+        for(const card of $$$(".card", listaClientes)){
+          const texto = normalizarTexto(card.innerText);
+          card.style.display = texto.includes(nq) ? "" : "none";
+        }
+      }
+
+      // Activar/Desactivar edición (UI)
+      function activarEdicionUI(habilitar){
+        // Todas las filas de todas las tablas
+        const tablas = $$$(".tabla-sucursales");
+        for(const table of tablas){
+          const tbody = table.tBodies[0];
+          // celdas editables
+          $$$("tr", tbody).forEach(tr=>{
+            $$$("td", tr).slice(0,4).forEach(td=>configurarCeldaEditable(td, habilitar));
+          });
+          // fila extra para nuevas sucursales
+          const existente = $$("tr.fila-nueva", tbody);
+          if(habilitar){
+            if(!existente) agregarFilaVacia(tbody, {id: table.dataset.clienteId});
+          }else{
+            if(existente) existente.remove();
+          }
+        }
+      }
+
+      // Recolectar cambios para guardar (altas, ediciones, bajas)
+      function recolectarCambios(){
+        const payload = [];
+        for(const table of $$$(".tabla-sucursales")){
+          const clienteId = Number(table.dataset.clienteId);
+          const tbody = table.tBodies[0];
+          for(const tr of $$$("tr", tbody)){
+            if(tr.classList.contains("fila-nueva")) continue; // no recolectar esta
+            const celdas = $$$("td", tr);
+            const obj = {
+              cliente_id: clienteId,
+              sucursal_id: tr.dataset.sucursalId ? Number(tr.dataset.sucursalId) : null,
+              nombre:   celdas[0].textContent.trim(),
+              alias:    celdas[1].textContent.trim(),
+              direccion:celdas[2].textContent.trim(),
+              telefono: celdas[3].textContent.trim(),
+              borrar:   tr.classList.contains("marcada-borrado")
+            };
+            // ignorar filas completamente vacías
+            const tieneAlgo = obj.nombre || obj.alias || obj.direccion || obj.telefono || obj.sucursal_id || obj.borrar;
+            if(tieneAlgo) payload.push(obj);
+          }
+        }
+        return payload;
+      }
+
+      // Guardar cambios (bulk). Ajusta esta URL a tu backend.
+      async function guardarCambios(){
+        const cambios = recolectarCambios();
+        if(cambios.length === 0) return;
+
+        const resp = await fetch("/api/sucursales/bulk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cambios })
+        });
+        if(!resp.ok){
+          const tx = await resp.text().catch(()=> "");
+          throw new Error("No se pudo guardar cambios. " + tx);
+        }
+        return resp.json();
+      }
+
+      // Cargar datos desde backend. Estructura esperada:
+      // [
+      //   { id, nombre, ruc, usa_bodega_por_sucursal, sucursales:[
+      //       { id, nombre, alias, direccion, telefono }, ...
+      //   ]}, ...
+      // ]
+      async function cargarClientes(){
+        const resp = await fetch("/api/clientes_con_sucursales");
+        if(!resp.ok) throw new Error("No se pudo cargar la lista de clientes.");
+        return resp.json();
+      }
+
+      // ============================
+      // Inicialización
+      // ============================
+      let cacheClientes = [];
+
+      async function inicializar(){
+        try{
+          cacheClientes = await cargarClientes();
+          renderizarClientes(cacheClientes);
+        }catch(e){
+          console.error(e);
+          alert(e.message || "Error al cargar clientes.");
+        }
+      }
+
+      toggleEdicion.addEventListener("change", async ()=>{
+        if(!toggleEdicion.checked){
+          // Se desactiva edición => guardamos
+          try{
+            const r = await guardarCambios();
+            // Tras guardar, recargamos para reflejar IDs creados y limpiar marcas
+            await inicializar();
+          }catch(e){
+            console.error(e);
+            alert(e.message || "Error al guardar.");
+            // Si falla el guardado, mantenemos edición encendida para corregir
+            toggleEdicion.checked = true;
+            activarEdicionUI(true);
+            return;
+          }
+        }
+        activarEdicionUI(toggleEdicion.checked);
+      });
+
+      inputBusqueda.addEventListener("input", ()=>aplicarFiltroBusqueda(inputBusqueda.value));
+      btnRefrescar.addEventListener("click", inicializar);
+
+      // Arranque
+      inicializar();
+    })();
+    </script>
+
+    <style>
+    /* Ajustes mínimos encima del glass.css existente */
+    .celda-editable { outline: 1px dashed var(--border-color); border-radius: 6px; }
+    .marcada-borrado { opacity: .5; filter: grayscale(0.4); }
+    .btn-mini {
+      appearance: none; cursor: pointer;
+      border: 1px solid var(--border-color);
+      background: var(--hover-menu-bg);
+      color: var(--theme-color);
+      border-radius: 8px; padding: 4px 8px; font-size: 12px;
+    }
+    .btn-mini:hover { filter: brightness(1.1); }
+    .fila-nueva td { background: rgba(255,255,255,.03); }
+    </style>
+  </body>
+</html>

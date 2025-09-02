@@ -24,6 +24,187 @@ from procesamiento_pedidos import (
 from persistencia_postgresql import guardar_pedido
 
 
+# =========================
+#  GENERADORES DE ARCHIVOS SAP (ODRF/DRF1)
+# =========================
+
+def formatear_fecha_yyyymmdd(fecha: datetime | str | None) -> str:
+    """
+    Convierte una fecha (datetime o string) al formato YYYYMMDD.
+    Si no viene nada, devuelve la fecha de hoy.
+    """
+    if isinstance(fecha, datetime):
+        return fecha.strftime("%Y%m%d")
+    if isinstance(fecha, str):
+        # Intenta parsear YYYY-MM-DD, DD/MM/YYYY, etc.
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+            try:
+                d = datetime.strptime(fecha.strip(), fmt)
+                return d.strftime("%Y%m%d")
+            except Exception:
+                pass
+        f = fecha.strip()
+        if len(f) == 8 and f.isdigit():
+            return f
+    return datetime.now().strftime("%Y%m%d")
+
+
+def _normalizar_bodega(bodega_val) -> str:
+    """
+    Normaliza la bodega (WhsCode/U_EXX_ALMACEN).
+    Para WhsCode en DRF1 usamos '05' por defecto si está vacío.
+    Para U_EXX_ALMACEN en ODRF usamos '5' fijo (según requerimiento).
+    """
+    if bodega_val is None:
+        return ""
+    return str(bodega_val).strip()
+
+
+def _tomar_campo_item(item: dict, claves_posibles: list[str], default=None):
+    """
+    Toma el primer valor disponible de un ítem probando múltiples nombres de clave.
+    """
+    for k in claves_posibles:
+        if k in item and item[k] not in (None, "", "-"):
+            return item[k]
+    return default
+
+
+def generar_archivo_odrf(ruta_salida: str | Path,
+                         docentry: int | str,
+                         docdate: str,
+                         sucursal: str,
+                         cardcode_const: str = "CL0190316025001",
+                         objtype_const: str = "17",
+                         series_const: str = "76",
+                         almac_const: str = "5",
+                         usar_shpdgd: str = "N") -> None:
+    """
+    Genera ODRF.txt con las dos líneas de cabecera y una fila de datos.
+    Campos separados por tab.
+    """
+    ruta_salida = Path(ruta_salida)
+    lineas: list[str] = []
+
+    # Cabeceras EXACTAS (dos variantes)
+    cab1 = "DocEntry\tDocNum\tDocType\tPrinted\tDocDate\tDocDueDate\tCardCode\tDocObjectCode\tSeries\tShipToCode\tU_EXX_ALMACEN\tComments\tUseShpdGoodsAct"
+    cab2 = "DocEntry\tDocNum\tDocType\tPrinted\tDocDate\tDocDueDate\tCardCode\tObjType\tSeries\tShipToCode\tU_EXX_ALMACEN\tComments\tUseShpdGd"
+    lineas.append(cab1)
+    lineas.append(cab2)
+
+    fila = [
+        str(docentry),                 # DocEntry
+        str(docentry),                 # DocNum
+        "dDocument_Items",             # DocType
+        "Y",                           # Printed
+        docdate,                       # DocDate
+        docdate,                       # DocDueDate
+        cardcode_const,                # CardCode
+        objtype_const,                 # ObjType
+        series_const,                  # Series
+        (sucursal or "").strip(),      # ShipToCode
+        almac_const,                   # U_EXX_ALMACEN
+        (sucursal or "").strip(),      # Comments
+        usar_shpdgd                    # UseShpdGd
+    ]
+    lineas.append("\t".join(fila))
+
+    ruta_salida.write_text("\n".join(lineas), encoding="utf-8")
+    print(f"✅ Archivo ODRF generado: {ruta_salida}")
+
+
+def generar_archivo_drf1(ruta_salida: str | Path,
+                         docnum: int | str,
+                         sucursal: str,
+                         items: list[dict],
+                         whscode_default: str = "05",
+                         usar_shpdgd: str = "N") -> None:
+    """
+    Genera DRF1.txt con dos líneas de cabecera y tantas filas como ítems.
+    Columnas:
+    DocNum, ItemCode, Quantity, WhsCode, CogsOcrCo5 (sucursal), UseShpdGd
+    """
+    ruta_salida = Path(ruta_salida)
+    lineas: list[str] = []
+
+    # Cabeceras EXACTAS (dos variantes)
+    cab1 = "ParentKey\tItemCode\tQuantity\tWarehouseCode\tShipToCode\tUseShpdGoodsAct"
+    cab2 = "DocNum\tItemCode\tQuantity\tWhsCode\tCogsOcrCo5\tUseShpdGd"
+    lineas.append(cab1)
+    lineas.append(cab2)
+
+    suc = (sucursal or "").strip()
+
+    for it in items or []:
+        sku = _tomar_campo_item(it, ["sku", "SKU", "itemcode", "ItemCode", "codigo", "Código"], default="")
+        qty = _tomar_campo_item(it, ["cantidad", "Cantidad", "quantity", "Quantity"], default=0)
+        whs = _tomar_campo_item(it, ["bodega", "Bodega", "whscode", "WhsCode"], default=whscode_default)
+
+        sku = str(sku or "").strip()
+        whs = _normalizar_bodega(whs) or whscode_default
+
+        # cantidad segura (entero)
+        try:
+            qty_num = int(str(qty).strip())
+        except Exception:
+            try:
+                qty_num = round(float(str(qty).replace(",", ".").strip()))
+            except Exception:
+                qty_num = 0
+
+        fila = [
+            str(docnum),          # DocNum / ParentKey
+            sku,                  # ItemCode
+            str(qty_num),         # Quantity
+            whs,                  # WhsCode / WarehouseCode
+            suc,                  # CogsOcrCo5 / ShipToCode
+            usar_shpdgd           # UseShpdGd / UseShpdGoodsAct
+        ]
+        lineas.append("\t".join(fila))
+
+    ruta_salida.write_text("\n".join(lineas), encoding="utf-8")
+    print(f"✅ Archivo DRF1 generado: {ruta_salida}")
+
+
+def generar_archivos_sap_para_pedido(numero_pedido: int | str,
+                                     fecha_pedido: datetime | str | None,
+                                     sucursal: str,
+                                     items: list[dict],
+                                     carpeta_salida: str | Path = ".") -> None:
+    """
+    Genera ODRF.txt y DRF1.txt juntos en la carpeta indicada.
+    """
+    carpeta = Path(carpeta_salida)
+    carpeta.mkdir(parents=True, exist_ok=True)
+
+    fecha_fmt = formatear_fecha_yyyymmdd(fecha_pedido)
+
+    generar_archivo_odrf(
+        ruta_salida=carpeta / "ODRF.txt",
+        docentry=numero_pedido,
+        docdate=fecha_fmt,
+        sucursal=sucursal,
+        cardcode_const="CL0190316025001",
+        objtype_const="17",
+        series_const="76",
+        almac_const="5",
+        usar_shpdgd="N"
+    )
+
+    generar_archivo_drf1(
+        ruta_salida=carpeta / "DRF1.txt",
+        docnum=numero_pedido,
+        sucursal=sucursal,
+        items=items,
+        whscode_default="05",
+        usar_shpdgd="N"
+    )
+
+
+# =========================
+#  PROGRAMA PRINCIPAL
+# =========================
+
 def main():
     parser = argparse.ArgumentParser(
         description="Procesa un PDF local de orden de compra: imprime información y guarda en PostgreSQL."
@@ -45,6 +226,12 @@ def main():
         type=str,
         default=None,
         help="Ruta opcional para exportar un CSV de las asignaciones (SKU/bodega).",
+    )
+    parser.add_argument(
+        "--out",
+        type=str,
+        default=".",
+        help="Carpeta donde guardar ODRF.txt y DRF1.txt (por defecto, carpeta actual).",
     )
 
     args = parser.parse_args()
@@ -92,13 +279,37 @@ def main():
         "total": resumen.get("total"),
     }
 
+    sucursal_txt = resumen.get("sucursal") or "SUCURSAL DESCONOCIDA"
+
+    # ======== Generación de TXT para pruebas ========
     if args.dry_run:
+        # DocNum/DocEntry provisional a partir de fecha-hora (YYYYMMDDHHMMSS)
+        docnum_provisional = int(datetime.now().strftime("%Y%m%d%H%M%S"))
         print("\n🧪 DRY-RUN activado: no se guardará en la base de datos.")
+        print(f"→ Se usarán archivos de salida en: {args.out}")
+        generar_archivos_sap_para_pedido(
+            numero_pedido=docnum_provisional,
+            fecha_pedido=fecha_obj,
+            sucursal=sucursal_txt,
+            items=filas_enriquecidas,
+            carpeta_salida=args.out
+        )
         return
 
     print("\n========== 4) GUARDANDO EN POSTGRESQL ==========")
     pedido_id, numero_pedido = guardar_pedido(pedido, filas_enriquecidas)
     print(f"✅ Guardado: pedido_id={pedido_id}, numero_pedido={numero_pedido}")
+
+    # Generar archivos SAP usando el número real
+    print("\n========== 5) GENERANDO ARCHIVOS SAP (ODRF/DRF1) ==========")
+    print(f"→ Carpeta de salida: {args.out}")
+    generar_archivos_sap_para_pedido(
+        numero_pedido=numero_pedido,
+        fecha_pedido=fecha_obj,
+        sucursal=sucursal_txt,
+        items=filas_enriquecidas,
+        carpeta_salida=args.out
+    )
 
 
 if __name__ == "__main__":
