@@ -293,33 +293,33 @@ def api_productos_mapeos():
             ORDER BY upper(c.nombre);
         """)
         clientes_ps = [{"id": i, "nombre": n, "ruc": r} for (i,n,r) in cur.fetchall()]
+
         if clientes_ps:
-            # Para cada cliente, traemos sucursales + mapeos
             cur.execute("""
                 SELECT bps.id, s.id, s.cliente_id, s.nombre,
-                       p.id, p.sku, p.nombre,
-                       COALESCE((
-                         SELECT ap.alias FROM alias_productos ap
-                         WHERE ap.cliente_id = s.cliente_id AND ap.producto_id = p.id
-                         ORDER BY ap.id ASC LIMIT 1
-                       ), '') AS alias,
-                       bps.bodega
+                    p.id, p.sku, p.nombre,
+                    COALESCE((
+                        SELECT ap.alias FROM alias_productos ap
+                        WHERE ap.cliente_id = s.cliente_id AND ap.producto_id = p.id
+                        ORDER BY ap.id ASC LIMIT 1
+                    ), '') AS alias,
+                    bps.bodega
                 FROM bodegas_producto_por_sucursal bps
                 JOIN sucursales s ON s.id = bps.sucursal_id
                 JOIN productos p  ON p.id = bps.producto_id
                 ORDER BY s.cliente_id, upper(s.nombre), upper(p.nombre);
             """)
-            por_cliente = {}
+
+            # por_cliente[cli_id][suc_id] = { "sucursal": {...}, "filas": [ ... ] }
+            por_cliente: dict[int, dict[int, dict]] = {}
+
             for (mapeo_id, suc_id, cli_id, suc_nombre,
-                 pid, sku, pnom, alias, bodega) in cur.fetchall():
-                const_key = (cli_id, suc_id)
-                if cli_id not in por_cliente:
-                    por_cliente[cli_id] = {}
+                pid, sku, pnom, alias, bodega) in cur.fetchall():
+                por_cliente.setdefault(cli_id, {})
                 por_cliente[cli_id].setdefault(suc_id, {
                     "sucursal": {"id": suc_id, "nombre": suc_nombre},
                     "filas": []
                 })
-                por_cliente[cli_id][suc_id]["filas"].push = undefined
                 por_cliente[cli_id][suc_id]["filas"].append({
                     "mapeo_id": mapeo_id,
                     "producto_id": pid,
@@ -329,13 +329,12 @@ def api_productos_mapeos():
 
             # Ensamblar bloques por cliente (cada uno con varias sucursales)
             for cli in clientes_ps:
-                bloques = []
-                for suc in (por_cliente.get(cli["id"], {}) or {}):
-                    bloques.append(por_cliente[cli["id"]][suc])
+                bloques = list(por_cliente.get(cli["id"], {}).values())
                 result["por_sucursal"].append({
                     "cliente": cli,
                     "bloques": bloques
                 })
+
 
     return jsonify(result)
 
