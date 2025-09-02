@@ -1,33 +1,48 @@
 # procesamiento_pedidos.py
-# Parseo del PDF (filas de productos), sucursal y totales; normalización, emparejado con catálogo y utilidades.
+# Parseo del PDF (filas de productos), sucursal y totales; normalización,
+# emparejado con BASE DE DATOS (alias por cliente/sucursal) y utilidades.
+#
+# NOTA: Se eliminó el emparejado contra CSV. Para compatibilidad con código
+#       existente, se deja un "shim" emparejar_filas_con_catalogo() que delega
+#       a la base de datos con cliente fijo (por ahora "Roldan").
 
-import os
+from __future__ import annotations
+
 import io
 import re
-import pdfplumber
-import pandas as pd
 import unicodedata
 from decimal import Decimal
+from typing import Any, Dict, List, Tuple
 
-# ===== Configurable por entorno =====
-RUTA_CATALOGO = os.getenv("PRODUCT_CSV", "productos_roldan.csv")
+import pdfplumber
+import persistencia_postgresql as _pg  # obtener_conexion()
 
-# ======== UTILIDADES DECIMALES (ES) ========
+# ==============================
+# Utilidades de normalización
+# ==============================
 
-_DECIM_SAN = re.compile(r"[^0-9,.\-]")
+def normalizar_texto(s: str | None) -> str:
+    """Quita tildes, pasa a minúsculas, limpia espacios redundantes."""
+    if not s:
+        return ""
+    s = str(s).strip().lower()
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    s = re.sub(r"\s+", " ", s)
+    return s
 
-def to_decimal_es(valor: str | None) -> Decimal | None:
-    """Convierte '$1.234,56' o '168,09' a Decimal(1234.56). Devuelve None si no aplica."""
-    if valor is None:
+def to_decimal_es(x: str | float | int | None) -> Decimal | None:
+    """Convierte '1.234,56' o '1234.56' a Decimal. None si no aplica."""
+    if x is None: 
         return None
-    s = _DECIM_SAN.sub("", str(valor)).strip()
-    if s == "" or s == "-":
+    s = str(x).strip()
+    if not s or s == "-":
         return None
-    # Solo coma -> decimal
-    if s.count(",") == 1 and s.count(".") == 0:
-        s = s.replace(",", ".")
-    else:
+    # Si hay coma y punto, asumir formato ES: miles con punto, decimales con coma
+    if "," in s and "." in s:
         s = s.replace(".", "").replace(",", ".")
+    else:
+        s = s.replace(",", ".")
     try:
         return Decimal(s)
     except Exception:
@@ -36,11 +51,14 @@ def to_decimal_es(valor: str | None) -> Decimal | None:
 def fmt2(x: Decimal | None) -> str:
     return "-" if x is None else f"{x:.2f}"
 
-# ======== PARSEADOR DEL PDF: FILAS ========
+# ==============================
+# Parseo de filas del PDF
+# ==============================
 
 PALABRAS_UNIDAD = {
-    "Unidad", "RESMA", "Caja", "Rollo", "Paquete",
-    "Funda", "Galon", "Kilo", "Par", "Unidad."
+    "Unidad", "UNIDAD", "RESMA", "Caja", "CAJA", "Rollo", "ROLLO",
+    "Paquete", "PAQUETE", "Funda", "FUNDA", "Galon", "GALON",
+    "Kilo", "KILO", "Par", "PAR", "Unidad."
 }
 
 PATRON_FILA_CON_UNIDAD = re.compile(
@@ -63,107 +81,125 @@ def es_linea_omitible(linea: str) -> bool:
         return True
     return any(p in s for p in PALABRAS_OMITIR)
 
-def limpiar_unidad(u: str) -> str:
-    return (u or "").rstrip(".")
+def extraer_filas_pdf(pdf_en_bytes: bytes) -> List[Dict[str, Any]]:
+    """
+    Lee el PDF y extrae filas tipo:
+      {'uni','desc','cant','puni','ptotal'} (cadenas tal como vienen en el PDF)
+    """
+    filas: List[Dict[str, Any]] = []
+    unidad_en_espera: str | None = None
 
-def extraer_filas_pdf(pdf_en_bytes: bytes) -> list[dict]:
-    """
-    Devuelve filas de la tabla del PDF con forma:
-    { 'uni': str, 'desc': str, 'cant': str, 'puni': str, 'ptotal': str }
-    """
-    filas: list[dict] = []
     with pdfplumber.open(io.BytesIO(pdf_en_bytes)) as pdf:
-        unidad_en_espera = None
-        for pagina in pdf.pages:
-            texto = pagina.extract_text(x_tolerance=2, y_tolerance=2) or ""
-            for bruta in texto.splitlines():
-                linea = bruta.strip()
+        for page in pdf.pages:
+            try:
+                texto = page.extract_text() or ""
+            except Exception:
+                continue
+            for raw in texto.splitlines():
+                linea = raw.strip()
                 if es_linea_omitible(linea):
                     continue
 
-                if linea in PALABRAS_UNIDAD:
-                    unidad_en_espera = limpiar_unidad(linea)
-                    continue
-
-                m = PATRON_FILA_CON_UNIDAD.match(linea)
-                if m and limpiar_unidad(m.group("uni")) in PALABRAS_UNIDAD:
-                    d = m.groupdict()
-                    d["uni"] = limpiar_unidad(d["uni"])
+                # Caso 1: con unidad al inicio
+                m1 = PATRON_FILA_CON_UNIDAD.match(linea)
+                if m1:
+                    d = m1.groupdict()
                     filas.append(d)
                     unidad_en_espera = None
                     continue
 
-                if unidad_en_espera:
-                    m2 = PATRON_FILA_SIN_UNIDAD.match(linea)
-                    if m2:
-                        d = m2.groupdict()
-                        d["uni"] = unidad_en_espera
-                        filas.append(d)
-                        unidad_en_espera = None
+                # Detectar palabra de unidad suelta al principio
+                if not unidad_en_espera:
+                    token0 = (linea.split() or [""])[0]
+                    if token0 in PALABRAS_UNIDAD:
+                        # guardar y esperar que la siguiente línea sea la fila sin 'uni'
+                        unidad_en_espera = token0
                         continue
+
+                # Caso 2: sin unidad (usar la última detectada)
+                m2 = PATRON_FILA_SIN_UNIDAD.match(linea)
+                if m2 and unidad_en_espera:
+                    d = m2.groupdict()
+                    d["uni"] = unidad_en_espera
+                    filas.append(d)
+                    unidad_en_espera = None
+                    continue
+
     return filas
 
-def imprimir_filas(filas: list[dict]) -> None:
+def imprimir_filas(filas: List[Dict[str, Any]]) -> None:
     if not filas:
         print("⚠️ No se detectaron filas en el PDF.")
         return
     print(f"{'Uni.':<10} | {'Descripción':<70} | {'Cant':>4} | {'P. Uni':>8} | {'P. Total':>9}")
     print("-" * 110)
     for f in filas:
-        desc = (f["desc"] or "").strip()
-        cant = f["cant"]
-        puni = f["puni"].replace(",", ".")
-        ptotal = f["ptotal"].replace(",", ".")
-        uni = f["uni"]
+        desc = (f.get("desc") or "").strip()
+        cant = f.get("cant")
+        puni = str(f.get("puni") or "").replace(",", ".")
+        ptotal = str(f.get("ptotal") or "").replace(",", ".")
+        uni = f.get("uni") or ""
         print(f"{uni:<10} | {desc[:70]:<70} | {cant:>4} | {puni:>8} | {ptotal:>9}")
 
-# ======== PARSEADOR DEL PDF: SUCURSAL Y TOTALES ========
+# ==============================
+# Parseo de sucursal y totales
+# ==============================
 
 def _texto_completo(pdf_en_bytes: bytes) -> str:
     with pdfplumber.open(io.BytesIO(pdf_en_bytes)) as pdf:
-        textos = [(p.extract_text(x_tolerance=2, y_tolerance=2) or "") for p in pdf.pages]
-    return "\n".join(textos)
+        partes = []
+        for p in pdf.pages:
+            try:
+                partes.append(p.extract_text() or "")
+            except Exception:
+                continue
+    return "\n".join(partes)
 
-def _buscar_valor(label_regex: str, texto: str, max_saltos: int = 2) -> str | None:
+def _buscar_valor(titulo_regex: str, texto: str, max_saltos: int = 2) -> str | None:
     """
-    Busca un valor numérico justo a la derecha/abajo de la etiqueta.
-    Acepta hasta 'max_saltos' saltos de línea entre etiqueta y valor.
+    Busca un valor numérico tipo 1.234,56 AFTER un título "Subtotal", "IVA 0%", "TOTAL"...
     """
-    # valor como números con . y , o un '-'
-    VAL = r"\$?\s*([0-9][0-9\.\,]*|-)"
-    patron = rf"{label_regex}(?:[^\S\r\n]|\n){{0,{max_saltos}}}{VAL}"
-    m = re.search(patron, texto, flags=re.IGNORECASE)
-    return m.group(1).strip() if m else None
+    patron = re.compile(
+        rf"{titulo_regex}.*?(?:\$|\s)\s*([0-9][0-9\.\,]*|-)", re.IGNORECASE | re.DOTALL
+    )
+    m = patron.search(texto)
+    if not m:
+        # búsqueda tolerante a saltos de línea
+        titulo = re.compile(titulo_regex, re.IGNORECASE)
+        for i, linea in enumerate(texto.splitlines()):
+            if titulo.search(linea):
+                for j in range(1, max_saltos + 1):
+                    if i + j < len(texto.splitlines()):
+                        x = re.search(r"([0-9][0-9\.\,]*|-)", texto.splitlines()[i + j])
+                        if x:
+                            return x.group(1)
+        return None
+    return m.group(1)
 
-def extraer_sucursal_y_totales(pdf_en_bytes: bytes) -> dict:
+def extraer_sucursal_y_totales(pdf_en_bytes: bytes) -> Dict[str, Any]:
     """
-    Extrae:
-      sucursal, subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total
-    con tolerancia a saltos de línea entre etiqueta y valor.
+    Devuelve:
+      {
+        "sucursal": "texto que viene en PDF (Solicita: …)",
+        "subtotal_bruto": Decimal|None,
+        "descuento": Decimal|None,
+        "subtotal_neto": Decimal|None,
+        "iva_0": Decimal|None,
+        "iva_15": Decimal|None,
+        "total": Decimal|None,
+      }
     """
     texto = _texto_completo(pdf_en_bytes)
 
-    # --- Sucursal (línea "Solicita:" o siguiente línea) ---
+    # Sucursal (línea que inicia por 'Solicita:')
     sucursal = None
-    m = re.search(r"Solicita:\s*(.+)", texto, re.IGNORECASE)
-    if m:
-        sucursal = m.group(1).strip()
-    else:
-        lineas = [l.strip() for l in texto.splitlines()]
-        for i, l in enumerate(lineas):
-            if l.upper().startswith("SOLICITA:"):
-                resto = l.split(":", 1)[-1].strip()
-                if resto:
-                    sucursal = resto
-                else:
-                    for j in range(i + 1, min(i + 3, len(lineas))):
-                        if lineas[j]:
-                            sucursal = lineas[j]
-                            break
-                break
+    for line in texto.splitlines():
+        if re.search(r"^\s*Solicita\s*:", line, flags=re.IGNORECASE):
+            sucursal = re.sub(r"^\s*Solicita\s*:\s*", "", line, flags=re.IGNORECASE).strip()
+            break
 
-    # --- Totales del panel derecho ---
-    # Dos "Subtotal": bruto (antes de descuento) y neto (después de descuento)
+    # Totales
+    # Algunos PDFs traen dos "Subtotal": bruto y neto
     subtotales_raw = re.findall(
         r"Subtotal(?:[^\S\r\n]|\n){0,2}\$?\s*([0-9][0-9\.\,]*|-)",
         texto,
@@ -172,13 +208,12 @@ def extraer_sucursal_y_totales(pdf_en_bytes: bytes) -> dict:
     raw_descuento = _buscar_valor(r"Descuento", texto, max_saltos=2)
     raw_iva0      = _buscar_valor(r"IVA\s*0%",   texto, max_saltos=2)
     raw_iva15     = _buscar_valor(r"IVA\s*15%",  texto, max_saltos=2)
-    raw_total     = _buscar_valor(r"\bTOTAL\b",  texto, max_saltos=2)
+    raw_total     = _buscar_valor(r"\bTOTAL\b",  texto, max_saltos=3)
 
     subtotal_bruto = to_decimal_es(subtotales_raw[0]) if len(subtotales_raw) >= 1 else None
     subtotal_neto  = to_decimal_es(subtotales_raw[1]) if len(subtotales_raw) >= 2 else None
 
     descuento = to_decimal_es(raw_descuento)
-    # En muchos PDFs, IVA 0% aparece como '-'
     iva_0     = Decimal("0") if (raw_iva0 is None or raw_iva0 == "-") else to_decimal_es(raw_iva0)
     iva_15    = to_decimal_es(raw_iva15)
     total     = to_decimal_es(raw_total)
@@ -193,7 +228,8 @@ def extraer_sucursal_y_totales(pdf_en_bytes: bytes) -> dict:
         "total": total,
     }
 
-def imprimir_resumen_pedido(res: dict) -> None:
+def imprimir_resumen_pedido(res: Dict[str, Any]) -> None:
+    print("========== 3) SUCURSAL Y TOTALES ==========")
     print("\nResumen del pedido (extraído del PDF):")
     print(f"  Sucursal:        {res.get('sucursal') or '-'}")
     print(f"  Subtotal bruto:  {fmt2(res.get('subtotal_bruto'))}")
@@ -202,145 +238,241 @@ def imprimir_resumen_pedido(res: dict) -> None:
     print(f"  IVA 0%:          {fmt2(res.get('iva_0'))}")
     print(f"  IVA 15%:         {fmt2(res.get('iva_15'))}")
     print(f"  TOTAL:           {fmt2(res.get('total'))}")
+    print()
 
-# ======== EMPAREJADO CON CATÁLOGO ========
+# ==============================
+# Emparejado contra la BASE DE DATOS
+# ==============================
 
-_CATALOGO_CACHE: pd.DataFrame | None = None
+def solapamiento_tokens(a: str, b: str) -> float:
+    """Métrica sencilla de solapamiento (0..1) por tokens."""
+    ta = set(normalizar_texto(a).split())
+    tb = set(normalizar_texto(b).split())
+    if not ta or not tb:
+        return 0.0
+    inter = len(ta & tb)
+    union = len(ta | tb)
+    return inter / union if union else 0.0
 
-def normalizar_texto(s: str) -> str:
-    if s is None:
-        return ""
-    s = str(s).strip().upper()
-    s = unicodedata.normalize("NFD", s)
-    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
-    s = re.sub(r"[^A-Z0-9 ]+", " ", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
+def _buscar_cliente_por_nombre(nombre: str) -> Tuple[int, bool]:
+    """Devuelve (cliente_id, usa_bodega_por_sucursal). Lanza si no existe."""
+    with _pg.obtener_conexion() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT id, COALESCE(usa_bodega_por_sucursal, FALSE)
+            FROM clientes
+            WHERE upper(nombre) = upper(%s)
+            LIMIT 1;
+        """, (nombre,))
+        row = cur.fetchone()
+        if not row:
+            raise RuntimeError(f"Cliente '{nombre}' no encontrado.")
+        return int(row[0]), bool(row[1])
 
-def solapamiento_tokens(a: str, b: str) -> int:
-    toks = [t for t in a.split() if len(t) >= 3]
-    bset = set(b.split())
-    return sum(1 for t in toks if t in bset)
+def _resolver_sucursal_por_alias(cliente_id: int, alias_pdf: str | None) -> Dict[str, Any]:
+    """
+    Busca sucursal del cliente por alias (o nombre) que viene en el PDF.
+    Devuelve dict {id, nombre} o {} si no encontró.
+    """
+    if not alias_pdf:
+        return {}
+    target = normalizar_texto(alias_pdf)
+    mejor = None
+    with _pg.obtener_conexion() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT id, nombre, COALESCE(alias, '')
+            FROM sucursales
+            WHERE cliente_id = %s AND activo = TRUE;
+        """, (cliente_id,))
+        filas = cur.fetchall()
 
-def cargar_catalogo(ruta: str = RUTA_CATALOGO) -> pd.DataFrame:
-    global _CATALOGO_CACHE
-    if _CATALOGO_CACHE is not None:
-        return _CATALOGO_CACHE
-    df = pd.read_csv(ruta, dtype=str)
-    requeridas = [
-        "Unidad",
-        "NOMBRE DE ARTICULO EN LA ORDEN",
-        "CODIGO DE PRODUCTO SAP",
-        "BODEGA DESDE DONDE SE DESPACHA",
-    ]
-    for c in requeridas:
-        if c not in df.columns:
-            raise RuntimeError(f"CSV de catálogo no tiene la columna requerida: {c}")
-    df["nombre_norm"] = df["NOMBRE DE ARTICULO EN LA ORDEN"].map(normalizar_texto)
-    df["unidad_norm"] = df["Unidad"].map(normalizar_texto)
-    _CATALOGO_CACHE = df
-    return _CATALOGO_CACHE
+    # Igualdad exacta (normalizada) contra alias o nombre
+    for (sid, nombre, alias) in filas:
+        if normalizar_texto(alias) == target or normalizar_texto(nombre) == target:
+            return {"id": int(sid), "nombre": nombre}
 
-def construir_indice_nombres(df: pd.DataFrame) -> dict[str, list[int]]:
-    idx: dict[str, list[int]] = {}
-    for i, s in enumerate(df["nombre_norm"]):
-        idx.setdefault(s, []).append(i)
+    # Contención con mejor solapamiento
+    max_sc = -1.0
+    for (sid, nombre, alias) in filas:
+        a = normalizar_texto(alias); n = normalizar_texto(nombre)
+        for cand in (a, n):
+            sc = solapamiento_tokens(target, cand)
+            if sc > max_sc and (target in cand or cand in target):
+                mejor = {"id": int(sid), "nombre": nombre}
+                max_sc = sc
+
+    return mejor or {}
+
+def _cargar_alias_productos_cliente(cliente_id: int) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Devuelve índice: alias_norm -> [ {producto_id, sku, nombre, alias_original}, ... ]
+    """
+    idx: Dict[str, List[Dict[str, Any]]] = {}
+    with _pg.obtener_conexion() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT p.id, p.sku, p.nombre, ap.alias
+            FROM alias_productos ap
+            JOIN productos p ON p.id = ap.producto_id
+            WHERE ap.cliente_id = %s
+            ORDER BY ap.id ASC;
+        """, (cliente_id,))
+        for (pid, sku, nombre, alias) in cur.fetchall():
+            clave = normalizar_texto(alias or "")
+            idx.setdefault(clave, []).append({
+                "producto_id": int(pid),
+                "sku": sku or "",
+                "nombre": nombre or "",
+                "alias_original": alias or ""
+            })
     return idx
 
-def emparejar_filas_con_catalogo(filas: list[dict], ruta_csv: str = RUTA_CATALOGO) -> list[dict]:
-    """
-    Enriquecer filas con:
-      - sku
-      - bodega
-      - tipo_emparejado in {'exacto','contiene','contiene+unidad','ambiguo','sin_match'}
-      - candidatos (opcional)
-    """
-    df = cargar_catalogo(ruta_csv)
-    indice = construir_indice_nombres(df)
+def _cargar_bodegas_por_cliente(cliente_id: int) -> Dict[int, str | None]:
+    """producto_id -> bodega (para clientes que NO usan bodega por sucursal)"""
+    mapa: Dict[int, str | None] = {}
+    with _pg.obtener_conexion() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT producto_id, bodega
+            FROM bodegas_producto_por_cliente
+            WHERE cliente_id = %s
+            ORDER BY id ASC;
+        """, (cliente_id,))
+        for (pid, bod) in cur.fetchall():
+            mapa[int(pid)] = bod or None
+    return mapa
 
-    enriquecidas: list[dict] = []
+def _cargar_bodegas_por_sucursal(sucursal_id: int) -> Dict[int, str | None]:
+    """producto_id -> bodega (para clientes que SÍ usan bodega por sucursal)"""
+    mapa: Dict[int, str | None] = {}
+    with _pg.obtener_conexion() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT producto_id, bodega
+            FROM bodegas_producto_por_sucursal
+            WHERE sucursal_id = %s
+            ORDER BY id ASC;
+        """, (sucursal_id,))
+        for (pid, bod) in cur.fetchall():
+            mapa[int(pid)] = bod or None
+    return mapa
+
+def _buscar_en_alias(alias_idx: Dict[str, List[Dict[str, Any]]], texto_pdf: str) -> Tuple[Dict[str, Any] | None, str]:
+    """
+    Intenta match por:
+    1) Igualdad exacta normalizada
+    2) Contención (A in B o B in A) con mejor solapamiento
+    Devuelve (producto_dict, tipo)
+    """
+    q = normalizar_texto(texto_pdf or "")
+    if not q:
+        return None, "sin_match"
+    # Exacto
+    if q in alias_idx and alias_idx[q]:
+        return alias_idx[q][0], "exacto"
+
+    # Contiene: tomamos el alias con mayor solapamiento de tokens
+    mejor, max_sol = None, -1.0
+    for clave, lst in alias_idx.items():
+        if q in clave or clave in q:
+            sol = solapamiento_tokens(q, clave)
+            if sol > max_sol:
+                max_sol = sol
+                mejor = lst[0]
+    return (mejor, "contiene") if mejor else (None, "sin_match")
+
+def emparejar_filas_con_bd(
+    filas: List[Dict[str, Any]],
+    cliente_nombre: str = "Roldan",
+    sucursal_alias: str | None = None
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Enriquecer filas contra la BD del cliente:
+      - Usar alias_productos para asignar SKU
+      - Tomar bodega desde bodegas_producto_por_cliente o ..._por_sucursal según el cliente
+      - Resolver sucursal del pedido desde alias de PDF -> nombre del sistema
+
+    Devuelve (filas_enriquecidas, sucursal_dict)
+    """
+    cliente_id, usa_por_sucursal = _buscar_cliente_por_nombre(cliente_nombre)
+    suc = _resolver_sucursal_por_alias(cliente_id, sucursal_alias)
+    alias_idx = _cargar_alias_productos_cliente(cliente_id)
+
+    # Bodegas según modalidad
+    mapa_bod_cli: Dict[int, str | None] = {}
+    mapa_bod_suc: Dict[int, str | None] = {}
+    if usa_por_sucursal and suc:
+        mapa_bod_suc = _cargar_bodegas_por_sucursal(int(suc["id"]))
+    else:
+        mapa_bod_cli = _cargar_bodegas_por_cliente(cliente_id)
+
+    enriquecidas: List[Dict[str, Any]] = []
     for f in filas:
-        desc_n = normalizar_texto(f.get("desc", ""))
-        uni_n  = normalizar_texto(f.get("uni", ""))
-
-        sku = None
-        bodega = None
-        tipo = "sin_match"
-        candidatos: list[str] = []
-
-        if desc_n in indice:
-            posibles = indice[desc_n]
+        prod, tipo = _buscar_en_alias(alias_idx, f.get("desc", ""))
+        if prod:
+            pid = prod["producto_id"]
+            sku = prod["sku"]
+            bodega = (mapa_bod_suc.get(pid) if mapa_bod_suc else mapa_bod_cli.get(pid))
+            enriquecidas.append({
+                **f,
+                "sku": sku,
+                "bodega": bodega,
+                "tipo_emparejado": tipo
+            })
         else:
-            posibles = [
-                i for i, nm in enumerate(df["nombre_norm"])
-                if desc_n and (desc_n in nm or nm in desc_n)
-            ]
+            enriquecidas.append({
+                **f,
+                "sku": None,
+                "bodega": None,
+                "tipo_emparejado": "sin_match"
+            })
 
-        if posibles:
-            if uni_n:
-                por_unidad = [i for i in posibles if df.loc[i, "unidad_norm"] == uni_n]
-                if por_unidad:
-                    posibles = por_unidad
-                    tipo = "contiene+unidad" if tipo != "exacto" else "exacto"
-                else:
-                    por_nombre_unidad = [i for i in posibles if uni_n and uni_n in df.loc[i, "nombre_norm"]]
-                    if por_nombre_unidad:
-                        posibles = por_nombre_unidad
-                        tipo = "contiene+unidad"
+    return enriquecidas, (suc or {})
 
-            if len(posibles) > 1:
-                overlaps = [(i, solapamiento_tokens(desc_n, df.loc[i, "nombre_norm"])) for i in posibles]
-                max_ol = max(o for _, o in overlaps)
-                mejores = [i for i, o in overlaps if o == max_ol]
-                if len(mejores) == 1:
-                    posibles = mejores
-                else:
-                    candidatos = [df.loc[i, "CODIGO DE PRODUCTO SAP"] for i in mejores]
-                    tipo = "ambiguo"
+# ==============================
+# Compatibilidad con código antiguo (CSV)
+# ==============================
 
-            if not candidatos:
-                i = posibles[0]
-                sku = df.loc[i, "CODIGO DE PRODUCTO SAP"]
-                bodega = df.loc[i, "BODEGA DESDE DONDE SE DESPACHA"]
-                if tipo == "sin_match":
-                    tipo = "exacto" if desc_n in indice else "contiene"
-
-        enriquecidas.append({
-            **f,
-            "sku": sku,
-            "bodega": bodega,
-            "tipo_emparejado": tipo,
-            **({"candidatos": candidatos} if candidatos else {})
-        })
+def emparejar_filas_con_catalogo(filas: List[Dict[str, Any]], ruta_csv: str | None = None) -> List[Dict[str, Any]]:
+    """
+    Compatibilidad: antes emparejábamos con CSV.
+    Ahora delegamos al emparejado con BD (cliente fijo "Roldan").
+    Devuelve solo la lista de filas enriquecidas.
+    """
+    enriquecidas, _ = emparejar_filas_con_bd(filas, cliente_nombre="Roldan", sucursal_alias=None)
     return enriquecidas
 
-def imprimir_filas_emparejadas(filas_enriquecidas: list[dict]) -> None:
+# ==============================
+# Impresión de filas enriquecidas
+# ==============================
+
+def imprimir_filas_emparejadas(filas_enriquecidas: List[Dict[str, Any]]) -> None:
     if not filas_enriquecidas:
-        print("⚠️ No hay filas para imprimir.")
+        print("⚠️ No hay filas emparejadas.")
         return
-    print(f"{'Uni.':<8} | {'Descripción':<60} | {'Cant':>4} | {'SKU':<10} | {'Bod':>3} | {'Match':<12}")
-    print("-" * 112)
+    print("========== 2) FILAS ENRIQUECIDAS ==========")
+    print(f"{'Uni.':<8} | {'Descripción':<60} | {'Cant':>4} | {'SKU':<10} | {'Bod':>3} | {'Match':<10}")
+    print("-" * 110)
     for f in filas_enriquecidas:
         desc = (f.get("desc") or "").strip()
         cant = f.get("cant") or ""
         sku  = f.get("sku") or ""
         bod  = f.get("bodega") or ""
         tip  = f.get("tipo_emparejado") or ""
-        print(f"{(f.get('uni') or ''):<8} | {desc[:60]:<60} | {cant:>4} | {sku:<10} | {str(bod):>3} | {tip:<12}")
-        if f.get("candidatos"):
-            print(f"      ↳ candidatos: {', '.join(f['candidatos'])}")
+        print(f"{(f.get('uni') or ''):<8} | {desc[:60]:<60} | {cant:>4} | {sku:<10} | {str(bod):>3} | {tip:<10}")
 
-# ======== CSV opcional para auditoría ========
+# ==============================
+# CSV opcional para auditoría (NO usa catálogo CSV)
+# ==============================
 
-def guardar_asignaciones_csv(filas_enriquecidas: list[dict], ruta_salida="pedido_asignado.csv"):
+def guardar_asignaciones_csv(filas_enriquecidas: List[Dict[str, Any]], ruta_salida: str = "pedido_asignado.csv") -> None:
+    """
+    Guarda un CSV con las asignaciones resultantes (para auditoría).
+    No usa ningún catálogo CSV; solo vuelca lo enriquecido.
+    Columnas: uni, desc, cant, puni, ptotal, sku, bodega, tipo_emparejado
+    """
     import csv
-    columnas = ["uni","desc","cant","puni","ptotal","sku","bodega","tipo_emparejado","candidatos"]
+    columnas = ["uni","desc","cant","puni","ptotal","sku","bodega","tipo_emparejado"]
     with open(ruta_salida, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=columnas)
         w.writeheader()
         for r in filas_enriquecidas:
             fila = {k: r.get(k) for k in columnas}
-            if isinstance(fila.get("candidatos"), list):
-                fila["candidatos"] = " | ".join(fila["candidatos"])
             w.writerow(fila)
     print(f"💾 Guardado CSV: {ruta_salida}")

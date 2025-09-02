@@ -98,23 +98,43 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     print(f"UID:     {meta.get('uid')}")
     print(f"📎 PDF:  {nombre_pdf}")
 
+    # 1) Filas de la tabla
     filas = proc.extraer_filas_pdf(pdf_en_bytes)
     if not filas:
         print("⚠️ No se detectaron filas en el PDF.")
         return
 
-    filas_enriquecidas = proc.emparejar_filas_con_catalogo(filas, proc.RUTA_CATALOGO)
-    proc.imprimir_filas_emparejadas(filas_enriquecidas)
-    proc.guardar_asignaciones_csv(filas_enriquecidas)
+    # 2) Sucursal y totales (del PDF)
+    resumen = proc.extraer_sucursal_y_totales(pdf_en_bytes)
 
-    meta_pedido = {
+    # 3) Emparejar contra BD (cliente fijo: Roldan), usando el alias de sucursal del PDF
+    filas_enriquecidas, suc = proc.emparejar_filas_con_bd(
+        filas,
+        cliente_nombre="Roldan",
+        sucursal_alias=resumen.get("sucursal")
+    )
+
+    # 4) Armar dict 'pedido' para persistencia_postgresql.guardar_pedido()
+    pedido = {
         "fecha": meta.get("fecha"),
-        "pdf_filename": nombre_pdf,
-        "email_uid": int(meta.get("uid") or 0),
-        "email_from": meta.get("remitente"),
-        "email_subject": meta.get("asunto"),
+        "sucursal": (suc.get("nombre") if suc else resumen.get("sucursal")),  # nombre del sistema si se encontró
+        "subtotal_bruto": resumen.get("subtotal_bruto"),
+        "descuento":      resumen.get("descuento"),
+        "subtotal_neto":  resumen.get("subtotal_neto"),
+        "iva_0":          resumen.get("iva_0"),
+        "iva_15":         resumen.get("iva_15"),
+        "total":          resumen.get("total"),
     }
-    db.guardar_pedido(filas_enriquecidas, meta_pedido)
+
+    # 5) Guardar en PostgreSQL (usa tu función existente)
+    try:
+        db.guardar_pedido(pedido, filas_enriquecidas)
+    except Exception as e:
+        print(f"❌ No se guardó el pedido: {e}")
+        return
+
+    # (opcional) logs en terminal
+    proc.imprimir_filas_emparejadas(filas_enriquecidas)
 
 
 # ========= RUTAS FLASK =========
@@ -256,34 +276,27 @@ def api_productos_mapeos():
         clientes_pc = [{"id": i, "nombre": n, "ruc": r} for (i,n,r) in cur.fetchall()]
         idmap = {c["id"]: c for c in clientes_pc}
 
+        por_cliente = {}
         if clientes_pc:
             cur.execute("""
-                SELECT bpc.id, bpc.cliente_id, p.id, p.sku, p.nombre,
-                       COALESCE((
-                         SELECT ap.alias FROM alias_productos ap
-                         WHERE ap.cliente_id = bpc.cliente_id AND ap.producto_id = p.id
-                         ORDER BY ap.id ASC LIMIT 1
-                       ), '') AS alias,
-                       bpc.bodega
+                SELECT bpc.id, bpc.cliente_id, p.id, p.sku, p.nombre, bpc.bodega
                 FROM bodegas_producto_por_cliente bpc
                 JOIN productos p ON p.id = bpc.producto_id
                 ORDER BY bpc.cliente_id, upper(p.nombre);
             """)
-            por_cliente = {}
-            for (mapeo_id, cliente_id, pid, sku, pnom, alias, bodega) in cur.fetchall():
-                if cliente_id not in por_cliente:
-                    por_cliente[cliente_id] = []
-                por_cliente[cliente_id].append({
+            for (mapeo_id, cliente_id, pid, sku, pnom, bodega) in cur.fetchall():
+                por_cliente.setdefault(cliente_id, []).append({
                     "mapeo_id": mapeo_id,
                     "producto_id": pid,
                     "sku": sku, "nombre_producto": pnom,
-                    "alias": alias, "bodega": bodega
+                    "bodega": bodega
                 })
-            for cid, cli in idmap.items():
-                result["por_cliente"].append({
-                    "cliente": cli,
-                    "filas": por_cliente.get(cid, [])
-                })
+        for cid, cli in idmap.items():
+            result["por_cliente"].append({
+                "cliente": cli,
+                "filas": por_cliente.get(cid, [])
+            })
+
 
         # ------- POR SUCURSAL + CLIENTE -------
         cur.execute("""
@@ -295,7 +308,7 @@ def api_productos_mapeos():
         clientes_ps = [{"id": i, "nombre": n, "ruc": r} for (i,n,r) in cur.fetchall()]
 
         if clientes_ps:
-            # 1) Traer TODAS las sucursales activas de esos clientes
+            # 1) sucursales activas
             cur.execute("""
                 SELECT s.id, s.cliente_id, s.nombre
                 FROM sucursales s
@@ -303,8 +316,7 @@ def api_productos_mapeos():
                 AND s.cliente_id = ANY(%s)
                 ORDER BY s.cliente_id, upper(s.nombre);
             """, ([c["id"] for c in clientes_ps],))
-            # Estructura: por_cliente[cli_id][suc_id] = { sucursal:{...}, filas:[] }
-            por_cliente: dict[int, dict[int, dict]] = {}
+            por_cliente = {}
             for (suc_id, cli_id, suc_nombre) in cur.fetchall():
                 por_cliente.setdefault(cli_id, {})
                 por_cliente[cli_id].setdefault(suc_id, {
@@ -312,16 +324,10 @@ def api_productos_mapeos():
                     "filas": []
                 })
 
-            # 2) Rellenar filas para las sucursales que SÍ tienen mapeos
+            # 2) mapeos existentes
             cur.execute("""
                 SELECT bps.id, s.id, s.cliente_id, s.nombre,
-                    p.id, p.sku, p.nombre,
-                    COALESCE((
-                        SELECT ap.alias FROM alias_productos ap
-                        WHERE ap.cliente_id = s.cliente_id AND ap.producto_id = p.id
-                        ORDER BY ap.id ASC LIMIT 1
-                    ), '') AS alias,
-                    bps.bodega
+                    p.id, p.sku, p.nombre, bps.bodega
                 FROM bodegas_producto_por_sucursal bps
                 JOIN sucursales s ON s.id = bps.sucursal_id
                 JOIN productos p  ON p.id = bps.producto_id
@@ -329,10 +335,7 @@ def api_productos_mapeos():
                 AND s.cliente_id = ANY(%s)
                 ORDER BY s.cliente_id, upper(s.nombre), upper(p.nombre);
             """, ([c["id"] for c in clientes_ps],))
-
-            for (mapeo_id, suc_id, cli_id, suc_nombre,
-                pid, sku, pnom, alias, bodega) in cur.fetchall():
-                # Asegurar que exista el contenedor (por si no vino en el primer SELECT)
+            for (mapeo_id, suc_id, cli_id, suc_nombre, pid, sku, pnom, bodega) in cur.fetchall():
                 por_cliente.setdefault(cli_id, {})
                 por_cliente[cli_id].setdefault(suc_id, {
                     "sucursal": {"id": suc_id, "nombre": suc_nombre},
@@ -342,32 +345,31 @@ def api_productos_mapeos():
                     "mapeo_id": mapeo_id,
                     "producto_id": pid,
                     "sku": sku, "nombre_producto": pnom,
-                    "alias": alias, "bodega": bodega
+                    "bodega": bodega
                 })
 
-            # 3) Ensamblar respuesta: cada cliente con todos sus bloques de sucursales
             for cli in clientes_ps:
                 bloques = list(por_cliente.get(cli["id"], {}).values())
                 result["por_sucursal"].append({
                     "cliente": cli,
-                    "bloques": bloques  # puede estar vacío -> el front genera tabla vacía + fila nueva en edición
+                    "bloques": bloques
                 })
+
 
 
 
     return jsonify(result)
 
 
-# === GUARDADO BULK: POR CLIENTE ===
 @app.route("/api/productos_por_cliente/bulk", methods=["POST"])
 def api_productos_por_cliente_bulk():
-    from flask import request
+    from flask import request, jsonify
     data = request.get_json(silent=True) or {}
     cambios = data.get("cambios") or []
     if not isinstance(cambios, list):
         return jsonify({"ok": False, "error": "Formato inválido"}), 400
 
-    res = {"insertados": 0, "actualizados": 0, "borrados": 0, "alias_upserts": 0, "productos_creados": 0}
+    res = {"insertados": 0, "actualizados": 0, "borrados": 0, "productos_creados": 0}
 
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         for c in cambios:
@@ -375,7 +377,6 @@ def api_productos_por_cliente_bulk():
             mapeo_id     = c.get("mapeo_id")
             sku          = (c.get("producto_sku") or "").strip() or None
             nombre_prod  = (c.get("producto_nombre") or "").strip() or None
-            alias        = (c.get("alias") or "").strip() or None
             bodega       = (c.get("bodega") or "").strip() or None
             borrar       = bool(c.get("borrar"))
 
@@ -384,9 +385,10 @@ def api_productos_por_cliente_bulk():
                 res["borrados"] += 1
                 continue
 
-            # Asegurar que el producto exista (por SKU o nombre)
             if not sku and not nombre_prod:
                 continue  # necesita al menos algo
+
+            # Asegurar producto
             producto_id = None
             if sku:
                 cur.execute("SELECT id FROM productos WHERE sku = %s;", (sku,))
@@ -397,23 +399,12 @@ def api_productos_por_cliente_bulk():
                 r = cur.fetchone()
                 if r: producto_id = r[0]
             if not producto_id:
-                # crear nuevo producto
                 cur.execute("""
                     INSERT INTO productos (sku, nombre, activo) VALUES (%s, %s, TRUE)
                     RETURNING id;
                 """, (sku, nombre_prod or sku))
                 producto_id = cur.fetchone()[0]
                 res["productos_creados"] += 1
-
-            # Upsert alias (si viene)
-            if alias:
-                cur.execute("""
-                    INSERT INTO alias_productos (producto_id, cliente_id, alias)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (cliente_id, producto_id, upper(alias))
-                    DO NOTHING;
-                """, (producto_id, cliente_id, alias))
-                res["alias_upserts"] += (cur.rowcount or 0)
 
             # Upsert bodega por cliente
             if mapeo_id:
@@ -438,13 +429,13 @@ def api_productos_por_cliente_bulk():
 # === GUARDADO BULK: POR SUCURSAL ===
 @app.route("/api/productos_por_sucursal/bulk", methods=["POST"])
 def api_productos_por_sucursal_bulk():
-    from flask import request
+    from flask import request, jsonify
     data = request.get_json(silent=True) or {}
     cambios = data.get("cambios") or []
     if not isinstance(cambios, list):
         return jsonify({"ok": False, "error": "Formato inválido"}), 400
 
-    res = {"insertados": 0, "actualizados": 0, "borrados": 0, "alias_upserts": 0, "productos_creados": 0}
+    res = {"insertados": 0, "actualizados": 0, "borrados": 0, "productos_creados": 0}
 
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         for c in cambios:
@@ -452,7 +443,6 @@ def api_productos_por_sucursal_bulk():
             mapeo_id     = c.get("mapeo_id")
             sku          = (c.get("producto_sku") or "").strip() or None
             nombre_prod  = (c.get("producto_nombre") or "").strip() or None
-            alias        = (c.get("alias") or "").strip() or None
             bodega       = (c.get("bodega") or "").strip() or None
             borrar       = bool(c.get("borrar"))
 
@@ -461,9 +451,10 @@ def api_productos_por_sucursal_bulk():
                 res["borrados"] += 1
                 continue
 
-            # Asegurar producto
             if not sku and not nombre_prod:
                 continue
+
+            # Asegurar producto
             producto_id = None
             if sku:
                 cur.execute("SELECT id FROM productos WHERE sku = %s;", (sku,))
@@ -480,22 +471,6 @@ def api_productos_por_sucursal_bulk():
                 """, (sku, nombre_prod or sku))
                 producto_id = cur.fetchone()[0]
                 res["productos_creados"] += 1
-
-            # Upsert alias por cliente (alias es por cliente, no por sucursal)
-            # Obtenemos el cliente de la sucursal
-            cur.execute("SELECT cliente_id FROM sucursales WHERE id = %s;", (sucursal_id,))
-            row = cur.fetchone()
-            if not row:
-                continue
-            cliente_id = row[0]
-            if alias:
-                cur.execute("""
-                    INSERT INTO alias_productos (producto_id, cliente_id, alias)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (cliente_id, producto_id, upper(alias))
-                    DO NOTHING;
-                """, (producto_id, cliente_id, alias))
-                res["alias_upserts"] += (cur.rowcount or 0)
 
             # Upsert bodega por sucursal
             if mapeo_id:
@@ -515,6 +490,7 @@ def api_productos_por_sucursal_bulk():
                 res["insertados"] += 1
 
     return jsonify({"ok": True, **res})
+
 
 
 

@@ -146,73 +146,66 @@
     // Construcción de tablas
     // ============================
     function thsProductos(){ return `
-      <tr>
-        <th>SKU</th>
-        <th>Nombre del Producto</th>
-        <th>Alias</th>
-        <th>Bodega</th>
-        <th></th>
-      </tr>`; }
+        <tr>
+            <th>SKU</th>
+            <th>Nombre del Producto</th>
+            <th>Bodega</th>
+            <th></th>
+        </tr>`; }
 
     function construirFilaProducto(row, editable){
-      const tr = document.createElement("tr");
-      tr.dataset.mapeoId = row.mapeo_id ?? "";
-      tr.dataset.productoId = row.producto_id ?? "";
-      tr.innerHTML = `
-        <td data-label="SKU"><span contenteditable="false" class="sku">${esc(row.sku||"")}</span></td>
-        <td data-label="Nombre del Producto"><span contenteditable="false" class="nombre">${esc(row.nombre_producto||"")}</span></td>
-        <td data-label="Alias"><span contenteditable="false" class="alias">${esc(row.alias||"")}</span></td>
-        <td data-label="Bodega"><span contenteditable="false" class="bodega">${esc(row.bodega||"")}</span></td>
-        <td style="width:1%; white-space:nowrap;">
-          <button class="btn-mini" data-accion="borrar" title="Marcar para borrar">🗑️</button>
-        </td>
-      `;
-      // Modo edición ON/OFF
-      const spans = ["sku","nombre","alias","bodega"].map(c=>tr.querySelector("."+c));
-      spans.forEach(sp => {
-        if(editable){
-          sp.setAttribute("contenteditable","true");
-          sp.classList.add("celda-editable");
-          if(sp.classList.contains("sku"))    sp.setAttribute("list","dlSkus");
-          if(sp.classList.contains("nombre")) sp.setAttribute("list","dlNombres");
-        } else {
-          sp.removeAttribute("contenteditable");
-          sp.classList.remove("celda-editable");
+        const tr = document.createElement("tr");
+        tr.dataset.mapeoId = row.mapeo_id ?? "";
+        tr.dataset.productoId = row.producto_id ?? "";
+        tr.innerHTML = `
+            <td data-label="SKU"><span contenteditable="false" class="sku">${esc(row.sku||"")}</span></td>
+            <td data-label="Nombre del Producto"><span contenteditable="false" class="nombre">${esc(row.nombre_producto||"")}</span></td>
+            <td data-label="Bodega"><span contenteditable="false" class="bodega">${esc(row.bodega||"")}</span></td>
+            <td style="width:1%; white-space:nowrap;">
+            <button class="btn-mini" data-accion="borrar" title="Marcar para borrar">🗑️</button>
+            </td>
+        `;
+        const spans = ["sku","nombre","bodega"].map(c=>tr.querySelector("."+c));
+        spans.forEach(sp => {
+            if(editable){
+            sp.setAttribute("contenteditable","true");
+            sp.classList.add("celda-editable");
+            if(sp.classList.contains("sku"))    sp.setAttribute("list","dlSkus");
+            if(sp.classList.contains("nombre")) sp.setAttribute("list","dlNombres");
+            } else {
+            sp.removeAttribute("contenteditable");
+            sp.classList.remove("celda-editable");
+            }
+        });
+        tr.querySelector("[data-accion='borrar']").addEventListener("click", ()=>tr.classList.toggle("marcada-borrado"));
+        return tr;
         }
-      });
-      tr.querySelector("[data-accion='borrar']").addEventListener("click", ()=>tr.classList.toggle("marcada-borrado"));
-      return tr;
-    }
 
     function agregarFilaNueva(tbody){
-      const tr = document.createElement("tr");
-      tr.className = "fila-nueva";
-      tr.innerHTML = `
-        <td data-label="SKU"><span contenteditable="true" class="sku celda-editable" list="dlSkus"></span></td>
-        <td data-label="Nombre del Producto"><span contenteditable="true" class="nombre celda-editable" list="dlNombres"></span></td>
-        <td data-label="Alias"><span contenteditable="true" class="alias celda-editable"></span></td>
-        <td data-label="Bodega"><span contenteditable="true" class="bodega celda-editable"></span></td>
-        <td style="width:1%; white-space:nowrap;"><button class="btn-mini" data-accion="agregar">＋</button></td>
-      `;
-      tbody.appendChild(tr);
-      tr.querySelector("[data-accion='agregar']").addEventListener("click", ()=>{
-        const sku   = tr.querySelector(".sku").textContent.trim();
-        const nombre= tr.querySelector(".nombre").textContent.trim();
-        const alias = tr.querySelector(".alias").textContent.trim();
-        const bodega= tr.querySelector(".bodega").textContent.trim();
-        if(!sku && !nombre){
-          alert("Debes indicar al menos el SKU o el Nombre del producto.");
-          return;
+        const tr = document.createElement("tr");
+        tr.className = "fila-nueva";
+        tr.innerHTML = `
+            <td data-label="SKU"><span contenteditable="true" class="sku celda-editable" list="dlSkus"></span></td>
+            <td data-label="Nombre del Producto"><span contenteditable="true" class="nombre celda-editable" list="dlNombres"></span></td>
+            <td data-label="Bodega"><span contenteditable="true" class="bodega celda-editable"></span></td>
+            <td style="width:1%; white-space:nowrap;"><button class="btn-mini" data-accion="agregar">＋</button></td>
+        `;
+        tbody.appendChild(tr);
+        tr.querySelector("[data-accion='agregar']").addEventListener("click", ()=>{
+            const sku   = tr.querySelector(".sku").textContent.trim();
+            const nombre= tr.querySelector(".nombre").textContent.trim();
+            const bodega= tr.querySelector(".bodega").textContent.trim();
+            if(!sku && !nombre){
+            alert("Debes indicar al menos el SKU o el Nombre del producto.");
+            return;
+            }
+            const nueva = construirFilaProducto({sku, nombre_producto:nombre, bodega}, true);
+            tr.before(nueva);
+            tr.querySelector(".sku").textContent = "";
+            tr.querySelector(".nombre").textContent = "";
+            tr.querySelector(".bodega").textContent = "";
+        });
         }
-        const nueva = construirFilaProducto({sku, nombre_producto:nombre, alias, bodega}, true);
-        tr.before(nueva);
-        // limpiar
-        tr.querySelector(".sku").textContent = "";
-        tr.querySelector(".nombre").textContent = "";
-        tr.querySelector(".alias").textContent = "";
-        tr.querySelector(".bodega").textContent = "";
-      });
-    }
 
     // Cards por cliente (caso POR CLIENTE)
     function construirCardPorCliente(bloque){
@@ -327,40 +320,38 @@
     // Guardado (bulk)
     // ============================
     function recolectarCambiosPorCliente(){
-      const cambios = [];
-      for(const t of $$$(".tabla-por-cliente")){
-        const clienteId = Number(t.dataset.clienteId);
-        for(const tr of $$$("tbody tr", t)){
-          if(tr.classList.contains("fila-nueva")) continue;
-          const sku    = tr.querySelector(".sku").textContent.trim();
-          const nombre = tr.querySelector(".nombre").textContent.trim();
-          const alias  = tr.querySelector(".alias").textContent.trim();
-          const bodega = tr.querySelector(".bodega").textContent.trim();
-          const borrar = tr.classList.contains("marcada-borrado");
-          const mapeoId= tr.dataset.mapeoId ? Number(tr.dataset.mapeoId) : null;
-          cambios.push({ cliente_id: clienteId, producto_sku: sku, producto_nombre: nombre, alias, bodega, mapeo_id: mapeoId, borrar });
+        const cambios = [];
+        for(const t of $$$(".tabla-por-cliente")){
+            const clienteId = Number(t.dataset.clienteId);
+            for(const tr of $$$("tbody tr", t)){
+            if(tr.classList.contains("fila-nueva")) continue;
+            const sku    = tr.querySelector(".sku").textContent.trim();
+            const nombre = tr.querySelector(".nombre").textContent.trim();
+            const bodega = tr.querySelector(".bodega").textContent.trim();
+            const borrar = tr.classList.contains("marcada-borrado");
+            const mapeoId= tr.dataset.mapeoId ? Number(tr.dataset.mapeoId) : null;
+            cambios.push({ cliente_id: clienteId, producto_sku: sku, producto_nombre: nombre, bodega, mapeo_id: mapeoId, borrar });
+            }
         }
-      }
-      return cambios;
-    }
+        return cambios;
+        }
 
     function recolectarCambiosPorSucursal(){
-      const cambios = [];
-      for(const t of $$$(".tabla-por-sucursal")){
-        const sucursalId = Number(t.dataset.sucursalId);
-        for(const tr of $$$("tbody tr", t)){
-          if(tr.classList.contains("fila-nueva")) continue;
-          const sku    = tr.querySelector(".sku").textContent.trim();
-          const nombre = tr.querySelector(".nombre").textContent.trim();
-          const alias  = tr.querySelector(".alias").textContent.trim();
-          const bodega = tr.querySelector(".bodega").textContent.trim();
-          const borrar = tr.classList.contains("marcada-borrado");
-          const mapeoId= tr.dataset.mapeoId ? Number(tr.dataset.mapeoId) : null;
-          cambios.push({ sucursal_id: sucursalId, producto_sku: sku, producto_nombre: nombre, alias, bodega, mapeo_id: mapeoId, borrar });
+        const cambios = [];
+        for(const t of $$$(".tabla-por-sucursal")){
+            const sucursalId = Number(t.dataset.sucursalId);
+            for(const tr of $$$("tbody tr", t)){
+            if(tr.classList.contains("fila-nueva")) continue;
+            const sku    = tr.querySelector(".sku").textContent.trim();
+            const nombre = tr.querySelector(".nombre").textContent.trim();
+            const bodega = tr.querySelector(".bodega").textContent.trim();
+            const borrar = tr.classList.contains("marcada-borrado");
+            const mapeoId= tr.dataset.mapeoId ? Number(tr.dataset.mapeoId) : null;
+            cambios.push({ sucursal_id: sucursalId, producto_sku: sku, producto_nombre: nombre, bodega, mapeo_id: mapeoId, borrar });
+            }
         }
-      }
-      return cambios;
-    }
+        return cambios;
+        }
 
     async function guardarCambios(){
       const porCli = recolectarCambiosPorCliente();
