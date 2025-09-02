@@ -1,87 +1,104 @@
 <!-- templates/productos.html -->
 <!DOCTYPE html>
 <html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Productos — Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/glass.css') }}">
-</head>
-<body>
-  <!-- Fondo -->
-  <div class="video-bg" aria-hidden="true">
-    <video autoplay loop muted playsinline>
-      <source src="https://assets.codepen.io/3364143/7btrrd.mp4" type="video/mp4" />
-    </video>
-  </div>
-
-  <div class="app">
-    <!-- Header -->
-    <div class="header">
-      <nav class="header-menu" aria-label="Secciones">
-        <a class="menu-link" href="/pedidos">Pedidos</a>
-        <a class="menu-link" href="/clientes">Clientes</a>
-        <a class="menu-link is-active" href="/productos">Productos</a>
-        <a class="menu-link" href="/reportes">Reportes</a>
-      </nav>
-      <div class="search-bar">
-        <input type="text" id="busquedaRapida" placeholder="Buscar en productos…">
-      </div>
-    </div>
-
-    <div class="wrapper">
-      <!-- Sidebar izquierda -->
-      <aside class="left-side">
-        <section class="side-wrapper">
-          <h3 class="side-title">Opciones</h3>
-          <div class="side-menu">
-            <label class="chip" style="cursor:pointer; user-select:none;">
-              <input type="checkbox" id="toggleEdicion" style="accent-color:#9fd5ff; margin-right:6px;">
-              🖊️ Modo edición
-            </label>
-            <button id="btnRefrescar" class="chip" title="Recargar datos">↻ Refrescar</button>
-          </div>
-        </section>
-        <section class="side-wrapper">
-          <h3 class="side-title">Atajos</h3>
-          <nav class="side-menu">
-            <a href="/clientes">👥 Ir a clientes</a>
-            <a href="/pedidos">📥 Ir a pedidos</a>
-          </nav>
-        </section>
-      </aside>
-
-      <!-- Contenido principal -->
-      <div class="main-container">
-        <div class="main-header">
-          <a class="menu-link main-header-link is-active" href="#">Productos</a>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Productos — Dashboard</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap"
+            rel="stylesheet">
+        <link rel="stylesheet"
+            href="{{ url_for('static', filename='css/glass.css') }}">
+    </head>
+    <body>
+        <!-- Fondo -->
+        <div class="video-bg" aria-hidden="true">
+            <video autoplay loop muted playsinline>
+                <source src="https://assets.codepen.io/3364143/7btrrd.mp4"
+                    type="video/mp4" />
+            </video>
         </div>
 
-        <div class="content-wrapper">
-          <!-- Bloque 1: productos mapeados POR CLIENTE -->
-          <section class="content-section" id="secPorCliente">
-            <h4 class="content-section-title">Bodega por producto — POR CLIENTE</h4>
-            <div id="listaPorCliente" style="display:grid; gap:16px;"></div>
-          </section>
+        <div class="app">
+            <!-- Header -->
+            <div class="header">
+                <nav class="header-menu" aria-label="Secciones">
+                    <a class="menu-link" href="/pedidos">Pedidos</a>
+                    <a class="menu-link" href="/clientes">Clientes</a>
+                    <a class="menu-link is-active"
+                        href="/productos">Productos</a>
+                    <a class="menu-link" href="/reportes">Reportes</a>
+                </nav>
+                <div class="search-bar">
+                    <input type="text" id="busquedaRapida"
+                        placeholder="Buscar en productos…">
+                </div>
+            </div>
 
-          <!-- Bloque 2: productos mapeados POR SUCURSAL Y CLIENTE -->
-          <section class="content-section" id="secPorSucursal">
-            <h4 class="content-section-title">Bodega por producto — POR SUCURSAL Y CLIENTE</h4>
-            <div id="listaPorSucursal" style="display:grid; gap:16px;"></div>
-          </section>
+            <div class="wrapper">
+                <!-- Sidebar izquierda -->
+                <aside class="left-side">
+                    <section class="side-wrapper">
+                        <h3 class="side-title">Opciones</h3>
+                        <div class="side-menu">
+                            <label class="chip"
+                                style="cursor:pointer; user-select:none;">
+                                <input type="checkbox" id="toggleEdicion"
+                                    style="accent-color:#9fd5ff; margin-right:6px;">
+                                🖊️ Modo edición
+                            </label>
+                            <button id="btnRefrescar" class="chip"
+                                title="Recargar datos">↻ Refrescar</button>
+                            <button id="btnSubirArchivos" class="chip"
+                                title="Subir CSV/Excel con SKU, nombre, bodega">⤴️
+                                Subir archivos</button>
+                        </div>
+                    </section>
+                    <section class="side-wrapper">
+                        <h3 class="side-title">Atajos</h3>
+                        <nav class="side-menu">
+                            <a href="/clientes">👥 Ir a clientes</a>
+                            <a href="/pedidos">📥 Ir a pedidos</a>
+                        </nav>
+                    </section>
+                </aside>
+
+                <!-- Contenido principal -->
+                <div class="main-container">
+                    <div class="main-header">
+                        <a class="menu-link main-header-link is-active"
+                            href="#">Productos</a>
+                    </div>
+
+                    <div class="content-wrapper">
+                        <!-- Bloque 1: productos mapeados POR CLIENTE -->
+                        <section class="content-section" id="secPorCliente">
+                            <h4 class="content-section-title">Bodega por
+                                producto — POR CLIENTE</h4>
+                            <div id="listaPorCliente"
+                                style="display:grid; gap:16px;"></div>
+                        </section>
+
+                        <!-- Bloque 2: productos mapeados POR SUCURSAL Y CLIENTE -->
+                        <section class="content-section" id="secPorSucursal">
+                            <h4 class="content-section-title">Bodega por
+                                producto — POR SUCURSAL Y CLIENTE</h4>
+                            <div id="listaPorSucursal"
+                                style="display:grid; gap:16px;"></div>
+                        </section>
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  </div>
 
-  <!-- Datalist con catálogo (SKU / Nombre) para ayudar a escribir -->
-  <datalist id="dlSkus"></datalist>
-  <datalist id="dlNombres"></datalist>
+        <!-- Datalist con catálogo (SKU / Nombre) para ayudar a escribir -->
+        <datalist id="dlSkus"></datalist>
+        <datalist id="dlNombres"></datalist>
 
-  <style>
+        <style>
     .celda-editable { outline: 1px dashed var(--border-color); border-radius: 6px; }
     .marcada-borrado { opacity:.55; filter: grayscale(.4); }
     .btn-mini {
@@ -96,7 +113,7 @@
     .subtitulo { color: var(--inactive-color); font-size: 13px; margin: 0 0 8px; }
   </style>
 
-  <script>
+        <script>
   (function(){
     // ============================
     // Utilidades generales
@@ -445,5 +462,223 @@
     inicializar();
   })();
   </script>
-</body>
+
+        <!-- ================= Modal Subir Archivos ================= -->
+        <div id="modalSubir" class="modal-backdrop" style="display:none;">
+            <div class="modal-card">
+                <div class="modal-head">
+                    <strong>Subir productos (CSV / Excel)</strong>
+                    <button class="btn-mini" id="btnCerrarModal"
+                        aria-label="Cerrar">✖</button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="campo">
+                        <label for="inputArchivo"><b>Archivo</b> (columnas:
+                            <code>SKU</code>, <code>nombre</code>,
+                            <code>bodega</code>)</label>
+                        <input id="inputArchivo" type="file"
+                            accept=".csv,.xlsx" />
+                        <small>Usa .csv (UTF-8) o .xlsx. Si vas a crear
+                            productos nuevos, <u>SKU es obligatorio</u>.</small>
+                    </div>
+
+                    <div class="campo">
+                        <label for="selectCliente"><b>Cliente</b></label>
+                        <select id="selectCliente"></select>
+                        <small id="ayudaCliente" class="ayuda"></small>
+                    </div>
+
+                    <div class="campo" id="bloqueSucursal"
+                        style="display:none;">
+                        <label for="selectSucursal"><b>Sucursal</b> (solo si el
+                            cliente usa bodega por sucursal)</label>
+                        <select id="selectSucursal"></select>
+                    </div>
+                </div>
+
+                <div class="modal-foot">
+                    <button class="btn-mini" id="btnSubirEjecutar">Subir y
+                        actualizar</button>
+                </div>
+            </div>
+        </div>
+
+        <style>
+            .modal-backdrop{
+            position: fixed; inset: 0; background: rgba(0,0,0,.45);
+            display: grid; place-items: center; z-index: 9999;
+            }
+            .modal-card{
+            width: min(720px, 96vw);
+            background: var(--content-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            box-shadow: 0 10px 30px rgba(0,0,0,.3);
+            padding: 12px 12px 14px;
+            }
+            .modal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom: 10px; }
+            .modal-body{ display:grid; gap:12px; }
+            .modal-foot{ display:flex; justify-content:flex-end; margin-top: 6px; }
+            .campo label{ display:block; margin-bottom: 6px; }
+            .campo input[type="file"], .campo select{
+            width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border-color);
+            background: var(--hover-menu-bg); color: var(--theme-color);
+            }
+            .ayuda{ color: var(--inactive-color); }
+        </style>
+
+        <script>
+        (function(){
+        // --------- Referencias del modal
+        const btnSubirArchivos = document.getElementById("btnSubirArchivos");
+        const modalSubir       = document.getElementById("modalSubir");
+        const btnCerrarModal   = document.getElementById("btnCerrarModal");
+        const inputArchivo     = document.getElementById("inputArchivo");
+        const selectCliente    = document.getElementById("selectCliente");
+        const selectSucursal   = document.getElementById("selectSucursal");
+        const bloqueSucursal   = document.getElementById("bloqueSucursal");
+        const ayudaCliente     = document.getElementById("ayudaCliente");
+        const btnSubirEjecutar = document.getElementById("btnSubirEjecutar");
+
+        let cacheClientes = [];  // [{id, nombre, ruc, usa_bodega_por_sucursal, sucursales:[{id,nombre,...}]}]
+        let mapaClientes  = {};  // id -> cliente
+        let mapaSucursales= {};  // id -> sucursal
+
+        async function cargarClientesParaModal(){
+            // Reutilizamos /api/clientes_con_sucursales (ya la tienes)
+            const r = await fetch("/api/clientes_con_sucursales");
+            if(!r.ok) throw new Error("No se pudo cargar clientes.");
+            cacheClientes = await r.json();
+            mapaClientes = {};
+            selectCliente.innerHTML = "";
+            for(const c of cacheClientes){
+            mapaClientes[c.id] = c;
+            const opt = document.createElement("option");
+            opt.value = String(c.id);
+            opt.textContent = `${c.nombre} (RUC: ${c.ruc})`;
+            selectCliente.appendChild(opt);
+            }
+            // Inicializa sucursales para el primer cliente
+            actualizarUIClienteSeleccionado();
+        }
+
+        function actualizarUIClienteSeleccionado(){
+            const id = Number(selectCliente.value);
+            const cli = mapaClientes[id];
+            if(!cli) return;
+
+            ayudaCliente.textContent = cli.usa_bodega_por_sucursal
+            ? "Este cliente usa asignación de bodega por sucursal. Debes elegir la sucursal."
+            : "Este cliente usa asignación de bodega por cliente.";
+
+            if(cli.usa_bodega_por_sucursal){
+            bloqueSucursal.style.display = "";
+            selectSucursal.innerHTML = "";
+            mapaSucursales = {};
+            for(const s of (cli.sucursales || [])){
+                mapaSucursales[s.id] = s;
+                const opt = document.createElement("option");
+                opt.value = String(s.id);
+                opt.textContent = s.nombre;
+                selectSucursal.appendChild(opt);
+            }
+            if(selectSucursal.options.length === 0){
+                // No hay sucursales activas -> avisar
+                const opt = document.createElement("option");
+                opt.value = "";
+                opt.textContent = "— Sin sucursales activas —";
+                selectSucursal.appendChild(opt);
+            }
+            }else{
+            bloqueSucursal.style.display = "none";
+            selectSucursal.innerHTML = "";
+            }
+        }
+
+        function abrirModal(){
+            modalSubir.style.display = "grid";
+            inputArchivo.value = "";
+        }
+        function cerrarModal(){
+            modalSubir.style.display = "none";
+        }
+
+        async function enviarArchivo(){
+            const archivo = inputArchivo.files?.[0];
+            if(!archivo){
+            alert("Selecciona un archivo CSV o XLSX con columnas: SKU, nombre, bodega.");
+            return;
+            }
+            const cliente_id = Number(selectCliente.value);
+            if(!cliente_id){
+            alert("Selecciona un cliente.");
+            return;
+            }
+            const cli = mapaClientes[cliente_id];
+            let sucursal_id = "";
+            if(cli?.usa_bodega_por_sucursal){
+            sucursal_id = selectSucursal.value || "";
+            if(!sucursal_id){
+                alert("Selecciona una sucursal.");
+                return;
+            }
+            }
+
+            const fd = new FormData();
+            fd.append("archivo", archivo, archivo.name);
+            fd.append("cliente_id", String(cliente_id));
+            if(sucursal_id) fd.append("sucursal_id", String(sucursal_id));
+
+            btnSubirEjecutar.disabled = true;
+            btnSubirEjecutar.textContent = "Subiendo…";
+
+            try{
+            const r = await fetch("/api/subir_productos", { method:"POST", body: fd });
+            const js = await r.json().catch(()=> ({}));
+            if(!r.ok || js.ok === false){
+                const msg = js.error || `Fallo al subir (${r.status})`;
+                throw new Error(msg);
+            }
+            // Informe
+            const { insertados=0, actualizados=0, omitidos=0, errores=[] } = js;
+            alert(
+                `Actualización completada:\n`+
+                `- Insertados: ${insertados}\n`+
+                `- Actualizados: ${actualizados}\n`+
+                `- Omitidos: ${omitidos}\n`+
+                (errores?.length ? `- Errores: ${errores.length}\nEj:\n${errores.slice(0,3).join("\n")}` : "")
+            );
+            cerrarModal();
+            // Reload de datos
+            await inicializar();
+            }catch(e){
+            console.error(e);
+            alert(e.message || "No se pudo procesar el archivo.");
+            }finally{
+            btnSubirEjecutar.disabled = false;
+            btnSubirEjecutar.textContent = "Subir y actualizar";
+            }
+        }
+
+        // Eventos
+        btnSubirArchivos?.addEventListener("click", async ()=>{
+            try{
+            await cargarClientesParaModal();
+            abrirModal();
+            }catch(e){
+            console.error(e);
+            alert(e.message || "No se pudo abrir el modal de subida.");
+            }
+        });
+        btnCerrarModal?.addEventListener("click", cerrarModal);
+        modalSubir?.addEventListener("click", (ev)=>{
+            if(ev.target === modalSubir) cerrarModal(); // cerrar al hacer click fuera
+        });
+        selectCliente?.addEventListener("change", actualizarUIClienteSeleccionado);
+        btnSubirEjecutar?.addEventListener("click", enviarArchivo);
+        })();
+        </script>
+
+    </body>
 </html>

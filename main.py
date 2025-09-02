@@ -9,6 +9,7 @@ from threading import Thread
 from flask import Flask, render_template, jsonify, abort
 from flask import request
 
+import subir_datos as subir
 import escucha_correos                  # escucha IMAP (módulo en español)
 import procesamiento_pedidos as proc    # parseo + emparejado
 import persistencia_postgresql as db
@@ -556,6 +557,45 @@ def api_detalle_pedido(pedido_id: int):
         },
         "items": items
     })
+    
+# Endpoint para subir mapeos de productos (CSV/XLSX)
+@app.route("/api/subir_productos", methods=["POST"])
+def api_subir_productos():
+    """
+    Recibe multipart/form-data:
+      - archivo: CSV o XLSX con columnas SKU, nombre, bodega
+      - cliente_id: int (obligatorio)
+      - sucursal_id: int (opcional, solo si el cliente usa bodega por sucursal)
+    """
+    f = request.files.get("archivo")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "No se adjuntó archivo."}), 400
+
+    try:
+        cliente_id = int(request.form.get("cliente_id") or "0")
+    except ValueError:
+        cliente_id = 0
+    sucursal_id = request.form.get("sucursal_id")
+    try:
+        sucursal_id = int(sucursal_id) if sucursal_id not in (None, "", "null", "undefined") else None
+    except ValueError:
+        sucursal_id = None
+
+    if not cliente_id:
+        return jsonify({"ok": False, "error": "cliente_id inválido."}), 400
+
+    # Ejecutar en módulo separado
+    try:
+        resultado = subir.cargar_y_aplicar_mapeos_productos(
+            archivo_bytes=f.read(),
+            nombre_archivo=f.filename,
+            cliente_id=cliente_id,
+            sucursal_id=sucursal_id
+        )
+        return jsonify({"ok": True, **resultado})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
 
 # ========= ARRANQUE =========
 
