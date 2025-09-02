@@ -295,6 +295,24 @@ def api_productos_mapeos():
         clientes_ps = [{"id": i, "nombre": n, "ruc": r} for (i,n,r) in cur.fetchall()]
 
         if clientes_ps:
+            # 1) Traer TODAS las sucursales activas de esos clientes
+            cur.execute("""
+                SELECT s.id, s.cliente_id, s.nombre
+                FROM sucursales s
+                WHERE s.activo = TRUE
+                AND s.cliente_id = ANY(%s)
+                ORDER BY s.cliente_id, upper(s.nombre);
+            """, ([c["id"] for c in clientes_ps],))
+            # Estructura: por_cliente[cli_id][suc_id] = { sucursal:{...}, filas:[] }
+            por_cliente: dict[int, dict[int, dict]] = {}
+            for (suc_id, cli_id, suc_nombre) in cur.fetchall():
+                por_cliente.setdefault(cli_id, {})
+                por_cliente[cli_id].setdefault(suc_id, {
+                    "sucursal": {"id": suc_id, "nombre": suc_nombre},
+                    "filas": []
+                })
+
+            # 2) Rellenar filas para las sucursales que SÍ tienen mapeos
             cur.execute("""
                 SELECT bps.id, s.id, s.cliente_id, s.nombre,
                     p.id, p.sku, p.nombre,
@@ -307,14 +325,14 @@ def api_productos_mapeos():
                 FROM bodegas_producto_por_sucursal bps
                 JOIN sucursales s ON s.id = bps.sucursal_id
                 JOIN productos p  ON p.id = bps.producto_id
+                WHERE s.activo = TRUE
+                AND s.cliente_id = ANY(%s)
                 ORDER BY s.cliente_id, upper(s.nombre), upper(p.nombre);
-            """)
-
-            # por_cliente[cli_id][suc_id] = { "sucursal": {...}, "filas": [ ... ] }
-            por_cliente: dict[int, dict[int, dict]] = {}
+            """, ([c["id"] for c in clientes_ps],))
 
             for (mapeo_id, suc_id, cli_id, suc_nombre,
                 pid, sku, pnom, alias, bodega) in cur.fetchall():
+                # Asegurar que exista el contenedor (por si no vino en el primer SELECT)
                 por_cliente.setdefault(cli_id, {})
                 por_cliente[cli_id].setdefault(suc_id, {
                     "sucursal": {"id": suc_id, "nombre": suc_nombre},
@@ -327,13 +345,14 @@ def api_productos_mapeos():
                     "alias": alias, "bodega": bodega
                 })
 
-            # Ensamblar bloques por cliente (cada uno con varias sucursales)
+            # 3) Ensamblar respuesta: cada cliente con todos sus bloques de sucursales
             for cli in clientes_ps:
                 bloques = list(por_cliente.get(cli["id"], {}).values())
                 result["por_sucursal"].append({
                     "cliente": cli,
-                    "bloques": bloques
+                    "bloques": bloques  # puede estar vacío -> el front genera tabla vacía + fila nueva en edición
                 })
+
 
 
     return jsonify(result)

@@ -76,7 +76,7 @@ body {
 .header {
   display: flex;
   align-items: center;
-  height: 58px;
+  height: auto;
   border-bottom: 1px solid var(--border-color);
   padding: 0 24px;
   gap: 18px;
@@ -189,7 +189,7 @@ body {
 .main-header {
   display: flex;
   align-items: center;
-  height: 58px;
+  height: auto;
   border-bottom: 1px solid var(--border-color);
   padding: 0 24px;
   gap: 14px;
