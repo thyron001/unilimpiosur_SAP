@@ -1,5 +1,7 @@
 # escucha_correos.py
-# Escucha IMAP; cuando llega un correo con PDF, lo parsea, imprime resumen y guarda en PostgreSQL.
+# Escucha IMAP; cuando llega un correo con PDF, lo parsea, imprime resumen
+# y guarda en PostgreSQL. Ahora usa el emparejador por NOMBRE (unidad+desc)
+# contra la base de datos (sin CSV ni alias de productos).
 
 import os
 import ssl
@@ -13,7 +15,7 @@ from email.header import decode_header, make_header
 # --- módulos del proyecto ---
 from procesamiento_pedidos import (
     extraer_filas_pdf,
-    emparejar_filas_con_catalogo,
+    emparejar_filas_con_bd,         # <- NUEVO: emparejador por nombre (BD)
     imprimir_filas,
     imprimir_filas_emparejadas,
     extraer_sucursal_y_totales,
@@ -22,11 +24,12 @@ from procesamiento_pedidos import (
 from persistencia_postgresql import guardar_pedido
 
 # --- Configuración (desde variables de entorno) ---
-IMAP_SERVIDOR = os.getenv("IMAP_HOST", "imap.gmail.com")
-IMAP_USUARIO  = os.getenv("IMAP_USER")
-IMAP_CLAVE    = os.getenv("IMAP_PASS")
-IMAP_BUZON    = os.getenv("IMAP_MAILBOX", "INBOX")
-TIEMPO_IDLE   = int(os.getenv("IMAP_IDLE_SECS", "1740"))  # 29 min por defecto
+IMAP_SERVIDOR   = os.getenv("IMAP_HOST", "imap.gmail.com")
+IMAP_USUARIO    = os.getenv("IMAP_USER")
+IMAP_CLAVE      = os.getenv("IMAP_PASS")
+IMAP_BUZON      = os.getenv("IMAP_MAILBOX", "INBOX")
+TIEMPO_IDLE     = int(os.getenv("IMAP_IDLE_SECS", "1740"))  # 29 min por defecto
+DEFAULT_CLIENTE = os.getenv("DEFAULT_CLIENTE", "Roldan")    # cliente por defecto para bodegas/emparejado
 
 # ---------- Utilidades ----------
 def decodificar(valor):
@@ -74,15 +77,20 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
     if not nuevos_uids:
         return ultimo_uid
 
+    # Traemos ENVELOPE y RFC822 (cuerpo crudo)
     respuesta = cliente.fetch(nuevos_uids, ["ENVELOPE", "RFC822"])
 
     for uid in sorted(nuevos_uids):
         sobre = respuesta[uid].get(b"ENVELOPE")
-        crudo = respuesta[uid].get(b"RFCENUM", b"") if False else respuesta[uid].get(b"RFC822", b"")  # compat
+        crudo = respuesta[uid].get(b"RFC822", b"")
         if not sobre:
             continue
 
-        asunto = decodificar(sobre.subject.decode() if isinstance(sobre.subject, bytes) else sobre.subject)
+        # Asunto
+        asunto_raw = sobre.subject
+        asunto = decodificar(asunto_raw.decode() if isinstance(asunto_raw, bytes) else asunto_raw)
+
+        # Remitente formateado
         remitente = ""
         if sobre.from_:
             frm = sobre.from_[0]
@@ -97,9 +105,9 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
 
         meta = {
             "uid": int(uid),
-            "fecha": sobre.date,      # datetime | None
-            "asunto": asunto,         # str
-            "remitente": remitente,   # str
+            "fecha": sobre.date or datetime.now(),  # datetime | None -> fallback ahora
+            "asunto": asunto,                       # str
+            "remitente": remitente,                 # str
         }
 
         if bytes_pdf:
@@ -155,22 +163,27 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
     print(f"Asunto: {meta.get('asunto')} | Remitente: {meta.get('remitente')} | UID: {meta.get('uid')}")
     print(f"Adjunto: {nombre_pdf}")
 
-    # 1) Filas de productos
+    # 1) Filas de productos desde PDF
     filas = extraer_filas_pdf(bytes_pdf)
     imprimir_filas(filas)
 
-    # 2) Emparejado con catálogo
-    filas_enriquecidas = emparejar_filas_con_catalogo(filas)
-    imprimir_filas_emparejadas(filas_enriquecidas)
-
-    # 3) Sucursal y totales
+    # 2) Sucursal y totales (necesario para mapear bodegas por sucursal si aplica)
     resumen = extraer_sucursal_y_totales(bytes_pdf)
     imprimir_resumen_pedido(resumen)
 
-    # 4) Guardar en PostgreSQL (sin calcular TOTAL)
+    # 3) Emparejado contra BD por NOMBRE (unidad+descripción), cliente configurable
+    filas_enriquecidas, suc = emparejar_filas_con_bd(
+        filas,
+        cliente_nombre=DEFAULT_CLIENTE,
+        sucursal_alias=resumen.get("sucursal")
+    )
+    imprimir_filas_emparejadas(filas_enriquecidas)
+
+    # 4) Guardar en PostgreSQL (sin recalcular TOTAL)
+    sucursal_txt = (suc.get("nombre") if suc else None) or (resumen.get("sucursal") or "SUCURSAL DESCONOCIDA")
     pedido = {
         "fecha": meta.get("fecha") or datetime.now(),
-        "sucursal": resumen.get("sucursal"),
+        "sucursal": sucursal_txt,
         "subtotal_bruto": resumen.get("subtotal_bruto"),
         "descuento": resumen.get("descuento"),
         "subtotal_neto": resumen.get("subtotal_neto"),

@@ -4,7 +4,8 @@
 #
 # Requisitos:
 #   - Variables de entorno de PostgreSQL (PGHOST, PGUSER, PGPASSWORD, etc.)
-#   - Catalogo CSV (ruta en env PRODUCT_CSV o "productos_roldan.csv" por defecto)
+#   - NO usa catálogos CSV para emparejar (solo BD). La opción --csv es opcional
+#     y sirve para exportar un CSV de auditoría con las asignaciones resultantes.
 
 from __future__ import annotations
 
@@ -14,12 +15,11 @@ from datetime import datetime
 
 from procesamiento_pedidos import (
     extraer_filas_pdf,
-    emparejar_filas_con_catalogo,
+    emparejar_filas_con_bd,          # <- emparejador por NOMBRE + unidad (BD)
     imprimir_filas,
     imprimir_filas_emparejadas,
     extraer_sucursal_y_totales,
     imprimir_resumen_pedido,
-    guardar_asignaciones_csv,
 )
 from persistencia_postgresql import guardar_pedido
 
@@ -137,7 +137,8 @@ def generar_archivo_drf1(ruta_salida: str | Path,
 
     for it in items or []:
         sku = _tomar_campo_item(it, ["sku", "SKU", "itemcode", "ItemCode", "codigo", "Código"], default="")
-        qty = _tomar_campo_item(it, ["cantidad", "Cantidad", "quantity", "Quantity"], default=0)
+        # Incluir 'cant' (clave que usamos al extraer del PDF)
+        qty = _tomar_campo_item(it, ["cantidad", "Cantidad", "quantity", "Quantity", "cant", "Cant"], default=0)
         whs = _tomar_campo_item(it, ["bodega", "Bodega", "whscode", "WhsCode"], default=whscode_default)
 
         sku = str(sku or "").strip()
@@ -219,19 +220,25 @@ def main():
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="No guarda en la base de datos; solo imprime resultados.",
+        help="No guarda en la base de datos; solo imprime resultados y genera ODRF/DRF1.",
     )
     parser.add_argument(
         "--csv",
         type=str,
         default=None,
-        help="Ruta opcional para exportar un CSV de las asignaciones (SKU/bodega).",
+        help="Ruta opcional para exportar un CSV de auditoría de las asignaciones (SKU/Bodega).",
     )
     parser.add_argument(
         "--out",
         type=str,
         default=".",
         help="Carpeta donde guardar ODRF.txt y DRF1.txt (por defecto, carpeta actual).",
+    )
+    parser.add_argument(
+        "--cliente",
+        type=str,
+        default="Roldan",
+        help="Nombre del cliente a usar para emparejar y bodegas (default: Roldan).",
     )
 
     args = parser.parse_args()
@@ -247,16 +254,20 @@ def main():
     filas = extraer_filas_pdf(pdf_bytes)
     imprimir_filas(filas)
 
-    print("\n========== 2) EMPAREJADO CON CATÁLOGO (SKU/BODEGA) ==========")
-    filas_enriquecidas = emparejar_filas_con_catalogo(filas)
+    print("\n========== 2) SUCURSAL Y TOTALES (DESDE PDF) ==========")
+    resumen = extraer_sucursal_y_totales(pdf_bytes)
+    imprimir_resumen_pedido(resumen)
+
+    print("\n========== 3) EMPAREJADO POR NOMBRE (BD) ==========")
+    filas_enriquecidas, suc = emparejar_filas_con_bd(
+        filas,
+        cliente_nombre=args.cliente,
+        sucursal_alias=resumen.get("sucursal")
+    )
     imprimir_filas_emparejadas(filas_enriquecidas)
 
     if args.csv:
         guardar_asignaciones_csv(filas_enriquecidas, args.csv)
-
-    print("\n========== 3) SUCURSAL Y TOTALES ==========")
-    resumen = extraer_sucursal_y_totales(pdf_bytes)
-    imprimir_resumen_pedido(resumen)
 
     # Preparar payload para persistencia
     if args.fecha:
@@ -268,9 +279,12 @@ def main():
     else:
         fecha_obj = datetime.now()
 
+    # Si encontramos la sucursal en BD, usamos su NOMBRE de sistema; si no, el texto del PDF
+    sucursal_txt = (suc.get("nombre") if suc else None) or (resumen.get("sucursal") or "SUCURSAL DESCONOCIDA")
+
     pedido = {
         "fecha": fecha_obj,
-        "sucursal": resumen.get("sucursal"),
+        "sucursal": sucursal_txt,
         "subtotal_bruto": resumen.get("subtotal_bruto"),
         "descuento": resumen.get("descuento"),
         "subtotal_neto": resumen.get("subtotal_neto"),
@@ -279,11 +293,8 @@ def main():
         "total": resumen.get("total"),
     }
 
-    sucursal_txt = resumen.get("sucursal") or "SUCURSAL DESCONOCIDA"
-
-    # ======== Generación de TXT para pruebas ========
+    # ======== DRY-RUN: Generar TXT sin grabar en BD ========
     if args.dry_run:
-        # DocNum/DocEntry provisional a partir de fecha-hora (YYYYMMDDHHMMSS)
         docnum_provisional = int(datetime.now().strftime("%Y%m%d%H%M%S"))
         print("\n🧪 DRY-RUN activado: no se guardará en la base de datos.")
         print(f"→ Se usarán archivos de salida en: {args.out}")

@@ -1,10 +1,6 @@
 # procesamiento_pedidos.py
 # Parseo del PDF (filas de productos), sucursal y totales; normalización,
-# emparejado con BASE DE DATOS (alias por cliente/sucursal) y utilidades.
-#
-# NOTA: Se eliminó el emparejado contra CSV. Para compatibilidad con código
-#       existente, se deja un "shim" emparejar_filas_con_catalogo() que delega
-#       a la base de datos con cliente fijo (por ahora "Roldan").
+# emparejado por NOMBRE con BASE DE DATOS (sin alias de productos) y utilidades.
 
 from __future__ import annotations
 
@@ -13,16 +9,24 @@ import re
 import unicodedata
 from decimal import Decimal
 from typing import Any, Dict, List, Tuple
+import difflib
 
 import pdfplumber
 import persistencia_postgresql as _pg  # obtener_conexion()
+
+# ==============================
+# Parámetros de emparejado
+# ==============================
+
+UMBRAL_SIMILITUD = 0.58  # si el score total supera este valor, se considera match
+UMBRAL_HARD_SEQ  = 0.92  # aceptación dura por similitud de secuencia (SequenceMatcher)
 
 # ==============================
 # Utilidades de normalización
 # ==============================
 
 def normalizar_texto(s: str | None) -> str:
-    """Quita tildes, pasa a minúsculas, limpia espacios redundantes."""
+    """Quita tildes, pasa a minúsculas y limpia espacios redundantes."""
     if not s:
         return ""
     s = str(s).strip().lower()
@@ -33,12 +37,11 @@ def normalizar_texto(s: str | None) -> str:
 
 def to_decimal_es(x: str | float | int | None) -> Decimal | None:
     """Convierte '1.234,56' o '1234.56' a Decimal. None si no aplica."""
-    if x is None: 
+    if x is None:
         return None
     s = str(x).strip()
     if not s or s == "-":
         return None
-    # Si hay coma y punto, asumir formato ES: miles con punto, decimales con coma
     if "," in s and "." in s:
         s = s.replace(".", "").replace(",", ".")
     else:
@@ -112,7 +115,6 @@ def extraer_filas_pdf(pdf_en_bytes: bytes) -> List[Dict[str, Any]]:
                 if not unidad_en_espera:
                     token0 = (linea.split() or [""])[0]
                     if token0 in PALABRAS_UNIDAD:
-                        # guardar y esperar que la siguiente línea sea la fila sin 'uni'
                         unidad_en_espera = token0
                         continue
 
@@ -156,21 +158,18 @@ def _texto_completo(pdf_en_bytes: bytes) -> str:
     return "\n".join(partes)
 
 def _buscar_valor(titulo_regex: str, texto: str, max_saltos: int = 2) -> str | None:
-    """
-    Busca un valor numérico tipo 1.234,56 AFTER un título "Subtotal", "IVA 0%", "TOTAL"...
-    """
     patron = re.compile(
         rf"{titulo_regex}.*?(?:\$|\s)\s*([0-9][0-9\.\,]*|-)", re.IGNORECASE | re.DOTALL
     )
     m = patron.search(texto)
     if not m:
-        # búsqueda tolerante a saltos de línea
         titulo = re.compile(titulo_regex, re.IGNORECASE)
-        for i, linea in enumerate(texto.splitlines()):
+        lineas = texto.splitlines()
+        for i, linea in enumerate(lineas):
             if titulo.search(linea):
                 for j in range(1, max_saltos + 1):
-                    if i + j < len(texto.splitlines()):
-                        x = re.search(r"([0-9][0-9\.\,]*|-)", texto.splitlines()[i + j])
+                    if i + j < len(lineas):
+                        x = re.search(r"([0-9][0-9\.\,]*|-)", lineas[i + j])
                         if x:
                             return x.group(1)
         return None
@@ -199,7 +198,6 @@ def extraer_sucursal_y_totales(pdf_en_bytes: bytes) -> Dict[str, Any]:
             break
 
     # Totales
-    # Algunos PDFs traen dos "Subtotal": bruto y neto
     subtotales_raw = re.findall(
         r"Subtotal(?:[^\S\r\n]|\n){0,2}\$?\s*([0-9][0-9\.\,]*|-)",
         texto,
@@ -241,11 +239,11 @@ def imprimir_resumen_pedido(res: Dict[str, Any]) -> None:
     print()
 
 # ==============================
-# Emparejado contra la BASE DE DATOS
+# Emparejado contra la BASE DE DATOS por NOMBRE
 # ==============================
 
 def solapamiento_tokens(a: str, b: str) -> float:
-    """Métrica sencilla de solapamiento (0..1) por tokens."""
+    """Métrica Jaccard (0..1) sobre conjuntos de tokens normalizados."""
     ta = set(normalizar_texto(a).split())
     tb = set(normalizar_texto(b).split())
     if not ta or not tb:
@@ -302,28 +300,82 @@ def _resolver_sucursal_por_alias(cliente_id: int, alias_pdf: str | None) -> Dict
 
     return mejor or {}
 
-def _cargar_alias_productos_cliente(cliente_id: int) -> Dict[str, List[Dict[str, Any]]]:
+# ---------- Catálogo global y similitud de nombres ----------
+
+def _cargar_catalogo_productos() -> List[Dict[str, Any]]:
     """
-    Devuelve índice: alias_norm -> [ {producto_id, sku, nombre, alias_original}, ... ]
+    Carga catálogo global de productos activos.
+    Devuelve: lista de dicts {id, sku, nombre, nombre_norm, tokens}
     """
-    idx: Dict[str, List[Dict[str, Any]]] = {}
+    catalogo: List[Dict[str, Any]] = []
     with _pg.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT p.id, p.sku, p.nombre, ap.alias
-            FROM alias_productos ap
-            JOIN productos p ON p.id = ap.producto_id
-            WHERE ap.cliente_id = %s
-            ORDER BY ap.id ASC;
-        """, (cliente_id,))
-        for (pid, sku, nombre, alias) in cur.fetchall():
-            clave = normalizar_texto(alias or "")
-            idx.setdefault(clave, []).append({
-                "producto_id": int(pid),
+            SELECT id, sku, nombre
+            FROM productos
+            WHERE activo = TRUE
+        """)
+        for pid, sku, nombre in cur.fetchall():
+            nom = nombre or ""
+            nom_norm = normalizar_texto(nom)
+            catalogo.append({
+                "id": int(pid),
                 "sku": sku or "",
-                "nombre": nombre or "",
-                "alias_original": alias or ""
+                "nombre": nom,
+                "nombre_norm": nom_norm,
+                "tokens": set(nom_norm.split())
             })
-    return idx
+    return catalogo
+
+def _puntaje_similitud(q_norm: str, cand_norm: str, cand_tokens: set[str]) -> float:
+    """
+    Score combinado:
+      0.6 * Jaccard(tokens) + 0.4 * SequenceMatcher
+    Con pequeño bonus si hay prefijo/sufijo casi exacto.
+    """
+    tokens_q = set(q_norm.split())
+    if not tokens_q or not cand_tokens:
+        jacc = 0.0
+    else:
+        inter = len(tokens_q & cand_tokens)
+        union = len(tokens_q | cand_tokens)
+        jacc = inter / union if union else 0.0
+
+    seq = difflib.SequenceMatcher(None, q_norm, cand_norm).ratio()
+
+    score = 0.6 * jacc + 0.4 * seq
+
+    # bonus por prefijo/sufijo cercano
+    if cand_norm.startswith(q_norm) or q_norm.startswith(cand_norm):
+        score += 0.03
+    if cand_norm.endswith(q_norm) or q_norm.endswith(cand_norm):
+        score += 0.02
+
+    return min(score, 1.0)
+
+def _buscar_producto_por_nombre_similar(catalogo: List[Dict[str, Any]], texto_pdf: str) -> Tuple[Dict[str, Any] | None, float]:
+    """
+    Busca el producto cuyo NOMBRE es más parecido al texto del PDF (unidad + desc).
+    Devuelve (producto_dict | None, score)
+    """
+    q_norm = normalizar_texto(texto_pdf or "")
+    if not q_norm:
+        return None, 0.0
+
+    mejor, mejor_sc = None, -1.0
+    for p in catalogo:
+        sc = _puntaje_similitud(q_norm, p["nombre_norm"], p["tokens"])
+        # aceptación dura
+        if sc < UMBRAL_SIMILITUD and difflib.SequenceMatcher(None, q_norm, p["nombre_norm"]).ratio() >= UMBRAL_HARD_SEQ:
+            sc = UMBRAL_SIMILITUD + 0.001
+        if sc > mejor_sc:
+            mejor_sc = sc
+            mejor = p
+
+    if mejor and mejor_sc >= UMBRAL_SIMILITUD:
+        return mejor, mejor_sc
+    return None, mejor_sc
+
+# ---------- Mapas de bodega ----------
 
 def _cargar_bodegas_por_cliente(cliente_id: int) -> Dict[int, str | None]:
     """producto_id -> bodega (para clientes que NO usan bodega por sucursal)"""
@@ -353,29 +405,7 @@ def _cargar_bodegas_por_sucursal(sucursal_id: int) -> Dict[int, str | None]:
             mapa[int(pid)] = bod or None
     return mapa
 
-def _buscar_en_alias(alias_idx: Dict[str, List[Dict[str, Any]]], texto_pdf: str) -> Tuple[Dict[str, Any] | None, str]:
-    """
-    Intenta match por:
-    1) Igualdad exacta normalizada
-    2) Contención (A in B o B in A) con mejor solapamiento
-    Devuelve (producto_dict, tipo)
-    """
-    q = normalizar_texto(texto_pdf or "")
-    if not q:
-        return None, "sin_match"
-    # Exacto
-    if q in alias_idx and alias_idx[q]:
-        return alias_idx[q][0], "exacto"
-
-    # Contiene: tomamos el alias con mayor solapamiento de tokens
-    mejor, max_sol = None, -1.0
-    for clave, lst in alias_idx.items():
-        if q in clave or clave in q:
-            sol = solapamiento_tokens(q, clave)
-            if sol > max_sol:
-                max_sol = sol
-                mejor = lst[0]
-    return (mejor, "contiene") if mejor else (None, "sin_match")
+# ---------- Emparejador principal por NOMBRE ----------
 
 def emparejar_filas_con_bd(
     filas: List[Dict[str, Any]],
@@ -383,16 +413,19 @@ def emparejar_filas_con_bd(
     sucursal_alias: str | None = None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
-    Enriquecer filas contra la BD del cliente:
-      - Usar alias_productos para asignar SKU
-      - Tomar bodega desde bodegas_producto_por_cliente o ..._por_sucursal según el cliente
-      - Resolver sucursal del pedido desde alias de PDF -> nombre del sistema
+    Enriquecer filas contra la BD:
+      - Construye la consulta como: "UNIDAD + DESCRIPCIÓN" del PDF
+      - Compara contra NOMBRE del producto en BD mediante similitud
+      - Toma bodega desde tablas de bodega (por cliente o por sucursal)
+      - Resuelve sucursal del pedido desde alias del PDF -> nombre del sistema
 
     Devuelve (filas_enriquecidas, sucursal_dict)
     """
     cliente_id, usa_por_sucursal = _buscar_cliente_por_nombre(cliente_nombre)
     suc = _resolver_sucursal_por_alias(cliente_id, sucursal_alias)
-    alias_idx = _cargar_alias_productos_cliente(cliente_id)
+
+    # Catálogo global (nombres de productos)
+    catalogo = _cargar_catalogo_productos()
 
     # Bodegas según modalidad
     mapa_bod_cli: Dict[int, str | None] = {}
@@ -404,39 +437,32 @@ def emparejar_filas_con_bd(
 
     enriquecidas: List[Dict[str, Any]] = []
     for f in filas:
-        prod, tipo = _buscar_en_alias(alias_idx, f.get("desc", ""))
+        uni = (f.get("uni") or "").strip()
+        desc = (f.get("desc") or "").strip()
+        consulta = (f"{uni} {desc}").strip() if uni else desc
+
+        prod, score = _buscar_producto_por_nombre_similar(catalogo, consulta)
         if prod:
-            pid = prod["producto_id"]
+            pid = prod["id"]
             sku = prod["sku"]
             bodega = (mapa_bod_suc.get(pid) if mapa_bod_suc else mapa_bod_cli.get(pid))
             enriquecidas.append({
                 **f,
                 "sku": sku,
                 "bodega": bodega,
-                "tipo_emparejado": tipo
+                "tipo_emparejado": "nombre_similaridad",
+                "score_nombre": round(float(score), 4)
             })
         else:
             enriquecidas.append({
                 **f,
                 "sku": None,
                 "bodega": None,
-                "tipo_emparejado": "sin_match"
+                "tipo_emparejado": "sin_match",
+                "score_nombre": round(float(score or 0.0), 4)
             })
 
     return enriquecidas, (suc or {})
-
-# ==============================
-# Compatibilidad con código antiguo (CSV)
-# ==============================
-
-def emparejar_filas_con_catalogo(filas: List[Dict[str, Any]], ruta_csv: str | None = None) -> List[Dict[str, Any]]:
-    """
-    Compatibilidad: antes emparejábamos con CSV.
-    Ahora delegamos al emparejado con BD (cliente fijo "Roldan").
-    Devuelve solo la lista de filas enriquecidas.
-    """
-    enriquecidas, _ = emparejar_filas_con_bd(filas, cliente_nombre="Roldan", sucursal_alias=None)
-    return enriquecidas
 
 # ==============================
 # Impresión de filas enriquecidas
@@ -447,32 +473,13 @@ def imprimir_filas_emparejadas(filas_enriquecidas: List[Dict[str, Any]]) -> None
         print("⚠️ No hay filas emparejadas.")
         return
     print("========== 2) FILAS ENRIQUECIDAS ==========")
-    print(f"{'Uni.':<8} | {'Descripción':<60} | {'Cant':>4} | {'SKU':<10} | {'Bod':>3} | {'Match':<10}")
-    print("-" * 110)
+    print(f"{'Uni.':<8} | {'Descripción':<58} | {'Cant':>4} | {'SKU':<10} | {'Bod':>3} | {'Score':>5} | {'Match':<16}")
+    print("-" * 120)
     for f in filas_enriquecidas:
         desc = (f.get("desc") or "").strip()
         cant = f.get("cant") or ""
         sku  = f.get("sku") or ""
         bod  = f.get("bodega") or ""
         tip  = f.get("tipo_emparejado") or ""
-        print(f"{(f.get('uni') or ''):<8} | {desc[:60]:<60} | {cant:>4} | {sku:<10} | {str(bod):>3} | {tip:<10}")
-
-# ==============================
-# CSV opcional para auditoría (NO usa catálogo CSV)
-# ==============================
-
-def guardar_asignaciones_csv(filas_enriquecidas: List[Dict[str, Any]], ruta_salida: str = "pedido_asignado.csv") -> None:
-    """
-    Guarda un CSV con las asignaciones resultantes (para auditoría).
-    No usa ningún catálogo CSV; solo vuelca lo enriquecido.
-    Columnas: uni, desc, cant, puni, ptotal, sku, bodega, tipo_emparejado
-    """
-    import csv
-    columnas = ["uni","desc","cant","puni","ptotal","sku","bodega","tipo_emparejado"]
-    with open(ruta_salida, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=columnas)
-        w.writeheader()
-        for r in filas_enriquecidas:
-            fila = {k: r.get(k) for k in columnas}
-            w.writerow(fila)
-    print(f"💾 Guardado CSV: {ruta_salida}")
+        sc   = f.get("score_nombre")
+        print(f"{(f.get('uni') or ''):<8} | {desc[:58]:<58} | {cant:>4} | {sku:<10} | {str(bod):>3} | {str(sc or ''):>5} | {tip:<16}")

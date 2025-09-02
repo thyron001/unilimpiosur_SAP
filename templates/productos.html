@@ -111,6 +111,7 @@
     }
 
     function configurarCeldaEditable(td, habilitar){
+      if(!td) return;
       if(habilitar){
         td.contentEditable = "true";
         td.classList.add("celda-editable");
@@ -382,29 +383,30 @@
     }
 
     function activarEdicionUI(habilitar){
-      // Alternar celdas + fila nueva
-      for(const tabla of $$$(".tabla-por-cliente, .tabla-por-sucursal")){
-        const tbody = tabla.tBodies[0];
-        for(const tr of $$$("tr", tbody)){
-          if(tr.classList.contains("fila-nueva")) continue;
-          ["sku","nombre","alias","bodega"].forEach(cls=>{
-            const sp = tr.querySelector("."+cls);
-            configurarCeldaEditable(sp, habilitar);
-            if(habilitar && (cls==="sku"||cls==="nombre")){
-              sp.setAttribute("list", cls==="sku" ? "dlSkus" : "dlNombres");
-            } else {
-              sp.removeAttribute("list");
+        // Alternar celdas + fila nueva
+        for(const tabla of $$$(".tabla-por-cliente, .tabla-por-sucursal")){
+            const tbody = tabla.tBodies[0];
+            for(const tr of $$$("tr", tbody)){
+            if(tr.classList.contains("fila-nueva")) continue;
+            ["sku","nombre","bodega"].forEach(cls=>{
+                const sp = tr.querySelector("."+cls);
+                if(!sp) return; // por si acaso
+                configurarCeldaEditable(sp, habilitar);
+                if(habilitar && (cls==="sku"||cls==="nombre")){
+                sp.setAttribute("list", cls==="sku" ? "dlSkus" : "dlNombres");
+                } else {
+                sp.removeAttribute("list");
+                }
+            });
             }
-          });
+            const existe = tbody.querySelector(".fila-nueva");
+            if(habilitar){
+            if(!existe) agregarFilaNueva(tbody);
+            }else{
+            if(existe) existe.remove();
+            }
         }
-        const existe = tbody.querySelector(".fila-nueva");
-        if(habilitar){
-          if(!existe) agregarFilaNueva(tbody);
-        }else{
-          if(existe) existe.remove();
         }
-      }
-    }
 
     // ============================
     // Inicialización
