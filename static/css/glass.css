@@ -43,12 +43,27 @@ body {
   padding: 2rem;
 }
 
-/* Fondo de video */
-.video-bg {
-  position: fixed;
-  inset: 0;
-  z-index: -2;
+
+
+body {
+	background: linear-gradient(-45deg, #84b454, #245398, #4c99d1);
+	background-size: 400% 400%;
+	animation: gradient 60s ease infinite;
+	height: 100vh;
 }
+
+@keyframes gradient {
+	0% {
+		background-position: 0% 50%;
+	}
+	50% {
+		background-position: 100% 50%;
+	}
+	100% {
+		background-position: 0% 50%;
+	}
+}
+
 
 .video-bg video {
   width: 100%;
