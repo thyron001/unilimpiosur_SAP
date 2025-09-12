@@ -47,6 +47,8 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
       fecha (datetime), sucursal (str)
     cliente_id: ID del cliente (opcional)
     sucursal_id: ID de la sucursal (opcional)
+    
+    Retorna: (pedido_id, numero_pedido, estado)
     """
     # Normalizar fecha
     fecha = pedido.get("fecha")
@@ -60,6 +62,17 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
 
 
     sucursal = (pedido.get("sucursal") or "").strip() or None
+
+    # Detectar errores en productos
+    tiene_errores = False
+    for item in items:
+        # Un producto tiene error si no tiene SKU o no tiene bodega
+        if not item.get("sku") or not item.get("bodega"):
+            tiene_errores = True
+            break
+    
+    # Determinar estado del pedido
+    estado = "con_errores" if tiene_errores else "por_procesar"
 
     with obtener_conexion() as conn:
         with conn.cursor() as cur:
@@ -89,7 +102,7 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
                   (%s,    %s,       %s,     %s,         %s,          %s)
                 RETURNING id;
                 """,
-                (fecha, sucursal, 'por_procesar', cliente_id, sucursal_id, siguiente_numero)
+                (fecha, sucursal, estado, cliente_id, sucursal_id, siguiente_numero)
             )
             pedido_id = cur.fetchone()[0]
             numero_pedido = siguiente_numero
@@ -118,4 +131,4 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
     print(f"   → ID={pedido_id} | N° orden llegada={numero_pedido} | Ítems={len(items)}")
     print(f"   → Sucursal:        {sucursal or '-'}")
 
-    return pedido_id, numero_pedido
+    return pedido_id, numero_pedido, estado

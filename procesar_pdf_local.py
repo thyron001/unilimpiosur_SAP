@@ -297,8 +297,8 @@ def main():
 
     print("\n========== 4) GUARDANDO EN POSTGRESQL ==========")
     sucursal_id = suc.get("id") if suc else None
-    pedido_id, numero_pedido = guardar_pedido(pedido, filas_enriquecidas, cliente_id, sucursal_id)
-    print(f"✅ Guardado: pedido_id={pedido_id}, numero_pedido={numero_pedido}")
+    pedido_id, numero_pedido, estado = guardar_pedido(pedido, filas_enriquecidas, cliente_id, sucursal_id)
+    print(f"✅ Guardado: pedido_id={pedido_id}, numero_pedido={numero_pedido}, estado={estado}")
     print(f"   → Cliente ID: {cliente_id}")
     print(f"   → Sucursal ID: {sucursal_id}")
 

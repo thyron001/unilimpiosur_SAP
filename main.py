@@ -119,7 +119,8 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     # 5) Guardar en PostgreSQL (usa tu función existente)
     try:
         sucursal_id = suc.get("id") if suc else None
-        db.guardar_pedido(pedido, filas_enriquecidas, cliente_id, sucursal_id)
+        pedido_id, numero_pedido, estado = db.guardar_pedido(pedido, filas_enriquecidas, cliente_id, sucursal_id)
+        print(f"✅ Pedido guardado: ID={pedido_id}, N°={numero_pedido}, Estado={estado}")
     except Exception as e:
         print(f"❌ No se guardó el pedido: {e}")
         return
@@ -720,6 +721,7 @@ def api_detalle_pedido(pedido_id: int):
                 "cantidad": int(c or 0),
                 "precio_unitario": float(pu) if pu is not None else None,
                 "precio_total":   float(pt) if pt is not None else None,
+                "tiene_error": not s or not b,  # Error si no tiene SKU o bodega
             }
             for (d, s, b, c, pu, pt) in cur.fetchall()
         ]

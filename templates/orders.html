@@ -168,6 +168,18 @@ Sección 2: CSS  (static/css/glass.css)
           </div>
         </div>
 
+        <!-- Recuadro de verificación para pedidos con errores -->
+        <div id="verificacion-container" class="glass-modal-verificacion" style="display: none;">
+          <div class="glass-modal-verificacion-content">
+            <h3>Verificación de Errores</h3>
+            <p>Este pedido contiene productos que no pudieron ser emparejados correctamente. Por favor, verifica y corrige los errores antes de procesar.</p>
+            <button id="btn-verificar" class="glass-btn glass-btn-primary">
+              <i class="icon">✓</i>
+              Verificar
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -223,6 +235,38 @@ Sección 2: CSS  (static/css/glass.css)
       display: flex;
       align-items: center;
       justify-content: center;
+    }
+
+    /* Estilos para verificación de errores */
+    .glass-modal-verificacion {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+
+    .glass-modal-verificacion-content h3 {
+      color: #ff6b6b;
+      margin: 0 0 10px 0;
+      font-size: 1.2em;
+    }
+
+    .glass-modal-verificacion-content p {
+      color: rgba(255, 255, 255, 0.8);
+      margin: 0 0 15px 0;
+      line-height: 1.5;
+    }
+
+    /* Estilos para filas con errores */
+    .item-error {
+      background: rgba(255, 107, 107, 0.1) !important;
+      border-left: 3px solid #ff6b6b !important;
+    }
+
+    .item-error td {
+      color: #ff6b6b !important;
     }
 
     .btn-flotante-sap:hover {
@@ -288,6 +332,10 @@ Sección 2: CSS  (static/css/glass.css)
         tb.innerHTML = "";
         for(const it of (data.items || [])){
           const tr = document.createElement("tr");
+          // Agregar clase de error si el producto tiene error
+          if (it.tiene_error) {
+            tr.classList.add("item-error");
+          }
           tr.innerHTML = `
             <td class="mono">${it.sku || ""}</td>
             <td>${(it.descripcion || "").replace(/</g,"&lt;")}</td>
@@ -295,6 +343,15 @@ Sección 2: CSS  (static/css/glass.css)
             <td class="num mono">${fmtMoney(it.precio_unitario)}</td>
           `;
           tb.appendChild(tr);
+        }
+
+        // Mostrar recuadro de verificación si hay errores
+        const tieneErrores = data.items && data.items.some(item => item.tiene_error);
+        const verificacionContainer = $$("#verificacion-container");
+        if (tieneErrores) {
+          verificacionContainer.style.display = "block";
+        } else {
+          verificacionContainer.style.display = "none";
         }
 
       }

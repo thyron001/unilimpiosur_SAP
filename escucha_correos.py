@@ -187,7 +187,8 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
     }
     try:
         sucursal_id = suc.get("id") if suc else None
-        guardar_pedido(pedido, filas_enriquecidas, cliente_id, sucursal_id)
+        pedido_id, numero_pedido, estado = guardar_pedido(pedido, filas_enriquecidas, cliente_id, sucursal_id)
+        print(f"✅ Pedido guardado: ID={pedido_id}, N°={numero_pedido}, Estado={estado}")
     except Exception as e:
         print(f"❌ No se guardó el pedido: {e}")
 
