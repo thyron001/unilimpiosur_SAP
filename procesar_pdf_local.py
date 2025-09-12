@@ -259,7 +259,7 @@ def main():
     imprimir_resumen_pedido(resumen)
 
     print("\n========== 3) EMPAREJADO POR NOMBRE (BD) ==========")
-    filas_enriquecidas, suc = emparejar_filas_con_bd(
+    filas_enriquecidas, suc, cliente_id = emparejar_filas_con_bd(
         filas,
         cliente_nombre=args.cliente,
         sucursal_alias=resumen.get("sucursal")
@@ -293,34 +293,22 @@ def main():
         "total": resumen.get("total"),
     }
 
-    # ======== DRY-RUN: Generar TXT sin grabar en BD ========
+    # ======== DRY-RUN: Solo mostrar información sin grabar en BD ========
     if args.dry_run:
-        docnum_provisional = int(datetime.now().strftime("%Y%m%d%H%M%S"))
         print("\n🧪 DRY-RUN activado: no se guardará en la base de datos.")
-        print(f"→ Se usarán archivos de salida en: {args.out}")
-        generar_archivos_sap_para_pedido(
-            numero_pedido=docnum_provisional,
-            fecha_pedido=fecha_obj,
-            sucursal=sucursal_txt,
-            items=filas_enriquecidas,
-            carpeta_salida=args.out
-        )
+        print(f"   → Cliente ID: {cliente_id}")
+        print(f"   → Sucursal ID: {suc.get('id') if suc else None}")
+        print(f"   → Sucursal: {sucursal_txt}")
         return
 
     print("\n========== 4) GUARDANDO EN POSTGRESQL ==========")
-    pedido_id, numero_pedido = guardar_pedido(pedido, filas_enriquecidas)
+    sucursal_id = suc.get("id") if suc else None
+    pedido_id, numero_pedido = guardar_pedido(pedido, filas_enriquecidas, cliente_id, sucursal_id)
     print(f"✅ Guardado: pedido_id={pedido_id}, numero_pedido={numero_pedido}")
+    print(f"   → Cliente ID: {cliente_id}")
+    print(f"   → Sucursal ID: {sucursal_id}")
 
-    # Generar archivos SAP usando el número real
-    print("\n========== 5) GENERANDO ARCHIVOS SAP (ODRF/DRF1) ==========")
-    print(f"→ Carpeta de salida: {args.out}")
-    generar_archivos_sap_para_pedido(
-        numero_pedido=numero_pedido,
-        fecha_pedido=fecha_obj,
-        sucursal=sucursal_txt,
-        items=filas_enriquecidas,
-        carpeta_salida=args.out
-    )
+    print("\n✅ Procesamiento completado. El pedido está listo para generar archivos SAP desde la interfaz web.")
 
 
 if __name__ == "__main__":

@@ -33,12 +33,12 @@ def a_decimal(valor) -> Decimal | None:
 #  GUARDAR PEDIDO
 # ========================
 
-def guardar_pedido(pedido: dict, items: list[dict]):
+def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucursal_id: int = None):
     """
     Inserta en PostgreSQL:
 
       Tabla pedidos:
-        (fecha, sucursal, subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total)
+        (fecha, sucursal, subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total, cliente_id, sucursal_id)
 
       Tabla pedido_items:
         (pedido_id, descripcion, sku, bodega, cantidad, precio_unitario, precio_total)
@@ -46,6 +46,8 @@ def guardar_pedido(pedido: dict, items: list[dict]):
     pedido: dict con claves:
       fecha (datetime), sucursal (str),
       subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total (Decimal/str)
+    cliente_id: ID del cliente (opcional)
+    sucursal_id: ID de la sucursal (opcional)
     """
     # Normalizar fecha
     fecha = pedido.get("fecha")
@@ -73,18 +75,36 @@ def guardar_pedido(pedido: dict, items: list[dict]):
 
     with obtener_conexion() as conn:
         with conn.cursor() as cur:
-            # Insert pedido con nuevas columnas
+            # Obtener número inicial configurado
+            cur.execute("""
+                SELECT valor FROM configuracion 
+                WHERE clave = 'numero_pedido_inicial'
+            """)
+            result = cur.fetchone()
+            numero_inicial = int(result[0]) if result else 1
+            
+            # Obtener el último número de pedido usado
+            cur.execute("""
+                SELECT COALESCE(MAX(numero_pedido), 0) FROM pedidos
+            """)
+            ultimo_numero = cur.fetchone()[0]
+            
+            # Calcular siguiente número de pedido
+            siguiente_numero = max(numero_inicial, ultimo_numero + 1)
+            
+            # Insert pedido con número calculado
             cur.execute(
                 """
                 INSERT INTO pedidos
-                  (fecha, sucursal, subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total)
+                  (fecha, sucursal, subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total, estado, cliente_id, sucursal_id, numero_pedido)
                 VALUES
-                  (%s,    %s,       %s,             %s,        %s,            %s,   %s,    %s)
-                RETURNING id, numero_pedido;
+                  (%s,    %s,       %s,             %s,        %s,            %s,   %s,    %s,    %s,     %s,         %s,          %s)
+                RETURNING id;
                 """,
-                (fecha, sucursal, subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total)
+                (fecha, sucursal, subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total, 'por_procesar', cliente_id, sucursal_id, siguiente_numero)
             )
-            pedido_id, numero_pedido = cur.fetchone()
+            pedido_id = cur.fetchone()[0]
+            numero_pedido = siguiente_numero
 
             # Insert ítems
             for f in items:

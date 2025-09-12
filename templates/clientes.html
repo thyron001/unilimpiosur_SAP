@@ -67,6 +67,84 @@
       </div>
     </div>
 
+    <!-- Overlay + Modal Editar Cliente -->
+    <div id="modalOverlayEditar" class="glass-overlay hidden"></div>
+
+    <div id="modalEditarCliente" class="glass-modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalEditarTitle">
+      <div class="glass-modal-card">
+        <div class="glass-modal-head">
+          <h3 id="modalEditarTitle" class="mono">Editar Cliente</h3>
+          <button id="btnCerrarEditar" class="btn-close" aria-label="Cerrar">✕</button>
+        </div>
+
+        <div class="glass-modal-sub">
+          <div><strong>Cliente:</strong> <span id="m-cliente-nombre">-</span></div>
+          <div><strong>RUC:</strong> <span id="m-cliente-ruc">-</span></div>
+        </div>
+
+        <div class="glass-modal-body">
+          <form id="formEditarCliente">
+            <div class="glass-form-group">
+              <label for="editNombre" class="glass-label">Nombre del Cliente</label>
+              <input type="text" id="editNombre" class="glass-input" required>
+            </div>
+
+            <div class="glass-form-group">
+              <label for="editRuc" class="glass-label">RUC</label>
+              <input type="text" id="editRuc" class="glass-input" required maxlength="13">
+            </div>
+
+            <div class="glass-form-group">
+              <label class="glass-label">Tipo de Bodega</label>
+              <div class="glass-radio-group">
+                <label class="glass-radio">
+                  <input type="radio" id="editBodegaPor" name="bodegaPor" value="cliente">
+                  <span class="glass-radio-text">Bodega por Cliente</span>
+                </label>
+                <label class="glass-radio">
+                  <input type="radio" id="editBodegaPorSucursal" name="bodegaPor" value="sucursal">
+                  <span class="glass-radio-text">Bodega por Sucursal</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="glass-form-group">
+              <label class="glass-label">Configuración de Alias</label>
+              <div class="glass-checkbox-group">
+                <label class="glass-checkbox">
+                  <input type="checkbox" id="editAliasPorSucursal">
+                  <span class="glass-checkbox-text">Activar Alias por Sucursal</span>
+                </label>
+                <small class="glass-help">Si está activado, se mostrará el campo "Alias (PDF)" en las sucursales</small>
+              </div>
+              
+              <div class="glass-checkbox-group">
+                <label class="glass-checkbox">
+                  <input type="checkbox" id="editAliasPorProducto">
+                  <span class="glass-checkbox-text">Activar Alias por Producto</span>
+                </label>
+                <small class="glass-help">Si está activado, se podrán configurar alias para productos</small>
+              </div>
+
+              <div class="glass-form-group" id="campoCantidadAlias" style="display:none;">
+                <label for="editCantidadAlias" class="glass-label">Cantidad de Alias por Producto</label>
+                <select id="editCantidadAlias" class="glass-select">
+                  <option value="1">1 Alias</option>
+                  <option value="2">2 Alias</option>
+                  <option value="3">3 Alias</option>
+                </select>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <div class="glass-modal-foot">
+          <button id="btnGuardarCliente" class="glass-btn glass-btn-primary">💾 Guardar</button>
+          <button id="btnCancelarEditar" class="glass-btn glass-btn-secondary">❌ Cancelar</button>
+        </div>
+      </div>
+    </div>
+
     <script>
     (function(){
       // ============================
@@ -102,9 +180,15 @@
       function agregarFilaVacia(tbody, cliente){
         const tr = document.createElement("tr");
         tr.className = "fila-nueva";
+        
+        // Determinar si mostrar columna de alias
+        const tabla = tbody.closest('table');
+        const mostrarAlias = tabla.dataset.mostrarAlias === 'true';
+        const celdaAlias = mostrarAlias ? '<td data-label="Alias (PDF)"></td>' : '';
+        
         tr.innerHTML = `
           <td data-label="Nombre (sistema)"></td>
-          <td data-label="Alias (PDF)"></td>
+          ${celdaAlias}
           <td data-label="Dirección"></td>
           <td data-label="Teléfono"></td>
           <td style="width:1%; white-space:nowrap;">
@@ -113,13 +197,22 @@
         `;
         tbody.appendChild(tr);
 
-        // Hacer celdas editables
-        $$$("td", tr).slice(0,4).forEach(td=>configurarCeldaEditable(td, true));
+        // Hacer celdas editables - ajustar según si hay columna de alias
+        const celdasEditables = mostrarAlias ? 4 : 3;
+        $$$("td", tr).slice(0, celdasEditables).forEach(td=>configurarCeldaEditable(td, true));
 
         // Acción guardar nueva fila a la tabla (no envía todavía al backend)
         $$("[data-accion='agregar']", tr).addEventListener("click", ()=>{
-          const celdas = $$$("td", tr).slice(0,4);
-          const [nombre, alias, direccion, telefono] = celdas.map(td=>td.textContent.trim());
+          const celdas = $$$("td", tr).slice(0, celdasEditables);
+          let nombre, alias, direccion, telefono;
+          
+          if (mostrarAlias) {
+            [nombre, alias, direccion, telefono] = celdas.map(td=>td.textContent.trim());
+          } else {
+            [nombre, direccion, telefono] = celdas.map(td=>td.textContent.trim());
+            alias = "";
+          }
+          
           if(!nombre){
             alert("La sucursal debe tener un Nombre (sistema).");
             return;
@@ -127,7 +220,7 @@
           const nueva = construirFilaSucursal({
             id: null, // se creará en backend
             nombre, alias, direccion, telefono
-          }, /*editable=*/true);
+          }, /*editable=*/true, mostrarAlias);
           tr.before(nueva);
           // limpiar la fila vacía
           celdas.forEach(td=>td.textContent = "");
@@ -135,20 +228,26 @@
       }
 
       // Construir una fila de sucursal
-      function construirFilaSucursal(suc, editable){
+      function construirFilaSucursal(suc, editable, mostrarAlias = true){
         const tr = document.createElement("tr");
         tr.dataset.sucursalId = suc.id ?? "";
+        
+        const celdaAlias = mostrarAlias ? `<td data-label="Alias (PDF)">${esc(suc.alias || "")}</td>` : '';
+        
         tr.innerHTML = `
           <td data-label="Nombre (sistema)">${esc(suc.nombre)}</td>
-          <td data-label="Alias (PDF)">${esc(suc.alias || "")}</td>
+          ${celdaAlias}
           <td data-label="Dirección">${esc(suc.direccion || "")}</td>
           <td data-label="Teléfono">${esc(suc.telefono || "")}</td>
           <td style="width:1%; white-space:nowrap;">
             <button class="btn-mini" data-accion="borrar" title="Marcar para borrar">🗑️</button>
           </td>
         `;
-        // editable ON/OFF
-        $$$("td", tr).slice(0,4).forEach(td=>configurarCeldaEditable(td, editable));
+        
+        // editable ON/OFF - ajustar según si hay columna de alias
+        const celdasEditables = mostrarAlias ? 4 : 3;
+        $$$("td", tr).slice(0, celdasEditables).forEach(td=>configurarCeldaEditable(td, editable));
+        
         // borrar (solo marca; se eliminará al guardar)
         $$("[data-accion='borrar']", tr).addEventListener("click", ()=>{
           tr.classList.toggle("marcada-borrado");
@@ -169,19 +268,27 @@
             <strong>${esc(cliente.nombre)}</strong>
             <span class="chip mono">RUC: ${esc(cliente.ruc)}</span>
           </div>
-          <div class="chip">${cliente.usa_bodega_por_sucursal ? "Bodega por Sucursal" : "Bodega por Cliente"}</div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div class="chip">${cliente.usa_bodega_por_sucursal ? "Bodega por Sucursal" : "Bodega por Cliente"}</div>
+            <button class="btn-editar-cliente" data-cliente-id="${cliente.id}" title="Editar cliente">✏️ Editar</button>
+          </div>
         `;
         card.appendChild(head);
 
         // Tabla
         const wrap = document.createElement("div");
         wrap.className = "table-wrap";
+        
+        // Determinar si mostrar columna de alias
+        const mostrarAlias = cliente.alias_por_sucursal || false;
+        const headerAlias = mostrarAlias ? '<th>Alias (PDF)</th>' : '';
+        
         wrap.innerHTML = `
-          <table class="glass-table tabla-sucursales" data-cliente-id="${cliente.id}">
+          <table class="glass-table tabla-sucursales" data-cliente-id="${cliente.id}" data-mostrar-alias="${mostrarAlias}">
             <thead>
               <tr>
                 <th>Nombre (sistema)</th>
-                <th>Alias (PDF)</th>
+                ${headerAlias}
                 <th>Dirección</th>
                 <th>Teléfono</th>
                 <th></th>
@@ -195,7 +302,7 @@
         // Cargar filas
         const tbody = $$("tbody", wrap);
         for(const s of (cliente.sucursales || [])){
-          tbody.appendChild(construirFilaSucursal(s, /*editable=*/toggleEdicion.checked));
+          tbody.appendChild(construirFilaSucursal(s, /*editable=*/toggleEdicion.checked, mostrarAlias));
         }
         // Agregar fila vacía si edición activa
         if(toggleEdicion.checked){
@@ -210,8 +317,16 @@
       // Renderizar lista completa
       function renderizarClientes(data){
         listaClientes.innerHTML = "";
+        if(!data || !Array.isArray(data)){
+          console.error("Datos de clientes inválidos:", data);
+          return;
+        }
         for(const cli of data){
-          listaClientes.appendChild(construirTarjetaCliente(cli));
+          try {
+            listaClientes.appendChild(construirTarjetaCliente(cli));
+          } catch(e) {
+            console.error("Error al construir tarjeta para cliente:", cli, e);
+          }
         }
         aplicarFiltroBusqueda(inputBusqueda.value);
       }
@@ -231,9 +346,12 @@
         const tablas = $$$(".tabla-sucursales");
         for(const table of tablas){
           const tbody = table.tBodies[0];
+          const mostrarAlias = table.dataset.mostrarAlias === 'true';
+          const celdasEditables = mostrarAlias ? 4 : 3;
+          
           // celdas editables
           $$$("tr", tbody).forEach(tr=>{
-            $$$("td", tr).slice(0,4).forEach(td=>configurarCeldaEditable(td, habilitar));
+            $$$("td", tr).slice(0, celdasEditables).forEach(td=>configurarCeldaEditable(td, habilitar));
           });
           // fila extra para nuevas sucursales
           const existente = $$("tr.fila-nueva", tbody);
@@ -250,19 +368,35 @@
         const payload = [];
         for(const table of $$$(".tabla-sucursales")){
           const clienteId = Number(table.dataset.clienteId);
+          const mostrarAlias = table.dataset.mostrarAlias === 'true';
           const tbody = table.tBodies[0];
           for(const tr of $$$("tr", tbody)){
             if(tr.classList.contains("fila-nueva")) continue; // no recolectar esta
             const celdas = $$$("td", tr);
-            const obj = {
-              cliente_id: clienteId,
-              sucursal_id: tr.dataset.sucursalId ? Number(tr.dataset.sucursalId) : null,
-              nombre:   celdas[0].textContent.trim(),
-              alias:    celdas[1].textContent.trim(),
-              direccion:celdas[2].textContent.trim(),
-              telefono: celdas[3].textContent.trim(),
-              borrar:   tr.classList.contains("marcada-borrado")
-            };
+            
+            let obj;
+            if (mostrarAlias) {
+              obj = {
+                cliente_id: clienteId,
+                sucursal_id: tr.dataset.sucursalId ? Number(tr.dataset.sucursalId) : null,
+                nombre:   celdas[0].textContent.trim(),
+                alias:    celdas[1].textContent.trim(),
+                direccion:celdas[2].textContent.trim(),
+                telefono: celdas[3].textContent.trim(),
+                borrar:   tr.classList.contains("marcada-borrado")
+              };
+            } else {
+              obj = {
+                cliente_id: clienteId,
+                sucursal_id: tr.dataset.sucursalId ? Number(tr.dataset.sucursalId) : null,
+                nombre:   celdas[0].textContent.trim(),
+                alias:    "", // No hay columna de alias
+                direccion:celdas[1].textContent.trim(),
+                telefono: celdas[2].textContent.trim(),
+                borrar:   tr.classList.contains("marcada-borrado")
+              };
+            }
+            
             // ignorar filas completamente vacías
             const tieneAlgo = obj.nombre || obj.alias || obj.direccion || obj.telefono || obj.sucursal_id || obj.borrar;
             if(tieneAlgo) payload.push(obj);
@@ -308,6 +442,7 @@
       async function inicializar(){
         try{
           cacheClientes = await cargarClientes();
+          console.log("Clientes cargados:", cacheClientes); // Debug
           renderizarClientes(cacheClientes);
         }catch(e){
           console.error(e);
@@ -337,6 +472,157 @@
       inputBusqueda.addEventListener("input", ()=>aplicarFiltroBusqueda(inputBusqueda.value));
       btnRefrescar.addEventListener("click", inicializar);
 
+      // ============================
+      // Funcionalidad de edición de cliente
+      // ============================
+      const overlayEditar = $$("#modalOverlayEditar");
+      const modalEditarCliente = $$("#modalEditarCliente");
+      const btnCerrarEditar = $$("#btnCerrarEditar");
+      const btnCancelarEditar = $$("#btnCancelarEditar");
+      const btnGuardarCliente = $$("#btnGuardarCliente");
+      const formEditarCliente = $$("#formEditarCliente");
+      const campoCantidadAlias = $$("#campoCantidadAlias");
+      const editAliasPorProducto = $$("#editAliasPorProducto");
+
+
+      let clienteEditando = null;
+
+      // Función para abrir modal de edición
+      function abrirModalEditar(cliente) {
+        clienteEditando = cliente;
+        
+        // Llenar información en glass-modal-sub
+        $$("#m-cliente-nombre").textContent = cliente.nombre || "-";
+        $$("#m-cliente-ruc").textContent = cliente.ruc || "-";
+        
+        // Llenar formulario con datos del cliente
+        $$("#editNombre").value = cliente.nombre || "";
+        $$("#editRuc").value = cliente.ruc || "";
+        
+        // Configurar radio buttons
+        if (cliente.usa_bodega_por_sucursal) {
+          $$("#editBodegaPorSucursal").checked = true;
+        } else {
+          $$("#editBodegaPor").checked = true;
+        }
+        
+        // Configurar checkboxes
+        $$("#editAliasPorSucursal").checked = Boolean(cliente.alias_por_sucursal);
+        $$("#editAliasPorProducto").checked = Boolean(cliente.alias_por_producto);
+        
+        // Configurar cantidad de alias
+        $$("#editCantidadAlias").value = cliente.cantidad_alias_producto || 1;
+        
+        // Mostrar/ocultar campo de cantidad de alias
+        actualizarVisibilidadCantidadAlias();
+        
+        // Mostrar modal
+        overlayEditar.classList.remove("hidden");
+        modalEditarCliente.classList.remove("hidden");
+      }
+
+      // Función para cerrar modal
+      function cerrarModalEditar() {
+        overlayEditar.classList.add("hidden");
+        modalEditarCliente.classList.add("hidden");
+        clienteEditando = null;
+        formEditarCliente.reset();
+      }
+
+      // Función para actualizar visibilidad del campo cantidad de alias
+      function actualizarVisibilidadCantidadAlias() {
+        if (editAliasPorProducto.checked) {
+          campoCantidadAlias.style.display = "block";
+        } else {
+          campoCantidadAlias.style.display = "none";
+        }
+      }
+
+      // Función para guardar cambios del cliente
+      async function guardarCliente() {
+        if (!clienteEditando) return;
+
+        const datos = {
+          nombre: $$("#editNombre").value.trim(),
+          ruc: $$("#editRuc").value.trim(),
+          usa_bodega_por_sucursal: $$("#editBodegaPorSucursal").checked,
+          alias_por_sucursal: $$("#editAliasPorSucursal").checked,
+          alias_por_producto: $$("#editAliasPorProducto").checked,
+          cantidad_alias_producto: parseInt($$("#editCantidadAlias").value)
+        };
+
+        // Validaciones
+        if (!datos.nombre) {
+          alert("El nombre del cliente es obligatorio");
+          return;
+        }
+        if (!datos.ruc) {
+          alert("El RUC es obligatorio");
+          return;
+        }
+
+        try {
+          const resp = await fetch(`/api/clientes/${clienteEditando.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(datos)
+          });
+
+          if (!resp.ok) {
+            const error = await resp.json();
+            throw new Error(error.error || "Error al guardar cliente");
+          }
+
+          alert("✅ Cliente actualizado correctamente");
+          cerrarModalEditar();
+          await inicializar(); // Recargar datos
+        } catch (error) {
+          console.error(error);
+          alert(`❌ Error: ${error.message}`);
+        }
+      }
+
+      // Event listeners para el modal
+      if (editAliasPorProducto) {
+        editAliasPorProducto.addEventListener("change", actualizarVisibilidadCantidadAlias);
+      }
+      if (btnCerrarEditar) {
+        btnCerrarEditar.addEventListener("click", cerrarModalEditar);
+      }
+      if (btnCancelarEditar) {
+        btnCancelarEditar.addEventListener("click", cerrarModalEditar);
+      }
+      if (btnGuardarCliente) {
+        btnGuardarCliente.addEventListener("click", guardarCliente);
+      }
+
+      // Cerrar modal al hacer click fuera
+      if (overlayEditar) {
+        overlayEditar.addEventListener("click", (e) => {
+          if (e.target === overlayEditar) {
+            cerrarModalEditar();
+          }
+        });
+      }
+
+      // Cerrar modal con Escape
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && overlayEditar && !overlayEditar.classList.contains("hidden")) {
+          cerrarModalEditar();
+        }
+      });
+
+      // Delegación de eventos para botones de editar
+      document.addEventListener("click", (e) => {
+        if (e.target.classList.contains("btn-editar-cliente")) {
+          const clienteId = parseInt(e.target.dataset.clienteId);
+          const cliente = cacheClientes.find(c => c.id === clienteId);
+          if (cliente) {
+            abrirModalEditar(cliente);
+          }
+        }
+      });
+
       // Arranque
       inicializar();
     })();
@@ -355,6 +641,164 @@
     }
     .btn-mini:hover { filter: brightness(1.1); }
     .fila-nueva td { background: rgba(255,255,255,.03); }
+    
+    /* Estilos para el botón de editar cliente */
+    .btn-editar-cliente {
+      appearance: none;
+      cursor: pointer;
+      border: 1px solid var(--border-color);
+      background: var(--hover-menu-bg);
+      color: var(--theme-color);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      transition: all 0.2s ease;
+    }
+    .btn-editar-cliente:hover {
+      filter: brightness(1.1);
+      background: rgba(102, 126, 234, 0.2);
+    }
+
+    /* Estilos para el modal de edición */
+
+    .glass-overlay.hidden {
+      display: none;
+    }
+    
+    .glass-modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .glass-modal-body {
+      display: grid;
+      gap: 12px;
+    }
+    .glass-modal-foot {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .btn-close {
+      background: none;
+      border: none;
+      color: var(--text-color);
+      cursor: pointer;
+      font-size: 18px;
+      padding: 4px;
+    }
+    .campo {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .campo label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 500;
+    }
+    .campo input[type="text"], .campo select {
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--hover-menu-bg);
+      color: var(--text-color);
+      font-size: 0.9rem;
+    }
+    .campo input[type="checkbox"], .campo input[type="radio"] {
+      accent-color: #9fd5ff;
+    }
+    .campo small {
+      color: var(--inactive-color);
+      font-size: 0.8rem;
+    }
+
+    /* Estilos para formularios glass */
+    .glass-form-group {
+      margin-bottom: 16px;
+    }
+    .glass-label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 500;
+      color: var(--text-color);
+    }
+    .glass-input, .glass-select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background: var(--content-bg);
+      color: var(--text-color);
+      font-size: 14px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .glass-input:focus, .glass-select:focus {
+      outline: none;
+      border-color: var(--theme-color);
+      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+    }
+    .glass-radio-group, .glass-checkbox-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .glass-radio, .glass-checkbox {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 6px;
+      transition: background 0.2s ease;
+    }
+    .glass-radio:hover, .glass-checkbox:hover {
+      background: rgba(255,255,255,0.05);
+    }
+    .glass-radio input, .glass-checkbox input {
+      margin: 0 8px 0 0;
+      width: auto;
+    }
+    .glass-radio-text, .glass-checkbox-text {
+      font-size: 14px;
+      color: var(--text-color);
+    }
+    .glass-help {
+      display: block;
+      margin-top: 4px;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .glass-btn {
+      appearance: none;
+      cursor: pointer;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+    .glass-btn-primary {
+      background: var(--theme-color);
+      color: white;
+      border-color: var(--theme-color);
+    }
+    .glass-btn-primary:hover {
+      background: var(--theme-hover);
+      border-color: var(--theme-hover);
+    }
+    .glass-btn-secondary {
+      background: var(--content-bg);
+      color: var(--text-color);
+    }
+    .glass-btn-secondary:hover {
+      background: var(--hover-menu-bg);
+    }
     </style>
   </body>
 </html>

@@ -1,0 +1,28 @@
+# =====================================================
+# DEPENDENCIAS DEL SISTEMA UNILIMPIOSUR SAP
+# =====================================================
+
+# Framework web
+Flask==2.3.3
+Werkzeug==2.3.7
+
+# Base de datos
+psycopg2-binary==2.9.7
+
+# Procesamiento de archivos
+pandas==2.1.1
+openpyxl==3.1.2
+pdfplumber==0.9.0
+
+# Correo electrónico
+imapclient==2.3.1
+pyzmail36==1.0.4
+
+# Utilidades
+python-dotenv==1.0.0
+requests==2.31.0
+
+# Desarrollo (opcional)
+# pytest==7.4.2
+# black==23.7.0
+# flake8==6.0.0

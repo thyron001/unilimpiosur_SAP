@@ -1,6 +1,6 @@
 # procesamiento_pedidos.py
 # Parseo del PDF (filas de productos), sucursal y totales; normalización,
-# emparejado por NOMBRE con BASE DE DATOS (sin alias de productos) y utilidades.
+# emparejado por NOMBRE y ALIAS con BASE DE DATOS y utilidades.
 
 from __future__ import annotations
 
@@ -326,6 +326,31 @@ def _cargar_catalogo_productos() -> List[Dict[str, Any]]:
             })
     return catalogo
 
+def _cargar_alias_productos_por_cliente(cliente_id: int) -> List[Dict[str, Any]]:
+    """
+    Carga alias de productos para un cliente específico.
+    Devuelve: lista de dicts {producto_id, alias_1, alias_2, alias_3, alias_norm, tokens}
+    """
+    alias_list: List[Dict[str, Any]] = []
+    with _pg.obtener_conexion() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT producto_id, alias_1, alias_2, alias_3
+            FROM alias_productos
+            WHERE cliente_id = %s
+        """, (cliente_id,))
+        for pid, alias_1, alias_2, alias_3 in cur.fetchall():
+            # Procesar cada alias que no esté vacío
+            for alias in [alias_1, alias_2, alias_3]:
+                if alias and alias.strip():
+                    alias_norm = normalizar_texto(alias)
+                    alias_list.append({
+                        "producto_id": int(pid),
+                        "alias": alias.strip(),
+                        "alias_norm": alias_norm,
+                        "tokens": set(alias_norm.split())
+                    })
+    return alias_list
+
 def _puntaje_similitud(q_norm: str, cand_norm: str, cand_tokens: set[str]) -> float:
     """
     Score combinado:
@@ -375,6 +400,73 @@ def _buscar_producto_por_nombre_similar(catalogo: List[Dict[str, Any]], texto_pd
         return mejor, mejor_sc
     return None, mejor_sc
 
+def _buscar_producto_por_alias(alias_list: List[Dict[str, Any]], catalogo: List[Dict[str, Any]], texto_pdf: str) -> Tuple[Dict[str, Any] | None, float]:
+    """
+    Busca el producto cuyo ALIAS es más parecido al texto del PDF.
+    Devuelve (producto_dict | None, score)
+    """
+    q_norm = normalizar_texto(texto_pdf or "")
+    if not q_norm:
+        return None, 0.0
+
+    mejor, mejor_sc = None, -1.0
+    for alias_item in alias_list:
+        sc = _puntaje_similitud(q_norm, alias_item["alias_norm"], alias_item["tokens"])
+        # aceptación dura
+        if sc < UMBRAL_SIMILITUD and difflib.SequenceMatcher(None, q_norm, alias_item["alias_norm"]).ratio() >= UMBRAL_HARD_SEQ:
+            sc = UMBRAL_SIMILITUD + 0.001
+        if sc > mejor_sc:
+            mejor_sc = sc
+            # Buscar el producto correspondiente en el catálogo
+            for p in catalogo:
+                if p["id"] == alias_item["producto_id"]:
+                    mejor = p
+                    break
+
+    if mejor and mejor_sc >= UMBRAL_SIMILITUD:
+        return mejor, mejor_sc
+    return None, mejor_sc
+
+def _buscar_producto_combinado(catalogo: List[Dict[str, Any]], alias_list: List[Dict[str, Any]], texto_pdf: str) -> Tuple[Dict[str, Any] | None, float, str]:
+    """
+    Busca el producto primero por nombre, luego por alias si no encuentra match.
+    Devuelve (producto_dict | None, score, tipo_match)
+    """
+    # Primero intentar por nombre
+    prod_nombre, score_nombre = _buscar_producto_por_nombre_similar(catalogo, texto_pdf)
+    if prod_nombre and score_nombre >= UMBRAL_SIMILITUD:
+        return prod_nombre, score_nombre, "nombre"
+    
+    # Si no encuentra por nombre, intentar por alias
+    prod_alias, score_alias = _buscar_producto_por_alias(alias_list, catalogo, texto_pdf)
+    if prod_alias and score_alias >= UMBRAL_SIMILITUD:
+        return prod_alias, score_alias, "alias"
+    
+    # Si no encuentra por alias, intentar con unidad + descripción
+    # Extraer unidad y descripción del texto
+    partes = texto_pdf.strip().split(None, 1)  # Dividir en máximo 2 partes
+    if len(partes) >= 2:
+        unidad = partes[0]
+        descripcion = partes[1]
+        texto_combinado = f"{unidad} {descripcion}"
+        
+        # Buscar por nombre con el texto combinado
+        prod_combinado, score_combinado = _buscar_producto_por_nombre_similar(catalogo, texto_combinado)
+        if prod_combinado and score_combinado >= UMBRAL_SIMILITUD:
+            return prod_combinado, score_combinado, "nombre_combinado"
+        
+        # Buscar por alias con el texto combinado
+        prod_alias_combinado, score_alias_combinado = _buscar_producto_por_alias(alias_list, catalogo, texto_combinado)
+        if prod_alias_combinado and score_alias_combinado >= UMBRAL_SIMILITUD:
+            return prod_alias_combinado, score_alias_combinado, "alias_combinado"
+    
+    # Devolver el mejor score encontrado (aunque no supere el umbral)
+    mejor_score = max(score_nombre, score_alias)
+    mejor_producto = prod_nombre if score_nombre >= score_alias else prod_alias
+    tipo_mejor = "nombre" if score_nombre >= score_alias else "alias"
+    
+    return mejor_producto, mejor_score, tipo_mejor
+
 # ---------- Mapas de bodega ----------
 
 def _cargar_bodegas_por_cliente(cliente_id: int) -> Dict[int, str | None]:
@@ -411,21 +503,26 @@ def emparejar_filas_con_bd(
     filas: List[Dict[str, Any]],
     cliente_nombre: str = "Roldan",
     sucursal_alias: str | None = None
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any], int]:
     """
     Enriquecer filas contra la BD:
       - Construye la consulta como: "UNIDAD + DESCRIPCIÓN" del PDF
       - Compara contra NOMBRE del producto en BD mediante similitud
+      - Si no encuentra match, busca por ALIAS de productos
+      - Si no encuentra por alias, intenta con unidad + descripción combinados
       - Toma bodega desde tablas de bodega (por cliente o por sucursal)
       - Resuelve sucursal del pedido desde alias del PDF -> nombre del sistema
 
-    Devuelve (filas_enriquecidas, sucursal_dict)
+    Devuelve (filas_enriquecidas, sucursal_dict, cliente_id)
     """
     cliente_id, usa_por_sucursal = _buscar_cliente_por_nombre(cliente_nombre)
     suc = _resolver_sucursal_por_alias(cliente_id, sucursal_alias)
 
     # Catálogo global (nombres de productos)
     catalogo = _cargar_catalogo_productos()
+    
+    # Alias de productos para este cliente
+    alias_list = _cargar_alias_productos_por_cliente(cliente_id)
 
     # Bodegas según modalidad
     mapa_bod_cli: Dict[int, str | None] = {}
@@ -441,7 +538,8 @@ def emparejar_filas_con_bd(
         desc = (f.get("desc") or "").strip()
         consulta = (f"{uni} {desc}").strip() if uni else desc
 
-        prod, score = _buscar_producto_por_nombre_similar(catalogo, consulta)
+        # Usar la nueva función de búsqueda combinada
+        prod, score, tipo_match = _buscar_producto_combinado(catalogo, alias_list, consulta)
         if prod:
             pid = prod["id"]
             sku = prod["sku"]
@@ -450,7 +548,7 @@ def emparejar_filas_con_bd(
                 **f,
                 "sku": sku,
                 "bodega": bodega,
-                "tipo_emparejado": "nombre_similaridad",
+                "tipo_emparejado": tipo_match,
                 "score_nombre": round(float(score), 4)
             })
         else:
@@ -462,7 +560,7 @@ def emparejar_filas_con_bd(
                 "score_nombre": round(float(score or 0.0), 4)
             })
 
-    return enriquecidas, (suc or {})
+    return enriquecidas, (suc or {}), cliente_id
 
 # ==============================
 # Impresión de filas enriquecidas

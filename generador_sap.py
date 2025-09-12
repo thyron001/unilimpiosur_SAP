@@ -1,0 +1,236 @@
+# generador_sap.py
+# Generador de archivos ODRF.txt y DRF1.txt para SAP
+
+import psycopg
+from datetime import datetime
+from pathlib import Path
+from typing import List, Dict, Any, Tuple
+
+def obtener_conexion():
+    """Crea conexión a PostgreSQL usando variables de entorno PGHOST, PGUSER, etc."""
+    return psycopg.connect()
+
+def formatear_fecha_yyyymmdd(fecha: datetime | str | None) -> str:
+    """Convierte fecha a formato YYYYMMDD para SAP"""
+    if fecha is None:
+        fecha = datetime.now()
+    elif isinstance(fecha, str):
+        try:
+            fecha = datetime.fromisoformat(fecha.replace('Z', '+00:00'))
+        except Exception:
+            fecha = datetime.now()
+    
+    return fecha.strftime("%Y%m%d")
+
+def obtener_pedidos_por_procesar() -> List[Dict[str, Any]]:
+    """Obtiene todos los pedidos en estado 'por_procesar' con sus datos completos"""
+    with obtener_conexion() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT 
+                p.id,
+                p.numero_pedido,
+                p.fecha,
+                p.sucursal,
+                p.cliente_id,
+                p.sucursal_id,
+                c.ruc,
+                c.nombre as cliente_nombre,
+                s.nombre as sucursal_nombre,
+                s.direccion,
+                s.telefono,
+                s.almacen
+            FROM pedidos p
+            LEFT JOIN clientes c ON c.id = p.cliente_id
+            LEFT JOIN sucursales s ON s.id = p.sucursal_id
+            WHERE p.estado = 'por_procesar'
+            ORDER BY p.numero_pedido;
+        """)
+        
+        pedidos = []
+        for row in cur.fetchall():
+            pedidos.append({
+                "id": row[0],
+                "numero_pedido": row[1],
+                "fecha": row[2],
+                "sucursal": row[3],
+                "cliente_id": row[4],
+                "sucursal_id": row[5],
+                "ruc": row[6],
+                "cliente_nombre": row[7],
+                "sucursal_nombre": row[8],
+                "direccion": row[9],
+                "telefono": row[10],
+                "almacen": row[11]
+            })
+        
+        return pedidos
+
+def obtener_items_pedido(pedido_id: int) -> List[Dict[str, Any]]:
+    """Obtiene los items de un pedido específico con información de bodega"""
+    with obtener_conexion() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT 
+                pi.sku,
+                pi.cantidad,
+                pi.bodega,
+                p.nombre as producto_nombre,
+                s.nombre as sucursal_nombre
+            FROM pedido_items pi
+            LEFT JOIN productos p ON p.sku = pi.sku
+            LEFT JOIN pedidos ped ON ped.id = pi.pedido_id
+            LEFT JOIN sucursales s ON s.id = ped.sucursal_id
+            WHERE pi.pedido_id = %s
+            ORDER BY pi.id;
+        """, (pedido_id,))
+        
+        items = []
+        for row in cur.fetchall():
+            items.append({
+                "sku": row[0],
+                "cantidad": row[1],
+                "bodega": row[2],
+                "producto_nombre": row[3],
+                "sucursal_nombre": row[4]
+            })
+        
+        return items
+
+def generar_archivo_odrf(pedidos: List[Dict[str, Any]], ruta_salida: str | Path) -> None:
+    """Genera el archivo ODRF.txt con los encabezados y datos de pedidos"""
+    ruta_salida = Path(ruta_salida)
+    
+    with open(ruta_salida, 'w', encoding='utf-8') as f:
+        # Escribir ambos encabezados como en ODRF FINAL.txt
+        f.write("DocEntry\tDocNum\tDocType\tPrinted\tDocDate\tDocDueDate\tCardCode\tDocObjectCode\tSeries\tShipToCode\tU_EXX_ALMACEN\tComments\n")
+        f.write("DocEntry\tDocNum\tDocType\tPrinted\tDocDate\tDocDueDate\tCardCode\tObjType\tSeries\tShipToCode\tU_EXX_ALMACEN\tComments\n")
+        
+        # Escribir datos de cada pedido
+        for pedido in pedidos:
+            # Formatear RUC como CLXXXXXXXXXXXXX
+            ruc = pedido.get("ruc", "")
+            if ruc and not ruc.startswith("CL"):
+                # Limpiar RUC de espacios y caracteres especiales
+                ruc_limpio = ''.join(filter(str.isdigit, str(ruc)))
+                if ruc_limpio:
+                    cardcode = f"CL{ruc_limpio.zfill(13)}"
+                else:
+                    cardcode = "CL0000000000000"
+            else:
+                cardcode = ruc or "CL0000000000000"
+            
+            # Fecha en formato YYYYMMDD
+            fecha_str = formatear_fecha_yyyymmdd(pedido.get("fecha"))
+            
+            # Sucursal (ShipToCode)
+            ship_to_code = pedido.get("sucursal_nombre") or pedido.get("sucursal") or ""
+            
+            # Almacén (U_EXX_ALMACEN)
+            almacen = pedido.get("almacen") or "5"  # Default almacén 5
+            
+            # Comments: dirección y teléfono separados por espacio
+            direccion = pedido.get("direccion") or ""
+            telefono = pedido.get("telefono") or ""
+            comments = f"{direccion} {telefono}".strip()
+            
+            # Escribir línea (sin UseShpdGd ya que no está en los encabezados)
+            f.write(f"{pedido['numero_pedido']}\t")  # DocEntry
+            f.write(f"{pedido['numero_pedido']}\t")  # DocNum
+            f.write("dDocument_Items\t")             # DocType
+            f.write("Y\t")                           # Printed
+            f.write(f"{fecha_str}\t")                # DocDate
+            f.write(f"{fecha_str}\t")                # DocDueDate
+            f.write(f"{cardcode}\t")                 # CardCode
+            f.write("17\t")                          # ObjType
+            f.write("13\t")                          # Series
+            f.write(f"{ship_to_code}\t")             # ShipToCode
+            f.write(f"{almacen}\t")                  # U_EXX_ALMACEN
+            f.write(f"{comments}\n")                 # Comments
+
+def generar_archivo_drf1(pedidos: List[Dict[str, Any]], ruta_salida: str | Path) -> None:
+    """Genera el archivo DRF1.txt con los encabezados y datos de items"""
+    ruta_salida = Path(ruta_salida)
+    
+    with open(ruta_salida, 'w', encoding='utf-8') as f:
+        # Escribir ambos encabezados como en DRF1 FINAL.txt
+        f.write("ParentKey\tItemCode\tQuantity\tWarehouseCode\tShipToCode\n")
+        f.write("DocNum\tItemCode\tQuantity\tWhsCode\tCogsOcrCo5\n")
+        
+        # Escribir datos de cada item de cada pedido
+        for pedido in pedidos:
+            items = obtener_items_pedido(pedido["id"])
+            
+            for item in items:
+                # Bodega (WhsCode) - usar la bodega del item o default
+                whs_code = item.get("bodega") or "05"  # Default bodega 05
+                
+                # Sucursal (CogsOcrCo5)
+                cogs_ocr_co5 = item.get("sucursal_nombre") or pedido.get("sucursal_nombre") or pedido.get("sucursal") or ""
+                
+                # Escribir línea (sin UseShpdGd ya que no está en los encabezados)
+                f.write(f"{pedido['numero_pedido']}\t")  # DocNum
+                f.write(f"{item['sku'] or ''}\t")        # ItemCode
+                f.write(f"{item['cantidad'] or 0}\t")    # Quantity
+                f.write(f"{whs_code}\t")                 # WhsCode
+                f.write(f"{cogs_ocr_co5}\n")             # CogsOcrCo5
+
+def actualizar_estado_pedidos(pedido_ids: List[int], nuevo_estado: str) -> None:
+    """Actualiza el estado de los pedidos especificados"""
+    if not pedido_ids:
+        return
+    
+    with obtener_conexion() as conn, conn.cursor() as cur:
+        placeholders = ','.join(['%s'] * len(pedido_ids))
+        cur.execute(f"""
+            UPDATE pedidos 
+            SET estado = %s 
+            WHERE id IN ({placeholders})
+        """, [nuevo_estado] + pedido_ids)
+        
+        print(f"✅ Actualizados {cur.rowcount} pedidos a estado '{nuevo_estado}'")
+
+def generar_archivos_sap(carpeta_salida: str | Path = ".") -> Tuple[str, str]:
+    """
+    Función principal que genera los archivos ODRF.txt y DRF1.txt
+    para todos los pedidos en estado 'por_procesar'
+    
+    Returns:
+        Tuple[str, str]: Rutas de los archivos generados (odrf_path, drf1_path)
+    """
+    carpeta_salida = Path(carpeta_salida)
+    carpeta_salida.mkdir(exist_ok=True)
+    
+    # Obtener pedidos por procesar
+    pedidos = obtener_pedidos_por_procesar()
+    
+    if not pedidos:
+        print("⚠️ No hay pedidos en estado 'por_procesar' para generar archivos SAP")
+        return None, None
+    
+    print(f"📋 Generando archivos SAP para {len(pedidos)} pedidos...")
+    
+    # Generar archivos
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    odrf_path = carpeta_salida / f"ODRF_{timestamp}.txt"
+    drf1_path = carpeta_salida / f"DRF1_{timestamp}.txt"
+    
+    generar_archivo_odrf(pedidos, odrf_path)
+    generar_archivo_drf1(pedidos, drf1_path)
+    
+    # Actualizar estado de pedidos a 'procesado'
+    pedido_ids = [p["id"] for p in pedidos]
+    actualizar_estado_pedidos(pedido_ids, "procesado")
+    
+    print(f"✅ Archivos SAP generados:")
+    print(f"   → ODRF: {odrf_path}")
+    print(f"   → DRF1: {drf1_path}")
+    print(f"   → {len(pedidos)} pedidos marcados como 'procesado'")
+    
+    return str(odrf_path), str(drf1_path)
+
+if __name__ == "__main__":
+    # Ejecutar generación de archivos
+    odrf_path, drf1_path = generar_archivos_sap()
+    if odrf_path and drf1_path:
+        print("🎉 Generación completada exitosamente")
+    else:
+        print("❌ No se generaron archivos")

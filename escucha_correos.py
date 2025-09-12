@@ -1,7 +1,7 @@
 # escucha_correos.py
 # Escucha IMAP; cuando llega un correo con PDF, lo parsea, imprime resumen
-# y guarda en PostgreSQL. Ahora usa el emparejador por NOMBRE (unidad+desc)
-# contra la base de datos (sin CSV ni alias de productos).
+# y guarda en PostgreSQL. Usa el emparejador por NOMBRE y ALIAS (unidad+desc)
+# contra la base de datos con soporte para alias de productos.
 
 import os
 import ssl
@@ -172,7 +172,7 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
     imprimir_resumen_pedido(resumen)
 
     # 3) Emparejado contra BD por NOMBRE (unidad+descripción), cliente configurable
-    filas_enriquecidas, suc = emparejar_filas_con_bd(
+    filas_enriquecidas, suc, cliente_id = emparejar_filas_con_bd(
         filas,
         cliente_nombre=DEFAULT_CLIENTE,
         sucursal_alias=resumen.get("sucursal")
@@ -192,7 +192,8 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
         "total": resumen.get("total"),
     }
     try:
-        guardar_pedido(pedido, filas_enriquecidas)
+        sucursal_id = suc.get("id") if suc else None
+        guardar_pedido(pedido, filas_enriquecidas, cliente_id, sucursal_id)
     except Exception as e:
         print(f"❌ No se guardó el pedido: {e}")
 

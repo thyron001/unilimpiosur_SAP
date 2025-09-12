@@ -155,26 +155,44 @@
     // ============================
     // Construcción de tablas
     // ============================
-    function thsProductos(){ return `
+    function thsProductos(cantidadAlias = 0){ 
+        let headersAlias = '';
+        for(let i = 1; i <= cantidadAlias; i++) {
+            headersAlias += `<th>Alias ${i}</th>`;
+        }
+        return `
         <tr>
             <th>SKU</th>
             <th>Nombre del Producto</th>
             <th>Bodega</th>
+            ${headersAlias}
             <th></th>
-        </tr>`; }
+        </tr>`; 
+    }
 
-    function construirFilaProducto(row, editable){
+    function construirFilaProducto(row, editable, cantidadAlias = 0){
         const tr = document.createElement("tr");
         tr.dataset.mapeoId = row.mapeo_id ?? "";
         tr.dataset.productoId = row.producto_id ?? "";
+        
+        // Generar columnas de alias
+        let celdasAlias = '';
+        for(let i = 1; i <= cantidadAlias; i++) {
+            const aliasValue = row[`alias_${i}`] || '';
+            celdasAlias += `<td data-label="Alias ${i}"><span contenteditable="false" class="alias-${i}">${esc(aliasValue)}</span></td>`;
+        }
+        
         tr.innerHTML = `
             <td data-label="SKU"><span contenteditable="false" class="sku">${esc(row.sku||"")}</span></td>
             <td data-label="Nombre del Producto"><span contenteditable="false" class="nombre">${esc(row.nombre_producto||"")}</span></td>
             <td data-label="Bodega"><span contenteditable="false" class="bodega">${esc(row.bodega||"")}</span></td>
+            ${celdasAlias}
             <td style="width:1%; white-space:nowrap;">
             <button class="btn-mini" data-accion="borrar" title="Marcar para borrar">🗑️</button>
             </td>
         `;
+        
+        // Configurar celdas editables
         const spans = ["sku","nombre","bodega"].map(c=>tr.querySelector("."+c));
         spans.forEach(sp => {
             if(editable){
@@ -187,17 +205,40 @@
             sp.classList.remove("celda-editable");
             }
         });
+        
+        // Configurar celdas de alias editables
+        for(let i = 1; i <= cantidadAlias; i++) {
+            const aliasSpan = tr.querySelector(`.alias-${i}`);
+            if(aliasSpan) {
+                if(editable){
+                    aliasSpan.setAttribute("contenteditable","true");
+                    aliasSpan.classList.add("celda-editable");
+                } else {
+                    aliasSpan.removeAttribute("contenteditable");
+                    aliasSpan.classList.remove("celda-editable");
+                }
+            }
+        }
+        
         tr.querySelector("[data-accion='borrar']").addEventListener("click", ()=>tr.classList.toggle("marcada-borrado"));
         return tr;
         }
 
-    function agregarFilaNueva(tbody){
+    function agregarFilaNueva(tbody, cantidadAlias = 0){
         const tr = document.createElement("tr");
         tr.className = "fila-nueva";
+        
+        // Generar columnas de alias
+        let celdasAlias = '';
+        for(let i = 1; i <= cantidadAlias; i++) {
+            celdasAlias += `<td data-label="Alias ${i}"><span contenteditable="true" class="alias-${i} celda-editable"></span></td>`;
+        }
+        
         tr.innerHTML = `
             <td data-label="SKU"><span contenteditable="true" class="sku celda-editable" list="dlSkus"></span></td>
             <td data-label="Nombre del Producto"><span contenteditable="true" class="nombre celda-editable" list="dlNombres"></span></td>
             <td data-label="Bodega"><span contenteditable="true" class="bodega celda-editable"></span></td>
+            ${celdasAlias}
             <td style="width:1%; white-space:nowrap;"><button class="btn-mini" data-accion="agregar">＋</button></td>
         `;
         tbody.appendChild(tr);
@@ -205,15 +246,32 @@
             const sku   = tr.querySelector(".sku").textContent.trim();
             const nombre= tr.querySelector(".nombre").textContent.trim();
             const bodega= tr.querySelector(".bodega").textContent.trim();
+            
+            // Recopilar alias
+            const alias = {};
+            for(let i = 1; i <= cantidadAlias; i++) {
+                const aliasSpan = tr.querySelector(`.alias-${i}`);
+                if(aliasSpan) {
+                    alias[`alias_${i}`] = aliasSpan.textContent.trim();
+                }
+            }
+            
             if(!sku && !nombre){
             alert("Debes indicar al menos el SKU o el Nombre del producto.");
             return;
             }
-            const nueva = construirFilaProducto({sku, nombre_producto:nombre, bodega}, true);
+            const nueva = construirFilaProducto({sku, nombre_producto:nombre, bodega, ...alias}, true, cantidadAlias);
             tr.before(nueva);
             tr.querySelector(".sku").textContent = "";
             tr.querySelector(".nombre").textContent = "";
             tr.querySelector(".bodega").textContent = "";
+            // Limpiar alias
+            for(let i = 1; i <= cantidadAlias; i++) {
+                const aliasSpan = tr.querySelector(`.alias-${i}`);
+                if(aliasSpan) {
+                    aliasSpan.textContent = "";
+                }
+            }
         });
         }
 
@@ -230,11 +288,15 @@
         </div>
         <div class="chip">Bodega por Cliente</div>
       `;
+      
+      // Determinar cantidad de alias
+      const cantidadAlias = bloque.cliente.alias_por_producto ? (bloque.cliente.cantidad_alias_producto || 1) : 0;
+      
       const wrap = document.createElement("div");
       wrap.className = "table-wrap";
       wrap.innerHTML = `
-        <table class="glass-table tabla-por-cliente" data-cliente-id="${bloque.cliente.id}">
-          <thead>${thsProductos()}</thead>
+        <table class="glass-table tabla-por-cliente" data-cliente-id="${bloque.cliente.id}" data-cantidad-alias="${cantidadAlias}">
+          <thead>${thsProductos(cantidadAlias)}</thead>
           <tbody></tbody>
         </table>
       `;
@@ -242,9 +304,9 @@
 
       const tbody = wrap.querySelector("tbody");
       for(const r of (bloque.filas||[])){
-        tbody.appendChild(construirFilaProducto(r, toggleEdicion.checked));
+        tbody.appendChild(construirFilaProducto(r, toggleEdicion.checked, cantidadAlias));
       }
-      if(toggleEdicion.checked) agregarFilaNueva(tbody);
+      if(toggleEdicion.checked) agregarFilaNueva(tbody, cantidadAlias);
       return card;
     }
 
@@ -274,6 +336,9 @@
         (porSuc[b.sucursal.id] ||= { sucursal: b.sucursal, filas: [] }).filas.push(...(b.filas||[]));
       }
 
+      // Determinar cantidad de alias del cliente
+      const cantidadAlias = grupo.cliente.alias_por_producto ? (grupo.cliente.cantidad_alias_producto || 1) : 0;
+
       for(const sid of Object.keys(porSuc)){
         const data = porSuc[sid];
         const subtitulo = document.createElement("p");
@@ -284,12 +349,13 @@
         const tabla = document.createElement("table");
         tabla.className = "glass-table tabla-por-sucursal";
         tabla.setAttribute("data-sucursal-id", data.sucursal.id);
-        tabla.innerHTML = `<thead>${thsProductos()}</thead><tbody></tbody>`;
+        tabla.setAttribute("data-cantidad-alias", cantidadAlias);
+        tabla.innerHTML = `<thead>${thsProductos(cantidadAlias)}</thead><tbody></tbody>`;
         const tbody = tabla.tBodies[0];
         for(const r of (data.filas||[])){
-          tbody.appendChild(construirFilaProducto(r, toggleEdicion.checked));
+          tbody.appendChild(construirFilaProducto(r, toggleEdicion.checked, cantidadAlias));
         }
-        if(toggleEdicion.checked) agregarFilaNueva(tbody);
+        if(toggleEdicion.checked) agregarFilaNueva(tbody, cantidadAlias);
         cont.appendChild(tabla);
       }
 
@@ -333,6 +399,7 @@
         const cambios = [];
         for(const t of $$$(".tabla-por-cliente")){
             const clienteId = Number(t.dataset.clienteId);
+            const cantidadAlias = Number(t.dataset.cantidadAlias) || 0;
             for(const tr of $$$("tbody tr", t)){
             if(tr.classList.contains("fila-nueva")) continue;
             const sku    = tr.querySelector(".sku").textContent.trim();
@@ -340,7 +407,17 @@
             const bodega = tr.querySelector(".bodega").textContent.trim();
             const borrar = tr.classList.contains("marcada-borrado");
             const mapeoId= tr.dataset.mapeoId ? Number(tr.dataset.mapeoId) : null;
-            cambios.push({ cliente_id: clienteId, producto_sku: sku, producto_nombre: nombre, bodega, mapeo_id: mapeoId, borrar });
+            
+            // Recopilar alias
+            const alias = {};
+            for(let i = 1; i <= cantidadAlias; i++) {
+                const aliasSpan = tr.querySelector(`.alias-${i}`);
+                if(aliasSpan) {
+                    alias[`alias_${i}`] = aliasSpan.textContent.trim();
+                }
+            }
+            
+            cambios.push({ cliente_id: clienteId, producto_sku: sku, producto_nombre: nombre, bodega, mapeo_id: mapeoId, borrar, ...alias });
             }
         }
         return cambios;
@@ -350,6 +427,7 @@
         const cambios = [];
         for(const t of $$$(".tabla-por-sucursal")){
             const sucursalId = Number(t.dataset.sucursalId);
+            const cantidadAlias = Number(t.dataset.cantidadAlias) || 0;
             for(const tr of $$$("tbody tr", t)){
             if(tr.classList.contains("fila-nueva")) continue;
             const sku    = tr.querySelector(".sku").textContent.trim();
@@ -357,7 +435,17 @@
             const bodega = tr.querySelector(".bodega").textContent.trim();
             const borrar = tr.classList.contains("marcada-borrado");
             const mapeoId= tr.dataset.mapeoId ? Number(tr.dataset.mapeoId) : null;
-            cambios.push({ sucursal_id: sucursalId, producto_sku: sku, producto_nombre: nombre, bodega, mapeo_id: mapeoId, borrar });
+            
+            // Recopilar alias
+            const alias = {};
+            for(let i = 1; i <= cantidadAlias; i++) {
+                const aliasSpan = tr.querySelector(`.alias-${i}`);
+                if(aliasSpan) {
+                    alias[`alias_${i}`] = aliasSpan.textContent.trim();
+                }
+            }
+            
+            cambios.push({ sucursal_id: sucursalId, producto_sku: sku, producto_nombre: nombre, bodega, mapeo_id: mapeoId, borrar, ...alias });
             }
         }
         return cambios;
@@ -395,8 +483,12 @@
         // Alternar celdas + fila nueva
         for(const tabla of $$$(".tabla-por-cliente, .tabla-por-sucursal")){
             const tbody = tabla.tBodies[0];
+            const cantidadAlias = parseInt(tabla.dataset.cantidadAlias) || 0;
+            
             for(const tr of $$$("tr", tbody)){
             if(tr.classList.contains("fila-nueva")) continue;
+            
+            // Configurar celdas básicas
             ["sku","nombre","bodega"].forEach(cls=>{
                 const sp = tr.querySelector("."+cls);
                 if(!sp) return; // por si acaso
@@ -407,10 +499,18 @@
                 sp.removeAttribute("list");
                 }
             });
+            
+            // Configurar celdas de alias
+            for(let i = 1; i <= cantidadAlias; i++) {
+                const aliasSpan = tr.querySelector(`.alias-${i}`);
+                if(aliasSpan) {
+                    configurarCeldaEditable(aliasSpan, habilitar);
+                }
+            }
             }
             const existe = tbody.querySelector(".fila-nueva");
             if(habilitar){
-            if(!existe) agregarFilaNueva(tbody);
+            if(!existe) agregarFilaNueva(tbody, cantidadAlias);
             }else{
             if(existe) existe.remove();
             }

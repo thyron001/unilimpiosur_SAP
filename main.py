@@ -109,7 +109,7 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     resumen = proc.extraer_sucursal_y_totales(pdf_en_bytes)
 
     # 3) Emparejar contra BD (cliente fijo: Roldan), usando el alias de sucursal del PDF
-    filas_enriquecidas, suc = proc.emparejar_filas_con_bd(
+    filas_enriquecidas, suc, cliente_id = proc.emparejar_filas_con_bd(
         filas,
         cliente_nombre="Roldan",
         sucursal_alias=resumen.get("sucursal")
@@ -129,7 +129,8 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
 
     # 5) Guardar en PostgreSQL (usa tu función existente)
     try:
-        db.guardar_pedido(pedido, filas_enriquecidas)
+        sucursal_id = suc.get("id") if suc else None
+        db.guardar_pedido(pedido, filas_enriquecidas, cliente_id, sucursal_id)
     except Exception as e:
         print(f"❌ No se guardó el pedido: {e}")
         return
@@ -142,18 +143,21 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
 
 @app.route("/pedidos")
 def ver_pedidos():
+    # Por defecto mostrar pedidos por procesar
+    estado = request.args.get('estado', 'por_procesar')
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT id, numero_pedido, fecha, total, sucursal
+            SELECT id, numero_pedido, fecha, total, sucursal, estado
             FROM pedidos
+            WHERE estado = %s
             ORDER BY id DESC
             LIMIT 200;
-        """)
+        """, (estado,))
         filas = [
-            {"id": i, "numero_pedido": n, "fecha": f, "total": t, "sucursal": s}
-            for (i, n, f, t, s) in cur.fetchall()
+            {"id": i, "numero_pedido": n, "fecha": f, "total": t, "sucursal": s, "estado": e}
+            for (i, n, f, t, s, e) in cur.fetchall()
         ]
-    return render_template("orders.html", orders=filas, now=datetime.utcnow())
+    return render_template("orders.html", orders=filas, estado_actual=estado, now=datetime.utcnow())
 
 
 @app.route("/clientes")
@@ -164,7 +168,8 @@ def vista_clientes():
 def api_clientes_con_sucursales():
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT c.id, c.nombre, c.ruc, c.usa_bodega_por_sucursal
+            SELECT c.id, c.nombre, c.ruc, c.usa_bodega_por_sucursal, 
+                   c.alias_por_sucursal, c.alias_por_producto, c.cantidad_alias_producto
             FROM clientes c
             ORDER BY upper(c.nombre);
         """)
@@ -172,9 +177,12 @@ def api_clientes_con_sucursales():
             {
                 "id": cid, "nombre": nom, "ruc": ruc,
                 "usa_bodega_por_sucursal": bool(ubs),
+                "alias_por_sucursal": bool(alias_suc),
+                "alias_por_producto": bool(alias_prod),
+                "cantidad_alias_producto": cantidad_alias or 1,
                 "sucursales": []
             }
-            for (cid, nom, ruc, ubs) in cur.fetchall()
+            for (cid, nom, ruc, ubs, alias_suc, alias_prod, cantidad_alias) in cur.fetchall()
         ]
         idx = {c["id"]: c for c in clientes}
 
@@ -193,6 +201,66 @@ def api_clientes_con_sucursales():
                     })
 
     return jsonify(list(idx.values()))
+
+
+@app.route("/api/clientes/<int:cliente_id>", methods=["PUT"])
+def api_actualizar_cliente(cliente_id):
+    data = request.get_json(silent=True) or {}
+    
+    # Validar datos requeridos
+    nombre = data.get("nombre", "").strip()
+    ruc = data.get("ruc", "").strip()
+    
+    if not nombre:
+        return jsonify({"ok": False, "error": "El nombre es obligatorio"}), 400
+    if not ruc:
+        return jsonify({"ok": False, "error": "El RUC es obligatorio"}), 400
+    
+    # Validar RUC (debe tener entre 10 y 13 dígitos)
+    ruc_digits = ''.join(filter(str.isdigit, ruc))
+    if len(ruc_digits) < 10 or len(ruc_digits) > 13:
+        return jsonify({"ok": False, "error": "El RUC debe tener entre 10 y 13 dígitos"}), 400
+    
+    try:
+        with db.obtener_conexion() as conn, conn.cursor() as cur:
+            # Verificar que el cliente existe
+            cur.execute("SELECT id FROM clientes WHERE id = %s", (cliente_id,))
+            if not cur.fetchone():
+                return jsonify({"ok": False, "error": "Cliente no encontrado"}), 404
+            
+            # Verificar que el RUC no esté en uso por otro cliente
+            cur.execute("SELECT id FROM clientes WHERE ruc = %s AND id != %s", (ruc, cliente_id))
+            if cur.fetchone():
+                return jsonify({"ok": False, "error": "El RUC ya está en uso por otro cliente"}), 400
+            
+            # Actualizar cliente
+            cur.execute("""
+                UPDATE clientes 
+                SET 
+                    nombre = %s,
+                    ruc = %s,
+                    usa_bodega_por_sucursal = %s,
+                    alias_por_sucursal = %s,
+                    alias_por_producto = %s,
+                    cantidad_alias_producto = %s
+                WHERE id = %s
+            """, (
+                nombre,
+                ruc,
+                data.get("usa_bodega_por_sucursal", False),
+                data.get("alias_por_sucursal", False),
+                data.get("alias_por_producto", False),
+                data.get("cantidad_alias_producto", 1),
+                cliente_id
+            ))
+            
+            conn.commit()
+            
+        return jsonify({"ok": True, "mensaje": "Cliente actualizado correctamente"})
+        
+    except Exception as e:
+        print(f"Error al actualizar cliente: {e}")
+        return jsonify({"ok": False, "error": "Error interno del servidor"}), 500
 
 
 @app.route("/api/sucursales/bulk", methods=["POST"])
@@ -269,12 +337,12 @@ def api_productos_mapeos():
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         # ------- POR CLIENTE -------
         cur.execute("""
-            SELECT c.id, c.nombre, c.ruc
+            SELECT c.id, c.nombre, c.ruc, c.alias_por_producto, c.cantidad_alias_producto
             FROM clientes c
             WHERE c.usa_bodega_por_sucursal = FALSE
             ORDER BY upper(c.nombre);
         """)
-        clientes_pc = [{"id": i, "nombre": n, "ruc": r} for (i,n,r) in cur.fetchall()]
+        clientes_pc = [{"id": i, "nombre": n, "ruc": r, "alias_por_producto": ap, "cantidad_alias_producto": cap} for (i,n,r,ap,cap) in cur.fetchall()]
         idmap = {c["id"]: c for c in clientes_pc}
 
         por_cliente = {}
@@ -286,12 +354,30 @@ def api_productos_mapeos():
                 ORDER BY bpc.cliente_id, upper(p.nombre);
             """)
             for (mapeo_id, cliente_id, pid, sku, pnom, bodega) in cur.fetchall():
-                por_cliente.setdefault(cliente_id, []).append({
+                # Obtener alias para este producto y cliente
+                cur.execute("""
+                    SELECT alias_1, alias_2, alias_3 
+                    FROM alias_productos 
+                    WHERE producto_id = %s AND cliente_id = %s;
+                """, (pid, cliente_id))
+                alias_data = cur.fetchone()
+                
+                # Construir objeto con alias
+                fila = {
                     "mapeo_id": mapeo_id,
                     "producto_id": pid,
                     "sku": sku, "nombre_producto": pnom,
                     "bodega": bodega
-                })
+                }
+                
+                # Agregar alias si existen
+                if alias_data:
+                    alias_1, alias_2, alias_3 = alias_data
+                    if alias_1: fila["alias_1"] = alias_1
+                    if alias_2: fila["alias_2"] = alias_2
+                    if alias_3: fila["alias_3"] = alias_3
+                
+                por_cliente.setdefault(cliente_id, []).append(fila)
         for cid, cli in idmap.items():
             result["por_cliente"].append({
                 "cliente": cli,
@@ -301,12 +387,12 @@ def api_productos_mapeos():
 
         # ------- POR SUCURSAL + CLIENTE -------
         cur.execute("""
-            SELECT c.id, c.nombre, c.ruc
+            SELECT c.id, c.nombre, c.ruc, c.alias_por_producto, c.cantidad_alias_producto
             FROM clientes c
             WHERE c.usa_bodega_por_sucursal = TRUE
             ORDER BY upper(c.nombre);
         """)
-        clientes_ps = [{"id": i, "nombre": n, "ruc": r} for (i,n,r) in cur.fetchall()]
+        clientes_ps = [{"id": i, "nombre": n, "ruc": r, "alias_por_producto": ap, "cantidad_alias_producto": cap} for (i,n,r,ap,cap) in cur.fetchall()]
 
         if clientes_ps:
             # 1) sucursales activas
@@ -342,12 +428,31 @@ def api_productos_mapeos():
                     "sucursal": {"id": suc_id, "nombre": suc_nombre},
                     "filas": []
                 })
-                por_cliente[cli_id][suc_id]["filas"].append({
+                
+                # Obtener alias para este producto y cliente
+                cur.execute("""
+                    SELECT alias_1, alias_2, alias_3 
+                    FROM alias_productos 
+                    WHERE producto_id = %s AND cliente_id = %s;
+                """, (pid, cli_id))
+                alias_data = cur.fetchone()
+                
+                # Construir objeto con alias
+                fila = {
                     "mapeo_id": mapeo_id,
                     "producto_id": pid,
                     "sku": sku, "nombre_producto": pnom,
                     "bodega": bodega
-                })
+                }
+                
+                # Agregar alias si existen
+                if alias_data:
+                    alias_1, alias_2, alias_3 = alias_data
+                    if alias_1: fila["alias_1"] = alias_1
+                    if alias_2: fila["alias_2"] = alias_2
+                    if alias_3: fila["alias_3"] = alias_3
+                
+                por_cliente[cli_id][suc_id]["filas"].append(fila)
 
             for cli in clientes_ps:
                 bloques = list(por_cliente.get(cli["id"], {}).values())
@@ -380,6 +485,11 @@ def api_productos_por_cliente_bulk():
             nombre_prod  = (c.get("producto_nombre") or "").strip() or None
             bodega       = (c.get("bodega") or "").strip() or None
             borrar       = bool(c.get("borrar"))
+            
+            # Extraer alias
+            alias_1 = (c.get("alias_1") or "").strip() or None
+            alias_2 = (c.get("alias_2") or "").strip() or None
+            alias_3 = (c.get("alias_3") or "").strip() or None
 
             if borrar and mapeo_id:
                 cur.execute("DELETE FROM bodegas_producto_por_cliente WHERE id = %s;", (mapeo_id,))
@@ -424,6 +534,20 @@ def api_productos_por_cliente_bulk():
                 _ = cur.fetchone()[0]
                 res["insertados"] += 1
 
+            # Manejar alias de productos
+            if producto_id and cliente_id:
+                # Upsert alias en la tabla alias_productos
+                cur.execute("""
+                    INSERT INTO alias_productos (producto_id, cliente_id, alias_1, alias_2, alias_3)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (cliente_id, producto_id) 
+                    DO UPDATE SET 
+                        alias_1 = EXCLUDED.alias_1,
+                        alias_2 = EXCLUDED.alias_2,
+                        alias_3 = EXCLUDED.alias_3,
+                        fecha_actualizacion = CURRENT_TIMESTAMP;
+                """, (producto_id, cliente_id, alias_1, alias_2, alias_3))
+
     return jsonify({"ok": True, **res})
 
 
@@ -446,6 +570,11 @@ def api_productos_por_sucursal_bulk():
             nombre_prod  = (c.get("producto_nombre") or "").strip() or None
             bodega       = (c.get("bodega") or "").strip() or None
             borrar       = bool(c.get("borrar"))
+            
+            # Extraer alias
+            alias_1 = (c.get("alias_1") or "").strip() or None
+            alias_2 = (c.get("alias_2") or "").strip() or None
+            alias_3 = (c.get("alias_3") or "").strip() or None
 
             if borrar and mapeo_id:
                 cur.execute("DELETE FROM bodegas_producto_por_sucursal WHERE id = %s;", (mapeo_id,))
@@ -490,6 +619,26 @@ def api_productos_por_sucursal_bulk():
                 _ = cur.fetchone()[0]
                 res["insertados"] += 1
 
+            # Manejar alias de productos (para sucursales, necesitamos el cliente_id)
+            if producto_id and sucursal_id:
+                # Obtener cliente_id de la sucursal
+                cur.execute("SELECT cliente_id FROM sucursales WHERE id = %s;", (sucursal_id,))
+                cliente_result = cur.fetchone()
+                if cliente_result:
+                    cliente_id = cliente_result[0]
+                    
+                    # Upsert alias en la tabla alias_productos
+                    cur.execute("""
+                        INSERT INTO alias_productos (producto_id, cliente_id, alias_1, alias_2, alias_3)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (cliente_id, producto_id) 
+                        DO UPDATE SET 
+                            alias_1 = EXCLUDED.alias_1,
+                            alias_2 = EXCLUDED.alias_2,
+                            alias_3 = EXCLUDED.alias_3,
+                            fecha_actualizacion = CURRENT_TIMESTAMP;
+                    """, (producto_id, cliente_id, alias_1, alias_2, alias_3))
+
     return jsonify({"ok": True, **res})
 
 
@@ -503,6 +652,54 @@ def resumen_pedidos():
         cur.execute("SELECT COUNT(*) FROM pedidos;")
         (cantidad,) = cur.fetchone()
     return jsonify({"count": int(cantidad)})
+
+@app.route("/api/pedidos/por_estado/<estado>")
+def api_pedidos_por_estado(estado: str):
+    """Obtiene pedidos filtrados por estado"""
+    estados_validos = ['por_procesar', 'procesado', 'con_errores']
+    if estado not in estados_validos:
+        return jsonify({"error": "Estado inválido"}), 400
+    
+    with db.obtener_conexion() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT id, numero_pedido, fecha, total, sucursal, estado
+            FROM pedidos
+            WHERE estado = %s
+            ORDER BY id DESC
+            LIMIT 200;
+        """, (estado,))
+        filas = [
+            {"id": i, "numero_pedido": n, "fecha": f, "total": t, "sucursal": s, "estado": e}
+            for (i, n, f, t, s, e) in cur.fetchall()
+        ]
+    return jsonify({"pedidos": filas, "estado": estado})
+
+@app.route("/api/generar_sap", methods=["POST"])
+def api_generar_sap():
+    """Genera archivos SAP para pedidos por procesar"""
+    try:
+        import generador_sap
+        odrf_path, drf1_path = generador_sap.generar_archivos_sap()
+        
+        if odrf_path and drf1_path:
+            return jsonify({
+                "ok": True,
+                "mensaje": "Archivos SAP generados exitosamente",
+                "archivos": {
+                    "odrf": odrf_path,
+                    "drf1": drf1_path
+                }
+            })
+        else:
+            return jsonify({
+                "ok": False,
+                "mensaje": "No hay pedidos por procesar para generar archivos SAP"
+            })
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": str(e)
+        }), 500
 
 
 # ====== DETALLE PEDIDO =======
@@ -595,6 +792,84 @@ def api_subir_productos():
         return jsonify({"ok": True, **resultado})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
+
+
+# ========= ENDPOINTS DE CONFIGURACIÓN =========
+
+@app.route("/api/configuracion/numero-pedido-inicial", methods=["GET"])
+def api_obtener_numero_pedido_inicial():
+    """Obtiene el número de pedido inicial configurado"""
+    try:
+        with db.obtener_conexion() as conn, conn.cursor() as cur:
+            cur.execute("""
+                SELECT valor FROM configuracion 
+                WHERE clave = 'numero_pedido_inicial'
+            """)
+            result = cur.fetchone()
+            
+            if result:
+                return jsonify({"numero_inicial": int(result[0])})
+            else:
+                return jsonify({"numero_inicial": 1})  # Valor por defecto
+                
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/configuracion/numero-pedido-inicial", methods=["POST"])
+def api_guardar_numero_pedido_inicial():
+    """Guarda el número de pedido inicial"""
+    try:
+        data = request.get_json()
+        numero_inicial = data.get("numero_inicial")
+        
+        if not numero_inicial or not isinstance(numero_inicial, int) or numero_inicial < 1:
+            return jsonify({"error": "Número inicial debe ser un entero mayor a 0"}), 400
+        
+        with db.obtener_conexion() as conn, conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO configuracion (clave, valor, descripcion) 
+                VALUES ('numero_pedido_inicial', %s, 'Número inicial para generar números de pedido secuenciales')
+                ON CONFLICT (clave) 
+                DO UPDATE SET 
+                    valor = EXCLUDED.valor,
+                    fecha_actualizacion = CURRENT_TIMESTAMP
+            """, (str(numero_inicial),))
+            
+            conn.commit()
+            
+        return jsonify({"ok": True, "numero_inicial": numero_inicial})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/configuracion/siguiente-numero-pedido", methods=["GET"])
+def api_siguiente_numero_pedido():
+    """Obtiene el siguiente número de pedido disponible"""
+    try:
+        with db.obtener_conexion() as conn, conn.cursor() as cur:
+            # Obtener número inicial configurado
+            cur.execute("""
+                SELECT valor FROM configuracion 
+                WHERE clave = 'numero_pedido_inicial'
+            """)
+            result = cur.fetchone()
+            numero_inicial = int(result[0]) if result else 1
+            
+            # Obtener el último número de pedido usado
+            cur.execute("""
+                SELECT COALESCE(MAX(numero_pedido), 0) FROM pedidos
+            """)
+            ultimo_numero = cur.fetchone()[0]
+            
+            # Calcular siguiente número
+            siguiente_numero = max(numero_inicial, ultimo_numero + 1)
+            
+            return jsonify({"siguiente_numero": siguiente_numero})
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ========= ARRANQUE =========

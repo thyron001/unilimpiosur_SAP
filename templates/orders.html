@@ -53,6 +53,24 @@ Sección 2: CSS  (static/css/glass.css)
             </div>
           </section>
           <section class="side-wrapper">
+            <h3 class="side-title">Configuración</h3>
+            <div class="side-menu">
+              <div class="config-item">
+                <label for="numeroPedidoInicial" class="config-label">
+                  📋 Número de pedido inicial
+                </label>
+                <input type="number" id="numeroPedidoInicial" 
+                       class="config-input" 
+                       placeholder="Ej: 10000"
+                       min="1">
+                <button id="btnGuardarNumero" class="chip" 
+                        title="Guardar número de pedido inicial">
+                  💾 Guardar
+                </button>
+              </div>
+            </div>
+          </section>
+          <section class="side-wrapper">
             <h3 class="side-title">Atajos</h3>
             <nav class="side-menu">
               <a href="#">⬇️ Exportar CSV</a>
@@ -64,10 +82,9 @@ Sección 2: CSS  (static/css/glass.css)
         <!-- Contenido principal -->
         <div class="main-container">
           <div class="main-header">
-            <a class="menu-link main-header-link is-active"
-              href="#">Por procesar</a>
-            <a class="menu-link main-header-link" href="#">Procesado</a>
-            <a class="menu-link main-header-link" href="#">Con errores</a>
+            <a class="menu-link main-header-link" href="#" data-estado="por_procesar">Por procesar</a>
+            <a class="menu-link main-header-link" href="#" data-estado="procesado">Procesado</a>
+            <a class="menu-link main-header-link" href="#" data-estado="con_errores">Con errores</a>
           </div>
 
           <div class="content-wrapper">
@@ -80,6 +97,7 @@ Sección 2: CSS  (static/css/glass.css)
                 <div class="card-head">
                   <div style="display:flex; align-items:center; gap:10px;">
                     <strong>Pedidos</strong>
+                    <span id="estado-actual" class="chip">{{ estado_actual or 'por_procesar' }}</span>
                   </div>
                 </div>
                 <div class="table-wrap">
@@ -94,7 +112,7 @@ Sección 2: CSS  (static/css/glass.css)
                         <th>Origen</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="ordersTableBody">
                       {% for o in orders %}
                       <tr class="row-pedido" data-pedido-id="{{ o.id }}" role="button" tabindex="0" title="Ver detalle">
                         <td class="mono" data-label="# Pedido">{{ o.numero_pedido }}</td>
@@ -110,6 +128,11 @@ Sección 2: CSS  (static/css/glass.css)
                 </div>
               </div>
             </section>
+
+            <!-- Botón flotante SAP (solo visible en "Por procesar") -->
+            <button id="btnSAP" class="btn-flotante-sap hidden" title="Generar archivos SAP">
+              <span>SAP</span>
+            </button>
           </div>
         </div>
       </div>
@@ -165,6 +188,80 @@ Sección 2: CSS  (static/css/glass.css)
       </div>
     </div>
 
+    <style>
+    /* Estilos para configuración */
+    .config-item {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+    
+    .config-label {
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: var(--text-color);
+        margin-bottom: 4px;
+    }
+    
+    .config-input {
+        padding: 8px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: var(--bg-color);
+        color: var(--text-color);
+        font-size: 0.9rem;
+        transition: border-color 0.2s ease;
+    }
+    
+    .config-input:focus {
+        outline: none;
+        border-color: var(--accent-color);
+        box-shadow: 0 0 0 2px rgba(159, 213, 255, 0.2);
+    }
+    
+    /* Estilos para el botón flotante SAP */
+    .btn-flotante-sap {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      color: white;
+      font-weight: bold;
+      font-size: 14px;
+      cursor: pointer;
+      box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+      transition: all 0.3s ease;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn-flotante-sap:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 35px rgba(102, 126, 234, 0.6);
+    }
+
+    .btn-flotante-sap:active {
+      transform: translateY(-1px);
+    }
+
+    .btn-flotante-sap.hidden {
+      display: none;
+    }
+
+    /* Estilos para las subpestañas activas */
+    .main-header-link.is-active {
+      background: rgba(102, 126, 234, 0.2);
+      border-bottom: 2px solid #667eea;
+    }
+    </style>
+
     <script>
     (function(){
       const $$ = (sel, ctx=document) => ctx.querySelector(sel);
@@ -173,6 +270,10 @@ Sección 2: CSS  (static/css/glass.css)
       const overlay = $$("#modalOverlay");
       const modal   = $$("#modalDetalle");
       const btnX    = $$("#m-cerrar");
+      const btnSAP  = $$("#btnSAP");
+      const estadoActual = $$("#estado-actual");
+
+      let estadoSeleccionado = "{{ estado_actual or 'por_procesar' }}";
 
       const fmtMoney = (n) => (n===null || n===undefined) ? "-" : n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
       const fmtDate  = (iso) => {
@@ -223,23 +324,191 @@ Sección 2: CSS  (static/css/glass.css)
         $$("#t-total").textContent = fmtMoney(t.total);
       }
 
-      // Clic en fila para abrir el modal
-      $$$(".row-pedido").forEach(tr=>{
-        tr.addEventListener("click", async ()=>{
-          const id = tr.getAttribute("data-pedido-id");
-          try{
-            const data = await cargarDetalle(id);
-            renderDetalle(data);
-            abrirModal();
-          }catch(e){
-            console.error(e);
-            alert("No se pudo cargar el detalle del pedido.");
+      // Función para cargar pedidos por estado
+      async function cargarPedidosPorEstado(estado) {
+        try {
+          const resp = await fetch(`/api/pedidos/por_estado/${estado}`);
+          if (!resp.ok) throw new Error("Error al cargar pedidos");
+          const data = await resp.json();
+          
+          const tbody = $$("#ordersTableBody");
+          tbody.innerHTML = "";
+          
+          for (const pedido of data.pedidos) {
+            const tr = document.createElement("tr");
+            tr.className = "row-pedido";
+            tr.setAttribute("data-pedido-id", pedido.id);
+            tr.setAttribute("role", "button");
+            tr.setAttribute("tabindex", "0");
+            tr.setAttribute("title", "Ver detalle");
+            
+            tr.innerHTML = `
+              <td class="mono" data-label="# Pedido">${pedido.numero_pedido}</td>
+              <td data-label="Cliente">Roldan</td>
+              <td data-label="Sucursal">${pedido.sucursal || '-'}</td>
+              <td data-label="Fecha">${pedido.fecha ? new Date(pedido.fecha).toLocaleString() : ''}</td>
+              <td class="mono" data-label="Total">${fmtMoney(pedido.total)}</td>
+              <td data-label="Origen">Email</td>
+            `;
+            
+            // Agregar event listeners para el modal
+            tr.addEventListener("click", async ()=>{
+              try{
+                const data = await cargarDetalle(pedido.id);
+                renderDetalle(data);
+                abrirModal();
+              }catch(e){
+                console.error(e);
+                alert("No se pudo cargar el detalle del pedido.");
+              }
+            });
+            tr.addEventListener("keydown", (e)=>{
+              if(e.key==="Enter" || e.key===" "){ e.preventDefault(); tr.click(); }
+            });
+            
+            tbody.appendChild(tr);
           }
-        });
-        tr.addEventListener("keydown", (e)=>{
-          if(e.key==="Enter" || e.key===" "){ e.preventDefault(); tr.click(); }
+          
+          estadoActual.textContent = estado;
+          estadoSeleccionado = estado;
+          
+          // Mostrar/ocultar botón SAP
+          if (estado === "por_procesar") {
+            btnSAP.classList.remove("hidden");
+          } else {
+            btnSAP.classList.add("hidden");
+          }
+          
+        } catch (error) {
+          console.error("Error:", error);
+          alert("Error al cargar los pedidos");
+        }
+      }
+
+      // Event listeners para las subpestañas
+      $$$(".main-header-link").forEach(link => {
+        link.addEventListener("click", (e) => {
+          e.preventDefault();
+          const estado = link.getAttribute("data-estado");
+          
+          // Actualizar estado activo
+          $$$(".main-header-link").forEach(l => l.classList.remove("is-active"));
+          link.classList.add("is-active");
+          
+          // Cargar pedidos del estado seleccionado
+          cargarPedidosPorEstado(estado);
         });
       });
+
+      // Event listener para el botón SAP
+      btnSAP.addEventListener("click", async () => {
+        if (!confirm("¿Generar archivos SAP para todos los pedidos por procesar?")) {
+          return;
+        }
+        
+        btnSAP.disabled = true;
+        btnSAP.textContent = "Generando...";
+        
+        try {
+          const resp = await fetch("/api/generar_sap", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            }
+          });
+          
+          const data = await resp.json();
+          
+          if (data.ok) {
+            alert(`✅ ${data.mensaje}\n\nArchivos generados:\n- ${data.archivos.odrf}\n- ${data.archivos.drf1}`);
+            // Recargar pedidos por procesar
+            cargarPedidosPorEstado("por_procesar");
+          } else {
+            alert(`❌ ${data.mensaje || data.error}`);
+          }
+        } catch (error) {
+          console.error("Error:", error);
+          alert("Error al generar archivos SAP");
+        } finally {
+          btnSAP.disabled = false;
+          btnSAP.innerHTML = "<span>SAP</span>";
+        }
+      });
+
+      // Inicializar con el estado actual
+      const linkActivo = $$(`[data-estado="${estadoSeleccionado}"]`);
+      if (linkActivo) {
+        linkActivo.classList.add("is-active");
+      }
+      
+      // Mostrar/ocultar botón SAP según estado inicial
+      if (estadoSeleccionado === "por_procesar") {
+        btnSAP.classList.remove("hidden");
+      }
+    })();
+    </script>
+
+    <script>
+    // Configuración de número de pedido inicial
+    (function(){
+      const numeroPedidoInicial = document.getElementById("numeroPedidoInicial");
+      const btnGuardarNumero = document.getElementById("btnGuardarNumero");
+
+      // Cargar número de pedido inicial al inicializar
+      async function cargarNumeroPedidoInicial() {
+          try {
+              const response = await fetch('/api/configuracion/numero-pedido-inicial');
+              if (response.ok) {
+                  const data = await response.json();
+                  numeroPedidoInicial.value = data.numero_inicial || '';
+              }
+          } catch (error) {
+              console.error('Error al cargar número de pedido inicial:', error);
+          }
+      }
+
+      // Guardar número de pedido inicial
+      async function guardarNumeroPedidoInicial() {
+          const numero = numeroPedidoInicial.value;
+          
+          if (!numero || numero < 1) {
+              alert('Por favor ingresa un número válido mayor a 0');
+              return;
+          }
+
+          try {
+              const response = await fetch('/api/configuracion/numero-pedido-inicial', {
+                  method: 'POST',
+                  headers: {
+                      'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ numero_inicial: parseInt(numero) })
+              });
+
+              if (response.ok) {
+                  alert(`✅ Número de pedido inicial guardado: ${numero}`);
+              } else {
+                  const error = await response.json();
+                  alert(`❌ Error: ${error.error}`);
+              }
+          } catch (error) {
+              console.error('Error al guardar número de pedido inicial:', error);
+              alert('❌ Error al guardar la configuración');
+          }
+      }
+
+      // Event listeners
+      btnGuardarNumero.addEventListener("click", guardarNumeroPedidoInicial);
+      
+      // Permitir guardar con Enter
+      numeroPedidoInicial.addEventListener("keypress", (e) => {
+          if (e.key === 'Enter') {
+              guardarNumeroPedidoInicial();
+          }
+      });
+
+      // Cargar configuración al inicializar
+      cargarNumeroPedidoInicial();
     })();
     </script>
 
