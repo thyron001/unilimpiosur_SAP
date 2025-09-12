@@ -108,7 +108,6 @@ Sección 2: CSS  (static/css/glass.css)
                         <th>Cliente</th>
                         <th>Sucursal</th>
                         <th>Fecha</th>
-                        <th>Total</th>
                         <th>Origen</th>
                       </tr>
                     </thead>
@@ -119,7 +118,6 @@ Sección 2: CSS  (static/css/glass.css)
                         <td data-label="Cliente">Roldan</td>
                         <td data-label="Sucursal">{{ o.sucursal or '-' }}</td>
                         <td data-label="Fecha">{{ o.fecha.strftime('%Y-%m-%d %H:%M:%S') if o.fecha else '' }}</td>
-                        <td class="mono" data-label="Total">{{ "{:,.2f}".format(o.total or 0) }}</td>
                         <td data-label="Origen">Email</td>
                       </tr>
                       {% endfor %}
@@ -163,7 +161,6 @@ Sección 2: CSS  (static/css/glass.css)
                   <th>Descripción</th>
                   <th class="num">Cant.</th>
                   <th class="num">P. Unit.</th>
-                  <th class="num">P. Total</th>
                 </tr>
               </thead>
               <tbody id="m-items"></tbody>
@@ -171,20 +168,6 @@ Sección 2: CSS  (static/css/glass.css)
           </div>
         </div>
 
-        <div class="glass-modal-totals">
-          <div class="line"><span>Subtotal bruto</span><strong class="mono"
-              id="t-subbr">-</strong></div>
-          <div class="line"><span>Descuento</span><strong class="mono"
-              id="t-desc">-</strong></div>
-          <div class="line"><span>Subtotal neto</span><strong class="mono"
-              id="t-subnt">-</strong></div>
-          <div class="line"><span>IVA 0%</span><strong class="mono"
-              id="t-iva0">-</strong></div>
-          <div class="line"><span>IVA 15%</span><strong class="mono"
-              id="t-iva15">-</strong></div>
-          <div class="line total"><span>Total</span><strong class="mono"
-              id="t-total">-</strong></div>
-        </div>
       </div>
     </div>
 
@@ -310,18 +293,10 @@ Sección 2: CSS  (static/css/glass.css)
             <td>${(it.descripcion || "").replace(/</g,"&lt;")}</td>
             <td class="num mono">${it.cantidad ?? ""}</td>
             <td class="num mono">${fmtMoney(it.precio_unitario)}</td>
-            <td class="num mono">${fmtMoney(it.precio_total)}</td>
           `;
           tb.appendChild(tr);
         }
 
-        const t = data.totales || {};
-        $$("#t-subbr").textContent = fmtMoney(t.subtotal_bruto);
-        $$("#t-desc").textContent  = fmtMoney(t.descuento);
-        $$("#t-subnt").textContent = fmtMoney(t.subtotal_neto);
-        $$("#t-iva0").textContent  = fmtMoney(t.iva_0);
-        $$("#t-iva15").textContent = fmtMoney(t.iva_15);
-        $$("#t-total").textContent = fmtMoney(t.total);
       }
 
       // Función para cargar pedidos por estado
@@ -347,7 +322,6 @@ Sección 2: CSS  (static/css/glass.css)
               <td data-label="Cliente">Roldan</td>
               <td data-label="Sucursal">${pedido.sucursal || '-'}</td>
               <td data-label="Fecha">${pedido.fecha ? new Date(pedido.fecha).toLocaleString() : ''}</td>
-              <td class="mono" data-label="Total">${fmtMoney(pedido.total)}</td>
               <td data-label="Origen">Email</td>
             `;
             

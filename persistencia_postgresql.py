@@ -38,14 +38,13 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
     Inserta en PostgreSQL:
 
       Tabla pedidos:
-        (fecha, sucursal, subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total, cliente_id, sucursal_id)
+        (fecha, sucursal, cliente_id, sucursal_id)
 
       Tabla pedido_items:
         (pedido_id, descripcion, sku, bodega, cantidad, precio_unitario, precio_total)
 
     pedido: dict con claves:
-      fecha (datetime), sucursal (str),
-      subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total (Decimal/str)
+      fecha (datetime), sucursal (str)
     cliente_id: ID del cliente (opcional)
     sucursal_id: ID de la sucursal (opcional)
     """
@@ -59,17 +58,6 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
     elif not isinstance(fecha, datetime):
         fecha = datetime.now()
 
-    # Totales
-    subtotal_bruto = a_decimal(pedido.get("subtotal_bruto"))
-    descuento      = a_decimal(pedido.get("descuento"))
-    subtotal_neto  = a_decimal(pedido.get("subtotal_neto"))
-    iva_0          = a_decimal(pedido.get("iva_0"))
-    iva_15         = a_decimal(pedido.get("iva_15"))
-    total          = a_decimal(pedido.get("total"))
-
-    # ⚠️ Política: NO calcular el total si no viene del PDF.
-    if total is None:
-        raise ValueError("TOTAL no detectado en el PDF; se aborta el guardado para evitar cálculos automáticos.")
 
     sucursal = (pedido.get("sucursal") or "").strip() or None
 
@@ -96,12 +84,12 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
             cur.execute(
                 """
                 INSERT INTO pedidos
-                  (fecha, sucursal, subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total, estado, cliente_id, sucursal_id, numero_pedido)
+                  (fecha, sucursal, estado, cliente_id, sucursal_id, numero_pedido)
                 VALUES
-                  (%s,    %s,       %s,             %s,        %s,            %s,   %s,    %s,    %s,     %s,         %s,          %s)
+                  (%s,    %s,       %s,     %s,         %s,          %s)
                 RETURNING id;
                 """,
-                (fecha, sucursal, subtotal_bruto, descuento, subtotal_neto, iva_0, iva_15, total, 'por_procesar', cliente_id, sucursal_id, siguiente_numero)
+                (fecha, sucursal, 'por_procesar', cliente_id, sucursal_id, siguiente_numero)
             )
             pedido_id = cur.fetchone()[0]
             numero_pedido = siguiente_numero
@@ -129,11 +117,5 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
     print("✅ Pedido guardado en PostgreSQL:")
     print(f"   → ID={pedido_id} | N° orden llegada={numero_pedido} | Ítems={len(items)}")
     print(f"   → Sucursal:        {sucursal or '-'}")
-    print(f"   → Subtotal bruto:  {subtotal_bruto if subtotal_bruto is not None else '-'}")
-    print(f"   → Descuento:       {descuento if descuento is not None else '-'}")
-    print(f"   → Subtotal neto:   {subtotal_neto if subtotal_neto is not None else '-'}")
-    print(f"   → IVA 0%:          {iva_0 if iva_0 is not None else '-'}")
-    print(f"   → IVA 15%:         {iva_15 if iva_15 is not None else '-'}")
-    print(f"   → TOTAL:           {total if total is not None else '-'}")
 
     return pedido_id, numero_pedido

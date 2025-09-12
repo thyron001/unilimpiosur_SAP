@@ -175,17 +175,11 @@ def _buscar_valor(titulo_regex: str, texto: str, max_saltos: int = 2) -> str | N
         return None
     return m.group(1)
 
-def extraer_sucursal_y_totales(pdf_en_bytes: bytes) -> Dict[str, Any]:
+def extraer_sucursal(pdf_en_bytes: bytes) -> Dict[str, Any]:
     """
     Devuelve:
       {
         "sucursal": "texto que viene en PDF (Solicita: …)",
-        "subtotal_bruto": Decimal|None,
-        "descuento": Decimal|None,
-        "subtotal_neto": Decimal|None,
-        "iva_0": Decimal|None,
-        "iva_15": Decimal|None,
-        "total": Decimal|None,
       }
     """
     texto = _texto_completo(pdf_en_bytes)
@@ -197,45 +191,14 @@ def extraer_sucursal_y_totales(pdf_en_bytes: bytes) -> Dict[str, Any]:
             sucursal = re.sub(r"^\s*Solicita\s*:\s*", "", line, flags=re.IGNORECASE).strip()
             break
 
-    # Totales
-    subtotales_raw = re.findall(
-        r"Subtotal(?:[^\S\r\n]|\n){0,2}\$?\s*([0-9][0-9\.\,]*|-)",
-        texto,
-        flags=re.IGNORECASE
-    )
-    raw_descuento = _buscar_valor(r"Descuento", texto, max_saltos=2)
-    raw_iva0      = _buscar_valor(r"IVA\s*0%",   texto, max_saltos=2)
-    raw_iva15     = _buscar_valor(r"IVA\s*15%",  texto, max_saltos=2)
-    raw_total     = _buscar_valor(r"\bTOTAL\b",  texto, max_saltos=3)
-
-    subtotal_bruto = to_decimal_es(subtotales_raw[0]) if len(subtotales_raw) >= 1 else None
-    subtotal_neto  = to_decimal_es(subtotales_raw[1]) if len(subtotales_raw) >= 2 else None
-
-    descuento = to_decimal_es(raw_descuento)
-    iva_0     = Decimal("0") if (raw_iva0 is None or raw_iva0 == "-") else to_decimal_es(raw_iva0)
-    iva_15    = to_decimal_es(raw_iva15)
-    total     = to_decimal_es(raw_total)
-
     return {
         "sucursal": sucursal,
-        "subtotal_bruto": subtotal_bruto,
-        "descuento": descuento,
-        "subtotal_neto": subtotal_neto,
-        "iva_0": iva_0,
-        "iva_15": iva_15,
-        "total": total,
     }
 
 def imprimir_resumen_pedido(res: Dict[str, Any]) -> None:
-    print("========== 3) SUCURSAL Y TOTALES ==========")
+    print("========== 3) SUCURSAL ==========")
     print("\nResumen del pedido (extraído del PDF):")
     print(f"  Sucursal:        {res.get('sucursal') or '-'}")
-    print(f"  Subtotal bruto:  {fmt2(res.get('subtotal_bruto'))}")
-    print(f"  Descuento:       {fmt2(res.get('descuento'))}")
-    print(f"  Subtotal neto:   {fmt2(res.get('subtotal_neto'))}")
-    print(f"  IVA 0%:          {fmt2(res.get('iva_0'))}")
-    print(f"  IVA 15%:         {fmt2(res.get('iva_15'))}")
-    print(f"  TOTAL:           {fmt2(res.get('total'))}")
     print()
 
 # ==============================

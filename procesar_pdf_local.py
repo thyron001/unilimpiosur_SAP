@@ -18,7 +18,7 @@ from procesamiento_pedidos import (
     emparejar_filas_con_bd,          # <- emparejador por NOMBRE + unidad (BD)
     imprimir_filas,
     imprimir_filas_emparejadas,
-    extraer_sucursal_y_totales,
+    extraer_sucursal,
     imprimir_resumen_pedido,
 )
 from persistencia_postgresql import guardar_pedido
@@ -254,8 +254,8 @@ def main():
     filas = extraer_filas_pdf(pdf_bytes)
     imprimir_filas(filas)
 
-    print("\n========== 2) SUCURSAL Y TOTALES (DESDE PDF) ==========")
-    resumen = extraer_sucursal_y_totales(pdf_bytes)
+    print("\n========== 2) SUCURSAL (DESDE PDF) ==========")
+    resumen = extraer_sucursal(pdf_bytes)
     imprimir_resumen_pedido(resumen)
 
     print("\n========== 3) EMPAREJADO POR NOMBRE (BD) ==========")
@@ -285,12 +285,6 @@ def main():
     pedido = {
         "fecha": fecha_obj,
         "sucursal": sucursal_txt,
-        "subtotal_bruto": resumen.get("subtotal_bruto"),
-        "descuento": resumen.get("descuento"),
-        "subtotal_neto": resumen.get("subtotal_neto"),
-        "iva_0": resumen.get("iva_0"),
-        "iva_15": resumen.get("iva_15"),
-        "total": resumen.get("total"),
     }
 
     # ======== DRY-RUN: Solo mostrar información sin grabar en BD ========

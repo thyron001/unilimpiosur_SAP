@@ -38,11 +38,6 @@ def guardar_pedido_en_pg(filas_enriquecidas: list[dict], meta: dict):
         print("⚠️ No hay filas enriquecidas para guardar en PostgreSQL.")
         return
 
-    total = Decimal("0")
-    for f in filas_enriquecidas:
-        pt = a_decimal(f.get("ptotal"))
-        if pt is not None:
-            total += pt
 
     fecha = meta.get("fecha")
     if isinstance(fecha, str):
@@ -62,11 +57,11 @@ def guardar_pedido_en_pg(filas_enriquecidas: list[dict], meta: dict):
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO pedidos (fecha, total, pdf_filename, email_uid, email_from, email_subject)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO pedidos (fecha, pdf_filename, email_uid, email_from, email_subject)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING id, numero_pedido;
                 """,
-                (fecha, total, pdf_filename, email_uid, email_from, email_subject)
+                (fecha, pdf_filename, email_uid, email_from, email_subject)
             )
             pedido_id, numero_pedido = cur.fetchone()
 
@@ -105,8 +100,8 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
         print("⚠️ No se detectaron filas en el PDF.")
         return
 
-    # 2) Sucursal y totales (del PDF)
-    resumen = proc.extraer_sucursal_y_totales(pdf_en_bytes)
+    # 2) Sucursal (del PDF)
+    resumen = proc.extraer_sucursal(pdf_en_bytes)
 
     # 3) Emparejar contra BD (cliente fijo: Roldan), usando el alias de sucursal del PDF
     filas_enriquecidas, suc, cliente_id = proc.emparejar_filas_con_bd(
@@ -119,12 +114,6 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     pedido = {
         "fecha": meta.get("fecha"),
         "sucursal": (suc.get("nombre") if suc else resumen.get("sucursal")),  # nombre del sistema si se encontró
-        "subtotal_bruto": resumen.get("subtotal_bruto"),
-        "descuento":      resumen.get("descuento"),
-        "subtotal_neto":  resumen.get("subtotal_neto"),
-        "iva_0":          resumen.get("iva_0"),
-        "iva_15":         resumen.get("iva_15"),
-        "total":          resumen.get("total"),
     }
 
     # 5) Guardar en PostgreSQL (usa tu función existente)
@@ -147,15 +136,15 @@ def ver_pedidos():
     estado = request.args.get('estado', 'por_procesar')
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT id, numero_pedido, fecha, total, sucursal, estado
+            SELECT id, numero_pedido, fecha, sucursal, estado
             FROM pedidos
             WHERE estado = %s
             ORDER BY id DESC
             LIMIT 200;
         """, (estado,))
         filas = [
-            {"id": i, "numero_pedido": n, "fecha": f, "total": t, "sucursal": s, "estado": e}
-            for (i, n, f, t, s, e) in cur.fetchall()
+            {"id": i, "numero_pedido": n, "fecha": f, "sucursal": s, "estado": e}
+            for (i, n, f, s, e) in cur.fetchall()
         ]
     return render_template("orders.html", orders=filas, estado_actual=estado, now=datetime.utcnow())
 
@@ -662,15 +651,15 @@ def api_pedidos_por_estado(estado: str):
     
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT id, numero_pedido, fecha, total, sucursal, estado
+            SELECT id, numero_pedido, fecha, sucursal, estado
             FROM pedidos
             WHERE estado = %s
             ORDER BY id DESC
             LIMIT 200;
         """, (estado,))
         filas = [
-            {"id": i, "numero_pedido": n, "fecha": f, "total": t, "sucursal": s, "estado": e}
-            for (i, n, f, t, s, e) in cur.fetchall()
+            {"id": i, "numero_pedido": n, "fecha": f, "sucursal": s, "estado": e}
+            for (i, n, f, s, e) in cur.fetchall()
         ]
     return jsonify({"pedidos": filas, "estado": estado})
 
@@ -707,9 +696,7 @@ def api_generar_sap():
 def api_detalle_pedido(pedido_id: int):
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT numero_pedido, fecha, sucursal,
-                   subtotal_bruto, descuento, subtotal_neto,
-                   iva_0, iva_15, total
+            SELECT numero_pedido, fecha, sucursal
             FROM pedidos
             WHERE id = %s;
         """, (pedido_id,))
@@ -717,9 +704,7 @@ def api_detalle_pedido(pedido_id: int):
         if not row:
             return abort(404)
 
-        (numero_pedido, fecha, sucursal,
-         subtotal_bruto, descuento, subtotal_neto,
-         iva_0, iva_15, total) = row
+        (numero_pedido, fecha, sucursal) = row
 
         cur.execute("""
             SELECT descripcion, sku, bodega, cantidad, precio_unitario, precio_total
@@ -744,14 +729,6 @@ def api_detalle_pedido(pedido_id: int):
         "numero_pedido": numero_pedido,
         "fecha": fecha.isoformat() if fecha else None,
         "sucursal": sucursal,
-        "totales": {
-            "subtotal_bruto": float(subtotal_bruto) if subtotal_bruto is not None else None,
-            "descuento":      float(descuento) if descuento is not None else None,
-            "subtotal_neto":  float(subtotal_neto) if subtotal_neto is not None else None,
-            "iva_0":          float(iva_0) if iva_0 is not None else None,
-            "iva_15":         float(iva_15) if iva_15 is not None else None,
-            "total":          float(total) if total is not None else None,
-        },
         "items": items
     })
     

@@ -18,7 +18,7 @@ from procesamiento_pedidos import (
     emparejar_filas_con_bd,         # <- NUEVO: emparejador por nombre (BD)
     imprimir_filas,
     imprimir_filas_emparejadas,
-    extraer_sucursal_y_totales,
+    extraer_sucursal,
     imprimir_resumen_pedido,
 )
 from persistencia_postgresql import guardar_pedido
@@ -167,8 +167,8 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
     filas = extraer_filas_pdf(bytes_pdf)
     imprimir_filas(filas)
 
-    # 2) Sucursal y totales (necesario para mapear bodegas por sucursal si aplica)
-    resumen = extraer_sucursal_y_totales(bytes_pdf)
+    # 2) Sucursal (necesario para mapear bodegas por sucursal si aplica)
+    resumen = extraer_sucursal(bytes_pdf)
     imprimir_resumen_pedido(resumen)
 
     # 3) Emparejado contra BD por NOMBRE (unidad+descripción), cliente configurable
@@ -179,17 +179,11 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
     )
     imprimir_filas_emparejadas(filas_enriquecidas)
 
-    # 4) Guardar en PostgreSQL (sin recalcular TOTAL)
+    # 4) Guardar en PostgreSQL
     sucursal_txt = (suc.get("nombre") if suc else None) or (resumen.get("sucursal") or "SUCURSAL DESCONOCIDA")
     pedido = {
         "fecha": meta.get("fecha") or datetime.now(),
         "sucursal": sucursal_txt,
-        "subtotal_bruto": resumen.get("subtotal_bruto"),
-        "descuento": resumen.get("descuento"),
-        "subtotal_neto": resumen.get("subtotal_neto"),
-        "iva_0": resumen.get("iva_0"),
-        "iva_15": resumen.get("iva_15"),
-        "total": resumen.get("total"),
     }
     try:
         sucursal_id = suc.get("id") if suc else None
