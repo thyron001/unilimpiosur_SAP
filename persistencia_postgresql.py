@@ -3,7 +3,6 @@
 
 import psycopg
 from datetime import datetime
-from decimal import Decimal
 
 # ========================
 #  CONEXIÓN
@@ -17,17 +16,6 @@ def obtener_conexion():
 #  CONVERSIÓN
 # ========================
 
-def a_decimal(valor) -> Decimal | None:
-    """Convierte strings como '12,50' o '12.50' en Decimal. Devuelve None si no aplica."""
-    if valor is None:
-        return None
-    s = str(valor).strip().replace(",", ".")
-    if s == "" or s == "-":
-        return None
-    try:
-        return Decimal(s)
-    except Exception:
-        return None
 
 # ========================
 #  GUARDAR PEDIDO
@@ -41,7 +29,7 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
         (fecha, sucursal, cliente_id, sucursal_id)
 
       Tabla pedido_items:
-        (pedido_id, descripcion, sku, bodega, cantidad, precio_unitario, precio_total)
+        (pedido_id, descripcion, sku, bodega, cantidad)
 
     pedido: dict con claves:
       fecha (datetime), sucursal (str)
@@ -63,13 +51,19 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
 
     sucursal = (pedido.get("sucursal") or "").strip() or None
 
-    # Detectar errores en productos
+    # Detectar errores en productos y sucursal
     tiene_errores = False
-    for item in items:
-        # Un producto tiene error si no tiene SKU o no tiene bodega
-        if not item.get("sku") or not item.get("bodega"):
-            tiene_errores = True
-            break
+    
+    # Error si no se detectó sucursal
+    if not sucursal:
+        tiene_errores = True
+    
+    # Error si algún producto no tiene SKU o bodega
+    if not tiene_errores:
+        for item in items:
+            if not item.get("sku") or not item.get("bodega"):
+                tiene_errores = True
+                break
     
     # Determinar estado del pedido
     estado = "con_errores" if tiene_errores else "por_procesar"
@@ -112,9 +106,9 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
                 cur.execute(
                     """
                     INSERT INTO pedido_items
-                      (pedido_id, descripcion, sku, bodega, cantidad, precio_unitario, precio_total)
+                      (pedido_id, descripcion, sku, bodega, cantidad)
                     VALUES
-                      (%s,        %s,          %s,  %s,     %s,       %s,              %s);
+                      (%s,        %s,          %s,  %s,     %s);
                     """,
                     (
                         pedido_id,
@@ -122,8 +116,6 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
                         f.get("sku"),
                         f.get("bodega"),
                         int(f.get("cantidad") or f.get("cant") or 0),
-                        a_decimal(f.get("precio_unitario") or f.get("puni")),
-                        a_decimal(f.get("precio_total") or f.get("ptotal")),
                     )
                 )
     # --- Impresión en terminal con los nuevos valores ---

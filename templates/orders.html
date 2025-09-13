@@ -160,7 +160,6 @@ Sección 2: CSS  (static/css/glass.css)
                   <th>SKU</th>
                   <th>Descripción</th>
                   <th class="num">Cant.</th>
-                  <th class="num">P. Unit.</th>
                 </tr>
               </thead>
               <tbody id="m-items"></tbody>
@@ -172,7 +171,7 @@ Sección 2: CSS  (static/css/glass.css)
         <div id="verificacion-container" class="glass-modal-verificacion" style="display: none;">
           <div class="glass-modal-verificacion-content">
             <h3>Verificación de Errores</h3>
-            <p>Este pedido contiene productos que no pudieron ser emparejados correctamente. Por favor, verifica y corrige los errores antes de procesar.</p>
+            <p>Este pedido contiene errores que requieren verificación. Por favor, revisa y corrige los problemas antes de procesar.</p>
             <button id="btn-verificar" class="glass-btn glass-btn-primary">
               <i class="icon">✓</i>
               Verificar
@@ -269,6 +268,18 @@ Sección 2: CSS  (static/css/glass.css)
       color: #ff6b6b !important;
     }
 
+    /* Estilos para error de sucursal */
+    .sucursal-error {
+      color: #ff6b6b !important;
+      font-weight: bold;
+    }
+
+    .sucursal-error::after {
+      content: " ❌ NO DETECTADA";
+      color: #ff6b6b;
+      font-size: 0.9em;
+    }
+
     .btn-flotante-sap:hover {
       transform: translateY(-3px);
       box-shadow: 0 12px 35px rgba(102, 126, 234, 0.6);
@@ -325,7 +336,17 @@ Sección 2: CSS  (static/css/glass.css)
 
       function renderDetalle(data){
         $$("#m-numero").textContent = data.numero_pedido ?? "";
-        $$("#m-sucursal").textContent = data.sucursal ?? "-";
+        
+        // Mostrar sucursal con indicador de error si es necesario
+        const sucursalElement = $$("#m-sucursal");
+        if (data.tiene_error_sucursal) {
+          sucursalElement.textContent = data.sucursal || "No detectada";
+          sucursalElement.classList.add("sucursal-error");
+        } else {
+          sucursalElement.textContent = data.sucursal || "-";
+          sucursalElement.classList.remove("sucursal-error");
+        }
+        
         $$("#m-fecha").textContent = fmtDate(data.fecha);
 
         const tb = $$("#m-items");
@@ -340,16 +361,28 @@ Sección 2: CSS  (static/css/glass.css)
             <td class="mono">${it.sku || ""}</td>
             <td>${(it.descripcion || "").replace(/</g,"&lt;")}</td>
             <td class="num mono">${it.cantidad ?? ""}</td>
-            <td class="num mono">${fmtMoney(it.precio_unitario)}</td>
           `;
           tb.appendChild(tr);
         }
 
         // Mostrar recuadro de verificación si hay errores
-        const tieneErrores = data.items && data.items.some(item => item.tiene_error);
+        const tieneErroresProductos = data.items && data.items.some(item => item.tiene_error);
+        const tieneErrorSucursal = data.tiene_error_sucursal;
+        const tieneErrores = tieneErroresProductos || tieneErrorSucursal;
+        
         const verificacionContainer = $$("#verificacion-container");
         if (tieneErrores) {
           verificacionContainer.style.display = "block";
+          
+          // Actualizar mensaje según el tipo de error
+          const mensajeElement = verificacionContainer.querySelector("p");
+          if (tieneErrorSucursal && tieneErroresProductos) {
+            mensajeElement.textContent = "Este pedido contiene productos que no pudieron ser emparejados correctamente y no se detectó una sucursal válida. Por favor, verifica y corrige los errores antes de procesar.";
+          } else if (tieneErrorSucursal) {
+            mensajeElement.textContent = "Este pedido no tiene una sucursal válida detectada. Por favor, verifica y corrige este error antes de procesar.";
+          } else {
+            mensajeElement.textContent = "Este pedido contiene productos que no pudieron ser emparejados correctamente. Por favor, verifica y corrige los errores antes de procesar.";
+          }
         } else {
           verificacionContainer.style.display = "none";
         }

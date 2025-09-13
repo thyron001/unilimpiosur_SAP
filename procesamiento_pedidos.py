@@ -65,10 +65,10 @@ PALABRAS_UNIDAD = {
 }
 
 PATRON_FILA_CON_UNIDAD = re.compile(
-    r"^(?P<uni>\S+)\s+(?P<desc>.+?)\s+(?P<cant>\d{1,4})\s+(?P<puni>\d+(?:[.,]\d+)?)\s+(?P<ptotal>\d+(?:[.,]\d+)?)$"
+    r"^(?P<uni>\S+)\s+(?P<desc>.+?)\s+(?P<cant>\d{1,4})\s+(?:\d+(?:[.,]\d+)?)\s+(?:\d+(?:[.,]\d+)?)$"
 )
 PATRON_FILA_SIN_UNIDAD = re.compile(
-    r"^(?P<desc>.+?)\s+(?P<cant>\d{1,4})\s+(?P<puni>\d+(?:[.,]\d+)?)\s+(?P<ptotal>\d+(?:[.,]\d+)?)$"
+    r"^(?P<desc>.+?)\s+(?P<cant>\d{1,4})\s+(?:\d+(?:[.,]\d+)?)\s+(?:\d+(?:[.,]\d+)?)$"
 )
 
 PALABRAS_OMITIR = (
@@ -87,7 +87,7 @@ def es_linea_omitible(linea: str) -> bool:
 def extraer_filas_pdf(pdf_en_bytes: bytes) -> List[Dict[str, Any]]:
     """
     Lee el PDF y extrae filas tipo:
-      {'uni','desc','cant','puni','ptotal'} (cadenas tal como vienen en el PDF)
+      {'uni','desc','cant'} (cadenas tal como vienen en el PDF)
     """
     filas: List[Dict[str, Any]] = []
     unidad_en_espera: str | None = None
@@ -133,15 +133,13 @@ def imprimir_filas(filas: List[Dict[str, Any]]) -> None:
     if not filas:
         print("⚠️ No se detectaron filas en el PDF.")
         return
-    print(f"{'Uni.':<10} | {'Descripción':<70} | {'Cant':>4} | {'P. Uni':>8} | {'P. Total':>9}")
-    print("-" * 110)
+    print(f"{'Uni.':<10} | {'Descripción':<70} | {'Cant':>4}")
+    print("-" * 90)
     for f in filas:
         desc = (f.get("desc") or "").strip()
         cant = f.get("cant")
-        puni = str(f.get("puni") or "").replace(",", ".")
-        ptotal = str(f.get("ptotal") or "").replace(",", ".")
         uni = f.get("uni") or ""
-        print(f"{uni:<10} | {desc[:70]:<70} | {cant:>4} | {puni:>8} | {ptotal:>9}")
+        print(f"{uni:<10} | {desc[:70]:<70} | {cant:>4}")
 
 # ==============================
 # Parseo de sucursal y totales

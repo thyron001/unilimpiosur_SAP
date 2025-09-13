@@ -708,7 +708,7 @@ def api_detalle_pedido(pedido_id: int):
         (numero_pedido, fecha, sucursal) = row
 
         cur.execute("""
-            SELECT descripcion, sku, bodega, cantidad, precio_unitario, precio_total
+            SELECT descripcion, sku, bodega, cantidad
             FROM pedido_items
             WHERE pedido_id = %s
             ORDER BY id ASC;
@@ -719,18 +719,20 @@ def api_detalle_pedido(pedido_id: int):
                 "sku": s or "",
                 "bodega": b or "",
                 "cantidad": int(c or 0),
-                "precio_unitario": float(pu) if pu is not None else None,
-                "precio_total":   float(pt) if pt is not None else None,
                 "tiene_error": not s or not b,  # Error si no tiene SKU o bodega
             }
-            for (d, s, b, c, pu, pt) in cur.fetchall()
+            for (d, s, b, c) in cur.fetchall()
         ]
 
+    # Detectar si hay error de sucursal
+    tiene_error_sucursal = not sucursal
+    
     return jsonify({
         "id": pedido_id,
         "numero_pedido": numero_pedido,
         "fecha": fecha.isoformat() if fecha else None,
         "sucursal": sucursal,
+        "tiene_error_sucursal": tiene_error_sucursal,
         "items": items
     })
     
