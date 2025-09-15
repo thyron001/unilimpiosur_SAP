@@ -172,7 +172,7 @@ Sección 2: CSS  (static/css/glass.css)
           <div class="glass-modal-verificacion-content">
             <h3>Verificación de Errores</h3>
             <p>Este pedido contiene errores que requieren verificación. Por favor, revisa y corrige los problemas antes de procesar.</p>
-            <button id="btn-verificar" class="glass-btn glass-btn-primary">
+            <button id="btn-verificar" class="glass-btn glass-btn-primary" onclick="window.verificarPedido()">
               <i class="icon">✓</i>
               Verificar
             </button>
@@ -280,6 +280,49 @@ Sección 2: CSS  (static/css/glass.css)
       font-size: 0.9em;
     }
 
+    /* Estilos para campos editables */
+    .campo-editable {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+      padding: 4px 8px;
+      color: white;
+      font-size: 0.9em;
+      min-width: 80px;
+    }
+
+    .campo-editable:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
+    }
+
+    .campo-editable.error {
+      border-color: #ff6b6b;
+      background: rgba(255, 107, 107, 0.1);
+    }
+
+    .campo-sucursal-editable {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+      padding: 6px 12px;
+      color: white;
+      font-size: 1em;
+      min-width: 200px;
+    }
+
+    .campo-sucursal-editable:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
+    }
+
+    .campo-sucursal-editable.error {
+      border-color: #ff6b6b;
+      background: rgba(255, 107, 107, 0.1);
+    }
+
     .btn-flotante-sap:hover {
       transform: translateY(-3px);
       box-shadow: 0 12px 35px rgba(102, 126, 234, 0.6);
@@ -340,8 +383,15 @@ Sección 2: CSS  (static/css/glass.css)
         // Mostrar sucursal con indicador de error si es necesario
         const sucursalElement = $$("#m-sucursal");
         if (data.tiene_error_sucursal) {
-          sucursalElement.textContent = data.sucursal || "No detectada";
-          sucursalElement.classList.add("sucursal-error");
+          // Crear campo editable para sucursal
+          const inputSucursal = document.createElement("input");
+          inputSucursal.type = "text";
+          inputSucursal.className = "campo-sucursal-editable error";
+          inputSucursal.value = data.sucursal || "";
+          inputSucursal.placeholder = "Ingrese la sucursal";
+          inputSucursal.dataset.originalValue = data.sucursal || "";
+          sucursalElement.innerHTML = "";
+          sucursalElement.appendChild(inputSucursal);
         } else {
           sucursalElement.textContent = data.sucursal || "-";
           sucursalElement.classList.remove("sucursal-error");
@@ -357,11 +407,46 @@ Sección 2: CSS  (static/css/glass.css)
           if (it.tiene_error) {
             tr.classList.add("item-error");
           }
-          tr.innerHTML = `
-            <td class="mono">${it.sku || ""}</td>
-            <td>${(it.descripcion || "").replace(/</g,"&lt;")}</td>
-            <td class="num mono">${it.cantidad ?? ""}</td>
-          `;
+          
+          // Crear celdas con campos editables si hay errores
+          const tdSku = document.createElement("td");
+          const tdDesc = document.createElement("td");
+          const tdCant = document.createElement("td");
+          
+          if (it.tiene_error) {
+            // SKU editable
+            const inputSku = document.createElement("input");
+            inputSku.type = "text";
+            inputSku.className = "campo-editable error";
+            inputSku.value = it.sku || "";
+            inputSku.placeholder = "Ingrese SKU";
+            inputSku.dataset.originalValue = it.sku || "";
+            tdSku.appendChild(inputSku);
+            
+            // Descripción (solo lectura)
+            tdDesc.textContent = (it.descripcion || "").replace(/</g,"&lt;");
+            
+            // Cantidad editable
+            const inputCant = document.createElement("input");
+            inputCant.type = "number";
+            inputCant.className = "campo-editable error";
+            inputCant.value = it.cantidad || "";
+            inputCant.min = "1";
+            inputCant.placeholder = "Cantidad";
+            inputCant.dataset.originalValue = it.cantidad || "";
+            tdCant.appendChild(inputCant);
+          } else {
+            // Campos normales (solo lectura)
+            tdSku.textContent = it.sku || "";
+            tdSku.className = "mono";
+            tdDesc.textContent = (it.descripcion || "").replace(/</g,"&lt;");
+            tdCant.textContent = it.cantidad ?? "";
+            tdCant.className = "num mono";
+          }
+          
+          tr.appendChild(tdSku);
+          tr.appendChild(tdDesc);
+          tr.appendChild(tdCant);
           tb.appendChild(tr);
         }
 
@@ -387,6 +472,113 @@ Sección 2: CSS  (static/css/glass.css)
           verificacionContainer.style.display = "none";
         }
 
+      }
+
+      // Función para verificar y actualizar pedido
+      window.verificarPedido = async function() {
+        const pedidoId = window.pedidoActualId;
+        if (!pedidoId) {
+          alert("Error: No se pudo identificar el pedido");
+          return;
+        }
+
+        // Recopilar datos editados
+        const datosActualizados = {
+          sucursal: null,
+          items: []
+        };
+
+        // Obtener sucursal editada solo si hay error de sucursal
+        const inputSucursal = document.querySelector("#m-sucursal .campo-sucursal-editable");
+        if (inputSucursal) {
+          datosActualizados.sucursal = inputSucursal.value.trim();
+        } else {
+          // Si no hay campo editable, obtener la sucursal actual del texto
+          const sucursalElement = document.querySelector("#m-sucursal");
+          if (sucursalElement) {
+            datosActualizados.sucursal = sucursalElement.textContent.trim();
+          }
+        }
+
+        // Obtener items editados
+        const filas = document.querySelectorAll("#m-items tr");
+        filas.forEach((fila, index) => {
+          const inputSku = fila.querySelector(".campo-editable[type='text']");
+          const inputCant = fila.querySelector(".campo-editable[type='number']");
+          
+          if (inputSku && inputCant) {
+            datosActualizados.items.push({
+              index: index,
+              sku: inputSku.value.trim(),
+              cantidad: parseInt(inputCant.value) || 0
+            });
+          }
+        });
+
+        // Validar datos
+        const errores = [];
+        
+        // Validar sucursal solo si hay error de sucursal
+        // Usar la variable inputSucursal ya declarada arriba
+        const tieneErrorSucursal = inputSucursal !== null;
+        
+        if (tieneErrorSucursal && !datosActualizados.sucursal) {
+          errores.push("La sucursal es requerida");
+        }
+
+        // Validar items
+        datosActualizados.items.forEach((item, index) => {
+          if (!item.sku) {
+            errores.push(`El SKU del producto ${index + 1} es requerido`);
+          }
+          if (item.cantidad <= 0) {
+            errores.push(`La cantidad del producto ${index + 1} debe ser mayor a 0`);
+          }
+        });
+
+        if (errores.length > 0) {
+          alert("Errores encontrados:\n" + errores.join("\n"));
+          return;
+        }
+
+        // Mostrar indicador de carga
+        const btnVerificar = document.getElementById("btn-verificar");
+        const textoOriginal = btnVerificar.innerHTML;
+        btnVerificar.innerHTML = '<i class="icon">⏳</i> Verificando...';
+        btnVerificar.disabled = true;
+
+        try {
+          // Enviar datos al servidor
+          const response = await fetch(`/api/pedidos/${pedidoId}/verificar`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(datosActualizados)
+          });
+
+          if (!response.ok) {
+            throw new Error(`Error ${response.status}: ${response.statusText}`);
+          }
+
+          const resultado = await response.json();
+          
+          if (resultado.exito) {
+            alert("✅ Pedido verificado exitosamente. El estado ha cambiado a 'Por procesar'.");
+            // Cerrar modal y recargar lista
+            cerrarModal();
+            cargarPedidosPorEstado("con_errores");
+          } else {
+            alert("❌ Error al verificar el pedido: " + (resultado.error || "Error desconocido"));
+          }
+        } catch (error) {
+          console.error("Error:", error);
+          alert("❌ Error al verificar el pedido: " + error.message);
+        } finally {
+          // Restaurar botón
+          btnVerificar.innerHTML = textoOriginal;
+          btnVerificar.disabled = false;
+        }
       }
 
       // Función para cargar pedidos por estado
@@ -418,6 +610,7 @@ Sección 2: CSS  (static/css/glass.css)
             // Agregar event listeners para el modal
             tr.addEventListener("click", async ()=>{
               try{
+                window.pedidoActualId = pedido.id; // Guardar ID del pedido
                 const data = await cargarDetalle(pedido.id);
                 renderDetalle(data);
                 abrirModal();
@@ -427,7 +620,11 @@ Sección 2: CSS  (static/css/glass.css)
               }
             });
             tr.addEventListener("keydown", (e)=>{
-              if(e.key==="Enter" || e.key===" "){ e.preventDefault(); tr.click(); }
+              if(e.key==="Enter" || e.key===" "){ 
+                e.preventDefault(); 
+                window.pedidoActualId = pedido.id; // Guardar ID del pedido
+                tr.click(); 
+              }
             });
             
             tbody.appendChild(tr);

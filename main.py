@@ -735,6 +735,114 @@ def api_detalle_pedido(pedido_id: int):
         "tiene_error_sucursal": tiene_error_sucursal,
         "items": items
     })
+
+# ====== VERIFICAR PEDIDO =======
+@app.route("/api/pedidos/<int:pedido_id>/verificar", methods=["POST"])
+def api_verificar_pedido(pedido_id: int):
+    """Verifica y actualiza un pedido con errores"""
+    try:
+        data = request.get_json()
+        sucursal = data.get("sucursal", "").strip()
+        items_actualizados = data.get("items", [])
+        
+        with db.obtener_conexion() as conn, conn.cursor() as cur:
+            # Verificar que el pedido existe y está en estado con_errores
+            cur.execute("""
+                SELECT estado FROM pedidos WHERE id = %s;
+            """, (pedido_id,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({"exito": False, "error": "Pedido no encontrado"}), 404
+            
+            estado_actual = row[0]
+            if estado_actual != "con_errores":
+                return jsonify({"exito": False, "error": "El pedido no está en estado con_errores"}), 400
+            
+            # Verificar si hay error de sucursal (sucursal actual es null o vacía)
+            cur.execute("""
+                SELECT sucursal FROM pedidos WHERE id = %s;
+            """, (pedido_id,))
+            sucursal_actual = cur.fetchone()[0]
+            tiene_error_sucursal = not sucursal_actual or sucursal_actual.strip() == ""
+            
+            # Validar y actualizar sucursal solo si hay error de sucursal
+            if tiene_error_sucursal:
+                if not sucursal:
+                    return jsonify({"exito": False, "error": "La sucursal es requerida"}), 400
+                
+                # Actualizar sucursal del pedido
+                cur.execute("""
+                    UPDATE pedidos 
+                    SET sucursal = %s 
+                    WHERE id = %s;
+                """, (sucursal, pedido_id))
+            else:
+                # Si no hay error de sucursal, usar la sucursal actual
+                sucursal = sucursal_actual
+            
+            # Actualizar items si se proporcionaron
+            if items_actualizados:
+                # Obtener todos los items del pedido ordenados por ID
+                cur.execute("""
+                    SELECT id FROM pedido_items 
+                    WHERE pedido_id = %s 
+                    ORDER BY id;
+                """, (pedido_id,))
+                item_ids = [row[0] for row in cur.fetchall()]
+                
+                for item in items_actualizados:
+                    index = item.get("index")
+                    sku = item.get("sku", "").strip()
+                    cantidad = item.get("cantidad", 0)
+                    
+                    if not sku:
+                        return jsonify({"exito": False, "error": f"SKU requerido para el producto {index + 1}"}), 400
+                    
+                    if cantidad <= 0:
+                        return jsonify({"exito": False, "error": f"Cantidad debe ser mayor a 0 para el producto {index + 1}"}), 400
+                    
+                    # Verificar que el índice es válido
+                    if index >= len(item_ids):
+                        return jsonify({"exito": False, "error": f"Índice de producto inválido: {index}"}), 400
+                    
+                    # Actualizar el item específico por ID
+                    item_id = item_ids[index]
+                    cur.execute("""
+                        UPDATE pedido_items 
+                        SET sku = %s, cantidad = %s 
+                        WHERE id = %s;
+                    """, (sku, cantidad, item_id))
+            
+            # Verificar si aún hay errores después de la actualización
+            cur.execute("""
+                SELECT COUNT(*) FROM pedido_items 
+                WHERE pedido_id = %s AND (sku IS NULL OR sku = '' OR bodega IS NULL OR bodega = '');
+            """, (pedido_id,))
+            items_con_errores = cur.fetchone()[0]
+            
+            # Determinar nuevo estado
+            nuevo_estado = "por_procesar" if items_con_errores == 0 else "con_errores"
+            
+            # Actualizar estado del pedido
+            cur.execute("""
+                UPDATE pedidos 
+                SET estado = %s 
+                WHERE id = %s;
+            """, (nuevo_estado, pedido_id))
+            
+            conn.commit()
+            
+            return jsonify({
+                "exito": True,
+                "nuevo_estado": nuevo_estado,
+                "mensaje": f"Pedido actualizado. Estado: {nuevo_estado}"
+            })
+            
+    except Exception as e:
+        import traceback
+        print(f"Error al verificar pedido {pedido_id}: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({"exito": False, "error": f"Error interno del servidor: {str(e)}"}), 500
     
 # Endpoint para subir mapeos de productos (CSV/XLSX)
 @app.route("/api/subir_productos", methods=["POST"])
