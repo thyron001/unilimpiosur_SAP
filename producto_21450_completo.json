@@ -1,0 +1,338 @@
+{
+  "id": 21450,
+  "name": "PH JUMBO BIOSOLUTIONS 500 MT PAQUETE 2 ROLLOS xx",
+  "slug": "ph-jumbo-biosolutions-500-mt-paquete-2-rollos",
+  "permalink": "https://pedidos.unilimpiosur.com/producto/ph-jumbo-biosolutions-500-mt-paquete-2-rollos/",
+  "date_created": "2025-07-22T13:54:32",
+  "date_created_gmt": "2025-07-22T18:54:32",
+  "date_modified": "2025-07-23T16:45:35",
+  "date_modified_gmt": "2025-07-23T21:45:35",
+  "type": "simple",
+  "status": "publish",
+  "featured": false,
+  "catalog_visibility": "visible",
+  "description": "",
+  "short_description": "",
+  "sku": "ABS0373-2",
+  "price": "8.86",
+  "regular_price": "8.86",
+  "sale_price": "",
+  "date_on_sale_from": null,
+  "date_on_sale_from_gmt": null,
+  "date_on_sale_to": null,
+  "date_on_sale_to_gmt": null,
+  "on_sale": false,
+  "purchasable": true,
+  "total_sales": 0,
+  "virtual": false,
+  "downloadable": false,
+  "downloads": [],
+  "download_limit": -1,
+  "download_expiry": -1,
+  "external_url": "",
+  "button_text": "",
+  "tax_status": "taxable",
+  "tax_class": "",
+  "manage_stock": false,
+  "stock_quantity": null,
+  "backorders": "no",
+  "backorders_allowed": false,
+  "backordered": false,
+  "low_stock_amount": null,
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+    "length": "",
+    "width": "",
+    "height": ""
+  },
+  "shipping_required": true,
+  "shipping_taxable": true,
+  "shipping_class": "",
+  "shipping_class_id": 0,
+  "reviews_allowed": false,
+  "average_rating": "0.00",
+  "rating_count": 0,
+  "upsell_ids": [],
+  "cross_sell_ids": [],
+  "parent_id": 0,
+  "purchase_note": "",
+  "categories": [
+    {
+      "id": 18,
+      "name": "Sin categorizar",
+      "slug": "sin-categorizar"
+    }
+  ],
+  "tags": [],
+  "images": [],
+  "attributes": [],
+  "default_attributes": [],
+  "variations": [],
+  "grouped_products": [],
+  "menu_order": 0,
+  "price_html": "<span class=\"woocommerce-Price-amount amount\"><bdi><span class=\"woocommerce-Price-currencySymbol\">&#36;</span>8,86</bdi></span>",
+  "related_ids": [
+    4515,
+    4506,
+    4518,
+    4509,
+    4523
+  ],
+  "meta_data": [
+    {
+      "id": 624943,
+      "key": "_wp_page_template",
+      "value": "default"
+    },
+    {
+      "id": 624944,
+      "key": "_alg_wc_pvbur_visible",
+      "value": [
+        "administrator"
+      ]
+    },
+    {
+      "id": 624945,
+      "key": "_alg_wc_pvbur_invisible",
+      "value": ""
+    },
+    {
+      "id": 624946,
+      "key": "_role_based_pricing_rules",
+      "value": {
+        "Jaher": {
+          "pricing_type": "flat",
+          "regular_price": 8.16,
+          "sale_price": null,
+          "discount": null,
+          "minimum": null,
+          "maximum": null,
+          "group_of": null,
+          "product_id": null
+        },
+        "administrator": {
+          "pricing_type": "flat",
+          "regular_price": null,
+          "sale_price": null,
+          "discount": null,
+          "minimum": null,
+          "maximum": null,
+          "group_of": null,
+          "product_id": null
+        }
+      }
+    },
+    {
+      "id": 624947,
+      "key": "_customer_based_pricing_rules",
+      "value": []
+    },
+    {
+      "id": 624948,
+      "key": "site-sidebar-layout",
+      "value": "default"
+    },
+    {
+      "id": 624949,
+      "key": "site-content-layout",
+      "value": "default"
+    },
+    {
+      "id": 624950,
+      "key": "theme-transparent-header-meta",
+      "value": "default"
+    },
+    {
+      "id": 624951,
+      "key": "Impuesto",
+      "value": "12"
+    },
+    {
+      "id": 624952,
+      "key": "Indicador",
+      "value": "IVA"
+    },
+    {
+      "id": 624953,
+      "key": "ast-site-content-layout",
+      "value": "default"
+    },
+    {
+      "id": 624954,
+      "key": "site-content-style",
+      "value": "default"
+    },
+    {
+      "id": 624955,
+      "key": "site-sidebar-style",
+      "value": "default"
+    },
+    {
+      "id": 624956,
+      "key": "precio_marcimex",
+      "value": ""
+    },
+    {
+      "id": 624957,
+      "key": "precio_jaher",
+      "value": ""
+    },
+    {
+      "id": 624958,
+      "key": "precio_distabla",
+      "value": ""
+    },
+    {
+      "id": 624959,
+      "key": "precio_induglob",
+      "value": ""
+    },
+    {
+      "id": 624960,
+      "key": "precio_hospital de los valles",
+      "value": ""
+    },
+    {
+      "id": 624961,
+      "key": "precio_unnoparts",
+      "value": ""
+    },
+    {
+      "id": 624962,
+      "key": "precio_gozarte",
+      "value": ""
+    },
+    {
+      "id": 624963,
+      "key": "precio_golden",
+      "value": ""
+    },
+    {
+      "id": 624964,
+      "key": "precio_indumot",
+      "value": ""
+    },
+    {
+      "id": 624965,
+      "key": "precio_crescord",
+      "value": ""
+    },
+    {
+      "id": 624966,
+      "key": "precio_carsound",
+      "value": ""
+    },
+    {
+      "id": 624967,
+      "key": "precio_edificios",
+      "value": ""
+    },
+    {
+      "id": 624968,
+      "key": "precio_jaherof",
+      "value": ""
+    },
+    {
+      "id": 624969,
+      "key": "precio_plazasoleil",
+      "value": ""
+    },
+    {
+      "id": 624970,
+      "key": "precio_cartopel",
+      "value": ""
+    },
+    {
+      "id": 624971,
+      "key": "precio_encalada",
+      "value": ""
+    },
+    {
+      "id": 624972,
+      "key": "precio_power",
+      "value": ""
+    },
+    {
+      "id": 624973,
+      "key": "precio_bocatti",
+      "value": ""
+    },
+    {
+      "id": 624974,
+      "key": "precio_mall del rio",
+      "value": ""
+    },
+    {
+      "id": 624975,
+      "key": "precio_taproom1",
+      "value": ""
+    },
+    {
+      "id": 624976,
+      "key": "precio_parque santo",
+      "value": ""
+    },
+    {
+      "id": 624977,
+      "key": "precio_taprom",
+      "value": ""
+    },
+    {
+      "id": 624978,
+      "key": "precio_tapromof",
+      "value": ""
+    },
+    {
+      "id": 624979,
+      "key": "precio_hospital_de_los_valles",
+      "value": ""
+    },
+    {
+      "id": 624980,
+      "key": "precio_mall_del_rio",
+      "value": ""
+    },
+    {
+      "id": 624981,
+      "key": "precio_parque_santo",
+      "value": ""
+    },
+    {
+      "id": 624982,
+      "key": "_last_editor_used_jetpack",
+      "value": "classic-editor"
+    },
+    {
+      "id": 626833,
+      "key": "astra-migrate-meta-layouts",
+      "value": "set"
+    }
+  ],
+  "stock_status": "instock",
+  "has_options": false,
+  "post_password": "",
+  "global_unique_id": "",
+  "jetpack_sharing_enabled": true,
+  "_links": {
+    "self": [
+      {
+        "href": "https://pedidos.unilimpiosur.com/wp-json/wc/v3/products/21450",
+        "targetHints": {
+          "allow": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ]
+        }
+      }
+    ],
+    "collection": [
+      {
+        "href": "https://pedidos.unilimpiosur.com/wp-json/wc/v3/products"
+      }
+    ]
+  }
+}

@@ -1,0 +1,306 @@
+{
+  "id": 22593,
+  "parent_id": 0,
+  "status": "generado",
+  "currency": "USD",
+  "version": "9.5.1",
+  "prices_include_tax": false,
+  "date_created": "2025-09-15T11:31:34",
+  "date_modified": "2025-09-15T11:31:35",
+  "discount_total": "0.00",
+  "discount_tax": "0.00",
+  "shipping_total": "0.00",
+  "shipping_tax": "0.00",
+  "cart_tax": "0.00",
+  "total": "100.54",
+  "total_tax": "0.00",
+  "customer_id": 889,
+  "order_key": "wc_order_qBvShIFfkyBRH",
+  "billing": {
+    "first_name": "ADRIAN ZUMBA",
+    "last_name": "GOLDEN1",
+    "company": "Golden",
+    "address_1": "ALFONSO CORDERO 2-41 Y MANUEL J CALLE",
+    "address_2": "GOLDEN MATRIZ 1",
+    "city": "CUENCA",
+    "state": "",
+    "postcode": "",
+    "country": "",
+    "email": "adrianzumba26@gmail.com",
+    "phone": "099 768 0198"
+  },
+  "shipping": {
+    "first_name": "",
+    "last_name": "",
+    "company": "",
+    "address_1": "",
+    "address_2": "",
+    "city": "",
+    "state": "",
+    "postcode": "",
+    "country": "",
+    "phone": ""
+  },
+  "payment_method": "cod",
+  "payment_method_title": "",
+  "transaction_id": "",
+  "customer_ip_address": "179.49.42.116",
+  "customer_user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+  "created_via": "checkout",
+  "customer_note": "pedido urdesa",
+  "date_completed": null,
+  "date_paid": null,
+  "cart_hash": "457c7833f5192092b57c9e295321a86e",
+  "number": "22593",
+  "meta_data": [
+    {
+      "id": 675153,
+      "key": "_billing_codigointerno",
+      "value": "GOLDEN MATRIZ"
+    },
+    {
+      "id": 675154,
+      "key": "is_vat_exempt",
+      "value": "no"
+    },
+    {
+      "id": 675155,
+      "key": "_license_no",
+      "value": "18-09-2025"
+    },
+    {
+      "id": 675156,
+      "key": "billing_codigointerno",
+      "value": "GOLDEN MATRIZ"
+    },
+    {
+      "id": 675157,
+      "key": "_wc_order_attribution_source_type",
+      "value": "typein"
+    },
+    {
+      "id": 675158,
+      "key": "_wc_order_attribution_utm_source",
+      "value": "(direct)"
+    },
+    {
+      "id": 675159,
+      "key": "_wc_order_attribution_session_entry",
+      "value": "https://pedidos.unilimpiosur.com/my-account/"
+    },
+    {
+      "id": 675160,
+      "key": "_wc_order_attribution_session_start_time",
+      "value": "2025-09-15 16:25:12"
+    },
+    {
+      "id": 675161,
+      "key": "_wc_order_attribution_session_pages",
+      "value": "17"
+    },
+    {
+      "id": 675162,
+      "key": "_wc_order_attribution_session_count",
+      "value": "1"
+    },
+    {
+      "id": 675163,
+      "key": "_wc_order_attribution_user_agent",
+      "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+    },
+    {
+      "id": 675164,
+      "key": "_wc_order_attribution_device_type",
+      "value": "Desktop"
+    }
+  ],
+  "line_items": [
+    {
+      "id": 112632,
+      "name": "CLORO LIQUIDO OZZ 5.5% CANECA 20 KG",
+      "product_id": 7349,
+      "variation_id": 0,
+      "quantity": 1,
+      "tax_class": "",
+      "subtotal": "11.99",
+      "subtotal_tax": "0.00",
+      "total": "11.99",
+      "total_tax": "0.00",
+      "taxes": [],
+      "meta_data": [],
+      "sku": "QUI0023",
+      "price": 11.99,
+      "image": {
+        "id": "7351",
+        "src": "https://pedidos.unilimpiosur.com/wp-content/uploads/2023/07/cloro.png"
+      },
+      "parent_name": null
+    },
+    {
+      "id": 112633,
+      "name": "CONTENEDOR DE COMIDA 8 1/2 PAQ X 25 UNDS",
+      "product_id": 7435,
+      "variation_id": 0,
+      "quantity": 10,
+      "tax_class": "",
+      "subtotal": "32.00",
+      "subtotal_tax": "0.00",
+      "total": "32.00",
+      "total_tax": "0.00",
+      "taxes": [],
+      "meta_data": [],
+      "sku": "COM5293",
+      "price": 3.2,
+      "image": {
+        "id": "7437",
+        "src": "https://pedidos.unilimpiosur.com/wp-content/uploads/2023/07/contenedor-8.png"
+      },
+      "parent_name": null
+    },
+    {
+      "id": 112634,
+      "name": "ESPONJA SALVAUNAS MIXTA UNIDAD",
+      "product_id": 4532,
+      "variation_id": 0,
+      "quantity": 24,
+      "tax_class": "",
+      "subtotal": "14.16",
+      "subtotal_tax": "0.00",
+      "total": "14.16",
+      "total_tax": "0.00",
+      "taxes": [],
+      "meta_data": [],
+      "sku": "COM5083",
+      "price": 0.59,
+      "image": {
+        "id": "4663",
+        "src": "https://pedidos.unilimpiosur.com/wp-content/uploads/2022/11/Esponja-salvaunas.jpg"
+      },
+      "parent_name": null
+    },
+    {
+      "id": 112635,
+      "name": "FUNDA PARA DESECHOS 18X20X1 BLANCA PAQ X 10UND",
+      "product_id": 6212,
+      "variation_id": 0,
+      "quantity": 10,
+      "tax_class": "",
+      "subtotal": "3.10",
+      "subtotal_tax": "0.00",
+      "total": "3.10",
+      "total_tax": "0.00",
+      "taxes": [],
+      "meta_data": [],
+      "sku": "COM5256",
+      "price": 0.31,
+      "image": {
+        "id": "6128",
+        "src": "https://pedidos.unilimpiosur.com/wp-content/uploads/2023/03/FUNDA-BLANCA-BASURA-BANO.jpg"
+      },
+      "parent_name": null
+    },
+    {
+      "id": 112636,
+      "name": "GUANTE PLASTICO TRANSPARENTE PARA COMIDA PAQ X 100 UNDS",
+      "product_id": 7019,
+      "variation_id": 0,
+      "quantity": 5,
+      "tax_class": "",
+      "subtotal": "4.55",
+      "subtotal_tax": "0.00",
+      "total": "4.55",
+      "total_tax": "0.00",
+      "taxes": [],
+      "meta_data": [],
+      "sku": "COM5296",
+      "price": 0.9099999999999999,
+      "image": {
+        "id": "7020",
+        "src": "https://pedidos.unilimpiosur.com/wp-content/uploads/2023/06/GUANTE-TRANSPARENTE.jpg"
+      },
+      "parent_name": null
+    },
+    {
+      "id": 112637,
+      "name": "GUANTE DE NITRILO NEGRO 5.5 TALLA L",
+      "product_id": 7016,
+      "variation_id": 0,
+      "quantity": 5,
+      "tax_class": "",
+      "subtotal": "31.50",
+      "subtotal_tax": "0.00",
+      "total": "31.50",
+      "total_tax": "0.00",
+      "taxes": [],
+      "meta_data": [],
+      "sku": "COM5489",
+      "price": 6.3,
+      "image": {
+        "id": "7017",
+        "src": "https://pedidos.unilimpiosur.com/wp-content/uploads/2023/06/NITRILO-NEGRO.jpg"
+      },
+      "parent_name": null
+    },
+    {
+      "id": 112638,
+      "name": "SORBETE FLEXIBLE PAQ X100UNDS",
+      "product_id": 7366,
+      "variation_id": 0,
+      "quantity": 4,
+      "tax_class": "",
+      "subtotal": "3.24",
+      "subtotal_tax": "0.00",
+      "total": "3.24",
+      "total_tax": "0.00",
+      "taxes": [],
+      "meta_data": [],
+      "sku": "COM5297",
+      "price": 0.81,
+      "image": {
+        "id": "7367",
+        "src": "https://pedidos.unilimpiosur.com/wp-content/uploads/2023/07/SORBETE.webp"
+      },
+      "parent_name": null
+    }
+  ],
+  "tax_lines": [],
+  "shipping_lines": [],
+  "fee_lines": [],
+  "coupon_lines": [],
+  "refunds": [],
+  "payment_url": "https://pedidos.unilimpiosur.com/checkout/order-pay/22593/?pay_for_order=true&key=wc_order_qBvShIFfkyBRH",
+  "is_editable": false,
+  "needs_payment": false,
+  "needs_processing": true,
+  "date_created_gmt": "2025-09-15T16:31:34",
+  "date_modified_gmt": "2025-09-15T16:31:35",
+  "date_completed_gmt": null,
+  "date_paid_gmt": null,
+  "currency_symbol": "$",
+  "_links": {
+    "self": [
+      {
+        "href": "https://pedidos.unilimpiosur.com/wp-json/wc/v3/orders/22593",
+        "targetHints": {
+          "allow": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ]
+        }
+      }
+    ],
+    "collection": [
+      {
+        "href": "https://pedidos.unilimpiosur.com/wp-json/wc/v3/orders"
+      }
+    ],
+    "customer": [
+      {
+        "href": "https://pedidos.unilimpiosur.com/wp-json/wc/v3/customers/889"
+      }
+    ]
+  }
+}

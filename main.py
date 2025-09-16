@@ -14,6 +14,9 @@ import escucha_correos                  # escucha IMAP (módulo en español)
 import procesamiento_pedidos as proc    # parseo + emparejado
 import persistencia_postgresql as db
 
+# WooCommerce
+from woocommerce import API
+
 app = Flask(__name__)
 
 # ========= UTILIDADES DE PERSISTENCIA (quedan aquí) =========
@@ -128,6 +131,38 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     # (opcional) logs en terminal
     proc.imprimir_filas_emparejadas(filas_enriquecidas)
 
+
+# ========= UTILIDADES WOOCOMMERCE =========
+
+def obtener_cliente_woocommerce():
+    """Obtiene el cliente de WooCommerce configurado"""
+    try:
+        wcapi = API(
+            url=os.getenv("WOOCOMMERCE_URL", ""),
+            consumer_key=os.getenv("WOOCOMMERCE_CONSUMER_KEY", ""),
+            consumer_secret=os.getenv("WOOCOMMERCE_CONSUMER_SECRET", ""),
+            version="wc/v3"
+        )
+        return wcapi
+    except Exception as e:
+        print(f"Error al configurar WooCommerce: {e}")
+        return None
+
+def probar_conexion_woocommerce():
+    """Prueba la conexión con WooCommerce"""
+    wcapi = obtener_cliente_woocommerce()
+    if not wcapi:
+        return {"conectado": False, "error": "No se pudo configurar el cliente WooCommerce"}
+    
+    try:
+        # Intentar obtener información básica del sitio
+        response = wcapi.get("system_status")
+        if response.status_code == 200:
+            return {"conectado": True, "mensaje": "Conexión exitosa con WooCommerce"}
+        else:
+            return {"conectado": False, "error": f"Error HTTP: {response.status_code}"}
+    except Exception as e:
+        return {"conectado": False, "error": str(e)}
 
 # ========= RUTAS FLASK =========
 
@@ -959,6 +994,11 @@ def api_siguiente_numero_pedido():
             
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ========= RUTAS WOOCOMMERCE =========
+# Las rutas de WooCommerce han sido removidas temporalmente
+# Se puede probar la conexión desde terminal usando test_woocommerce.py
 
 
 # ========= ARRANQUE =========

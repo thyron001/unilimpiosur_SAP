@@ -22,6 +22,9 @@ pyzmail36==1.0.4
 python-dotenv==1.0.0
 requests==2.31.0
 
+# WooCommerce
+woocommerce==3.0.0
+
 # Desarrollo (opcional)
 # pytest==7.4.2
 # black==23.7.0
