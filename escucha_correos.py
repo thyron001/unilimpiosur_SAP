@@ -113,6 +113,12 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
         if bytes_pdf:
             try:
                 al_encontrar_pdf(meta, nombre_pdf or "adjunto.pdf", bytes_pdf)
+                # Marcar el correo como leído después del procesamiento exitoso
+                try:
+                    cliente.set_flags([uid], [b"\\Seen"])
+                    print(f"✅ Correo UID {uid} marcado como leído")
+                except Exception as e:
+                    print(f"⚠️  No se pudo marcar el correo UID {uid} como leído: {e}")
             except Exception as err_cb:
                 print(f"⚠️  Error en callback al_encontrar_pdf: {err_cb}")
 
@@ -162,6 +168,34 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
     print("\n================= NUEVO PDF DETECTADO =================")
     print(f"Asunto: {meta.get('asunto')} | Remitente: {meta.get('remitente')} | UID: {meta.get('uid')}")
     print(f"Adjunto: {nombre_pdf}")
+
+    # VERIFICAR SI YA EXISTE UN PEDIDO CON ESTE UID DE CORREO
+    uid_correo = meta.get("uid")
+    if uid_correo:
+        from persistencia_postgresql import obtener_conexion
+        with obtener_conexion() as conn:
+            with conn.cursor() as cur:
+                # Buscar pedidos recientes con el mismo remitente y asunto (últimas 24 horas)
+                cur.execute("""
+                    SELECT id FROM pedidos 
+                    WHERE fecha >= NOW() - INTERVAL '24 hours'
+                    AND sucursal IS NOT NULL
+                    ORDER BY id DESC
+                    LIMIT 10
+                """)
+                pedidos_recientes = cur.fetchall()
+                
+                if pedidos_recientes:
+                    print(f"⚠️  Detectado posible duplicado para UID {uid_correo}. Verificando...")
+                    # Si hay pedidos muy recientes (últimos 5 minutos), saltar procesamiento
+                    cur.execute("""
+                        SELECT COUNT(*) FROM pedidos 
+                        WHERE fecha >= NOW() - INTERVAL '5 minutes'
+                    """)
+                    pedidos_muy_recientes = cur.fetchone()[0]
+                    if pedidos_muy_recientes > 0:
+                        print(f"🚫 Saltando procesamiento: hay {pedidos_muy_recientes} pedido(s) procesado(s) en los últimos 5 minutos")
+                        return
 
     # 1) Filas de productos desde PDF
     filas = extraer_filas_pdf(bytes_pdf)

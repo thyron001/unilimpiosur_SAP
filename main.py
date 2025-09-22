@@ -14,8 +14,6 @@ import escucha_correos                  # escucha IMAP (módulo en español)
 import procesamiento_pedidos as proc    # parseo + emparejado
 import persistencia_postgresql as db
 
-# WooCommerce
-from woocommerce import API
 
 app = Flask(__name__)
 
@@ -33,59 +31,7 @@ def a_decimal(valor) -> Decimal | None:
     except Exception:
         return None
 
-def obtener_conexion_pg():
-    return psycopg.connect()
 
-def guardar_pedido_en_pg(filas_enriquecidas: list[dict], meta: dict):
-    if not filas_enriquecidas:
-        print("⚠️ No hay filas enriquecidas para guardar en PostgreSQL.")
-        return
-
-
-    fecha = meta.get("fecha")
-    if isinstance(fecha, str):
-        try:
-            fecha = datetime.fromisoformat(fecha)
-        except Exception:
-            fecha = datetime.now()
-    elif not isinstance(fecha, datetime):
-        fecha = datetime.now()
-
-    pdf_filename  = meta.get("pdf_filename")
-    email_uid     = meta.get("email_uid")
-    email_from    = meta.get("email_from")
-    email_subject = meta.get("email_subject")
-
-    with obtener_conexion_pg() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO pedidos (fecha, pdf_filename, email_uid, email_from, email_subject)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING id, numero_pedido;
-                """,
-                (fecha, pdf_filename, email_uid, email_from, email_subject)
-            )
-            pedido_id, numero_pedido = cur.fetchone()
-
-            for f in filas_enriquecidas:
-                cur.execute(
-                    """
-                    INSERT INTO pedido_items
-                    (pedido_id, descripcion, sku, bodega, cantidad, precio_unitario, precio_total)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s);
-                    """,
-                    (
-                        pedido_id,
-                        (f.get("desc") or "").strip(),
-                        f.get("sku"),
-                        f.get("bodega"),
-                        int(f.get("cant") or 0),
-                        a_decimal(f.get("puni")),
-                        a_decimal(f.get("ptotal")),
-                    )
-                )
-    print(f"✅ Pedido guardado en PostgreSQL. ID={pedido_id} | N° orden llegada={numero_pedido} | Ítems={len(filas_enriquecidas)}")
 
 # ========= CALLBACK DEL ESCUCHADOR =========
 
@@ -96,6 +42,33 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     print(f"Fecha:   {meta.get('fecha')}")
     print(f"UID:     {meta.get('uid')}")
     print(f"📎 PDF:  {nombre_pdf}")
+
+    # VERIFICAR SI YA EXISTE UN PEDIDO CON ESTE UID DE CORREO
+    uid_correo = meta.get("uid")
+    if uid_correo:
+        with db.obtener_conexion() as conn:
+            with conn.cursor() as cur:
+                # Buscar pedidos recientes con el mismo remitente y asunto (últimas 24 horas)
+                cur.execute("""
+                    SELECT id FROM pedidos 
+                    WHERE fecha >= NOW() - INTERVAL '24 hours'
+                    AND sucursal IS NOT NULL
+                    ORDER BY id DESC
+                    LIMIT 10
+                """)
+                pedidos_recientes = cur.fetchall()
+                
+                if pedidos_recientes:
+                    print(f"⚠️  Detectado posible duplicado para UID {uid_correo}. Verificando...")
+                    # Si hay pedidos muy recientes (últimos 5 minutos), saltar procesamiento
+                    cur.execute("""
+                        SELECT COUNT(*) FROM pedidos 
+                        WHERE fecha >= NOW() - INTERVAL '5 minutes'
+                    """)
+                    pedidos_muy_recientes = cur.fetchone()[0]
+                    if pedidos_muy_recientes > 0:
+                        print(f"🚫 Saltando procesamiento: hay {pedidos_muy_recientes} pedido(s) procesado(s) en los últimos 5 minutos")
+                        return
 
     # 1) Filas de la tabla
     filas = proc.extraer_filas_pdf(pdf_en_bytes)
@@ -132,37 +105,6 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     proc.imprimir_filas_emparejadas(filas_enriquecidas)
 
 
-# ========= UTILIDADES WOOCOMMERCE =========
-
-def obtener_cliente_woocommerce():
-    """Obtiene el cliente de WooCommerce configurado"""
-    try:
-        wcapi = API(
-            url=os.getenv("WOOCOMMERCE_URL", ""),
-            consumer_key=os.getenv("WOOCOMMERCE_CONSUMER_KEY", ""),
-            consumer_secret=os.getenv("WOOCOMMERCE_CONSUMER_SECRET", ""),
-            version="wc/v3"
-        )
-        return wcapi
-    except Exception as e:
-        print(f"Error al configurar WooCommerce: {e}")
-        return None
-
-def probar_conexion_woocommerce():
-    """Prueba la conexión con WooCommerce"""
-    wcapi = obtener_cliente_woocommerce()
-    if not wcapi:
-        return {"conectado": False, "error": "No se pudo configurar el cliente WooCommerce"}
-    
-    try:
-        # Intentar obtener información básica del sitio
-        response = wcapi.get("system_status")
-        if response.status_code == 200:
-            return {"conectado": True, "mensaje": "Conexión exitosa con WooCommerce"}
-        else:
-            return {"conectado": False, "error": f"Error HTTP: {response.status_code}"}
-    except Exception as e:
-        return {"conectado": False, "error": str(e)}
 
 # ========= RUTAS FLASK =========
 
@@ -996,9 +938,6 @@ def api_siguiente_numero_pedido():
         return jsonify({"error": str(e)}), 500
 
 
-# ========= RUTAS WOOCOMMERCE =========
-# Las rutas de WooCommerce han sido removidas temporalmente
-# Se puede probar la conexión desde terminal usando test_woocommerce.py
 
 
 # ========= ARRANQUE =========
