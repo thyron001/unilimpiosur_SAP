@@ -516,21 +516,21 @@ Sección 2: CSS  (static/css/glass.css)
         const tieneErrorSucursal = inputSucursal !== null;
         
         if (tieneErrorSucursal && !datosActualizados.sucursal) {
-          errores.push("La sucursal es requerida");
+          errores.push("❌ La sucursal es requerida. Por favor, ingrese el nombre de la sucursal.");
         }
 
         // Validar items
         datosActualizados.items.forEach((item, index) => {
           if (!item.sku) {
-            errores.push(`El SKU del producto ${index + 1} es requerido`);
+            errores.push(`❌ Producto ${index + 1}: El SKU es requerido. Por favor, ingrese el SKU del producto.`);
           }
           if (item.cantidad <= 0) {
-            errores.push(`La cantidad del producto ${index + 1} debe ser mayor a 0`);
+            errores.push(`❌ Producto ${index + 1}: La cantidad debe ser mayor a 0. Por favor, ingrese una cantidad válida.`);
           }
         });
 
         if (errores.length > 0) {
-          alert("Errores encontrados:\n" + errores.join("\n"));
+          alert("❌ Errores encontrados:\n\n" + errores.join("\n\n"));
           return;
         }
 
@@ -726,7 +726,7 @@ Sección 2: CSS  (static/css/glass.css)
           const numero = numeroPedidoInicial.value;
           
           if (!numero || numero < 1) {
-              alert('Por favor ingresa un número válido mayor a 0');
+              alert('❌ Error: Número de pedido inválido.\n\nPor favor, ingrese un número mayor a 0 para el pedido inicial.');
               return;
           }
 

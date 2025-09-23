@@ -184,23 +184,18 @@
           ${celdaAlias}
           <td data-label="Dirección"></td>
           <td data-label="Teléfono"></td>
+          <td class="col-editar">
+            <button class="btn-editar" data-accion="agregar" title="Agregar sucursal">＋</button>
+          </td>
         `;
-        
-        // Agregar botón flotante después de crear la fila
-        const btnAgregar = document.createElement("button");
-        btnAgregar.className = "btn-borrar-flotante";
-        btnAgregar.setAttribute("data-accion", "agregar");
-        btnAgregar.setAttribute("title", "Agregar sucursal");
-        btnAgregar.innerHTML = "＋";
-        tr.appendChild(btnAgregar);
-        tbody.appendChild(tr);
+        tbody.insertBefore(tr, tbody.firstChild);
 
         // Hacer celdas editables - ajustar según si hay columna de alias
         const celdasEditables = mostrarAlias ? 4 : 3;
         $$$("td", tr).slice(0, celdasEditables).forEach(td=>configurarCeldaEditable(td, true));
 
         // Acción guardar nueva fila a la tabla (no envía todavía al backend)
-        tr.querySelector("[data-accion='agregar']").addEventListener("click", ()=>{
+        tr.querySelector(".btn-editar[data-accion='agregar']").addEventListener("click", ()=>{
           const celdas = $$$("td", tr).slice(0, celdasEditables);
           let nombre, alias, direccion, telefono;
           
@@ -212,7 +207,7 @@
           }
           
           if(!nombre){
-            alert("La sucursal debe tener un Nombre (sistema).");
+            alert("❌ Error: Debe ingresar el nombre de la sucursal.\n\nPor favor, complete el campo 'Nombre (sistema)' antes de agregar la sucursal.");
             return;
           }
           const nueva = construirFilaSucursal({
@@ -237,22 +232,17 @@
           ${celdaAlias}
           <td data-label="Dirección">${esc(suc.direccion || "")}</td>
           <td data-label="Teléfono">${esc(suc.telefono || "")}</td>
+          <td class="col-editar">
+            <button class="btn-editar" data-accion="borrar" title="Marcar para borrar">🗑️</button>
+          </td>
         `;
-        
-        // Agregar botón flotante después de crear la fila
-        const btnBorrar = document.createElement("button");
-        btnBorrar.className = "btn-borrar-flotante";
-        btnBorrar.setAttribute("data-accion", "borrar");
-        btnBorrar.setAttribute("title", "Marcar para borrar");
-        btnBorrar.innerHTML = "🗑️";
-        tr.appendChild(btnBorrar);
         
         // editable ON/OFF - ajustar según si hay columna de alias
         const celdasEditables = mostrarAlias ? 4 : 3;
         $$$("td", tr).slice(0, celdasEditables).forEach(td=>configurarCeldaEditable(td, editable));
         
         // borrar (solo marca; se eliminará al guardar)
-        tr.querySelector("[data-accion='borrar']").addEventListener("click", ()=>{
+        tr.querySelector(".btn-editar[data-accion='borrar']").addEventListener("click", ()=>{
           tr.classList.toggle("marcada-borrado");
         });
         return tr;
@@ -278,6 +268,10 @@
         `;
         card.appendChild(head);
 
+        // Contenedor del contenido (tabla)
+        const content = document.createElement("div");
+        content.className = "card-content";
+
         // Tabla
         const wrap = document.createElement("div");
         wrap.className = "table-wrap";
@@ -294,22 +288,55 @@
                 ${headerAlias}
                 <th>Dirección</th>
                 <th>Teléfono</th>
+                <th class="col-editar">Editar</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         `;
-        card.appendChild(wrap);
+        content.appendChild(wrap);
+        card.appendChild(content);
 
         // Cargar filas
         const tbody = $$("tbody", wrap);
-        for(const s of (cliente.sucursales || [])){
-          tbody.appendChild(construirFilaSucursal(s, /*editable=*/toggleEdicion.checked, mostrarAlias));
-        }
-        // Agregar fila vacía si edición activa
+        
+        // Agregar fila vacía al inicio si edición activa
         if(toggleEdicion.checked){
           agregarFilaVacia(tbody, cliente);
         }
+        
+        for(const s of (cliente.sucursales || [])){
+          tbody.appendChild(construirFilaSucursal(s, /*editable=*/toggleEdicion.checked, mostrarAlias));
+        }
+
+        // Cargar estado persistente del acordeón
+        const clienteKey = `cliente_accordion_${cliente.id}`;
+        const isExpandedStored = localStorage.getItem(clienteKey) === 'true';
+        
+        if (isExpandedStored) {
+          head.classList.add("expanded");
+          content.classList.add("expanded");
+        }
+
+        // Event listener para el acordeón
+        head.addEventListener("click", (e) => {
+          // Evitar que se active si se hace clic en el botón de editar
+          if (e.target.classList.contains("btn-editar-cliente") || e.target.closest(".btn-editar-cliente")) {
+            return;
+          }
+          
+          const isExpanded = head.classList.contains("expanded");
+          if (isExpanded) {
+            head.classList.remove("expanded");
+            content.classList.remove("expanded");
+            localStorage.setItem(clienteKey, 'false');
+          } else {
+            head.classList.add("expanded");
+            content.classList.add("expanded");
+            localStorage.setItem(clienteKey, 'true');
+          }
+        });
+
         return card;
       }
 
@@ -330,15 +357,50 @@
             console.error("Error al construir tarjeta para cliente:", cli, e);
           }
         }
-        aplicarFiltroBusqueda(inputBusqueda.value);
+        // Solo aplicar filtro si hay texto en la búsqueda
+        if(inputBusqueda.value.trim() !== ""){
+          aplicarFiltroBusqueda(inputBusqueda.value);
+        }
       }
 
       // Filtro de búsqueda en tiempo real
       function aplicarFiltroBusqueda(q){
         const nq = normalizarTexto(q);
         for(const card of $$$(".card", listaClientes)){
-          const texto = normalizarTexto(card.innerText);
-          card.style.display = texto.includes(nq) ? "" : "none";
+          let hasMatches = false;
+          
+          // Buscar en el header del cliente
+          const header = card.querySelector(".card-head");
+          const headerText = normalizarTexto(header.innerText);
+          const headerMatches = headerText.includes(nq);
+          
+          // Buscar en las filas de la tabla
+          const rows = card.querySelectorAll("tbody tr");
+          for(const row of rows){
+            const rowText = normalizarTexto(row.innerText);
+            const rowMatches = rowText.includes(nq);
+            
+            if(rowMatches){
+              row.style.display = "";
+              hasMatches = true;
+            } else {
+              row.style.display = "none";
+            }
+          }
+          
+          // Mostrar/ocultar la tarjeta completa si hay coincidencias en header o filas
+          if(headerMatches || hasMatches){
+            card.style.display = "";
+            // Si hay coincidencias en filas, expandir la tarjeta
+            if(hasMatches && !headerMatches){
+              const head = card.querySelector(".card-head");
+              const content = card.querySelector(".card-content");
+              head.classList.add("expanded");
+              content.classList.add("expanded");
+            }
+          } else {
+            card.style.display = "none";
+          }
         }
       }
 
@@ -479,7 +541,21 @@
         activarEdicionUI(toggleEdicion.checked);
       });
 
-      inputBusqueda.addEventListener("input", ()=>aplicarFiltroBusqueda(inputBusqueda.value));
+      inputBusqueda.addEventListener("input", ()=>{
+        const q = inputBusqueda.value.trim();
+        if(q === ""){
+          // Limpiar filtros y restaurar todas las filas
+          for(const card of $$$(".card", listaClientes)){
+            card.style.display = "";
+            const rows = card.querySelectorAll("tbody tr");
+            for(const row of rows){
+              row.style.display = "";
+            }
+          }
+        } else {
+          aplicarFiltroBusqueda(q);
+        }
+      });
       btnRefrescar.addEventListener("click", inicializar);
 
       // ============================
@@ -563,11 +639,11 @@
 
         // Validaciones
         if (!datos.nombre) {
-          alert("El nombre del cliente es obligatorio");
+          alert("❌ Error: El nombre del cliente es obligatorio.\n\nPor favor, ingrese el nombre del cliente antes de guardar.");
           return;
         }
         if (!datos.ruc) {
-          alert("El RUC es obligatorio");
+          alert("❌ Error: El RUC es obligatorio.\n\nPor favor, ingrese el RUC del cliente antes de guardar.");
           return;
         }
 

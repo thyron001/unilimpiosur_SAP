@@ -238,6 +238,9 @@ body {
 
 .content-section {
   margin-top: 22px;
+  margin-bottom: 30px;
+  position: relative;
+  z-index: 1;
 }
 
 .content-section-title {
@@ -252,6 +255,9 @@ body {
   border: 1px solid var(--theme-bg-color);
   border-radius: var(--radius-xl);
   overflow: hidden;
+  position: relative;
+  z-index: 2;
+  margin-bottom: 20px;
 }
 
 .card-head {
@@ -259,6 +265,12 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
+}
+
+.card-head > div:first-child {
+  display: flex;
+  align-items: center;
+  flex: 1;
 }
 
 .table-wrap {
@@ -469,16 +481,29 @@ body {
 
 .glass-table th .num, .glass-table td.num { text-align: right; }
 
-/* ===== BOTÓN DE BORRAR FLOTANTE ===== */
-.glass-table tbody tr {
-  position: relative;
+/* ===== COLUMNA EDITAR ===== */
+.glass-table th.col-editar,
+.glass-table td.col-editar {
+  width: 50px;
+  min-width: 50px;
+  max-width: 50px;
+  text-align: center;
+  padding: 8px 4px;
 }
 
-.btn-borrar-flotante {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
+/* Ocultar columna editar por defecto */
+.glass-table th.col-editar,
+.glass-table td.col-editar {
+  display: none;
+}
+
+/* Mostrar columna editar solo en modo edición */
+.modo-edicion .glass-table th.col-editar,
+.modo-edicion .glass-table td.col-editar {
+  display: table-cell;
+}
+
+.btn-editar {
   appearance: none;
   cursor: pointer;
   border: 1px solid var(--border-color);
@@ -488,29 +513,91 @@ body {
   width: 24px;
   height: 24px;
   font-size: 12px;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
-  z-index: 10;
-  pointer-events: none;
+  margin: 0 auto;
 }
 
-.btn-borrar-flotante:hover {
+.btn-editar:hover {
   background: rgba(255, 107, 107, 0.2);
   border-color: #ff6b6b;
-  transform: translateY(-50%) scale(1.1);
+  transform: scale(1.1);
 }
 
-/* Mostrar botón solo en modo edición */
-.modo-edicion .btn-borrar-flotante {
-  display: flex;
-  pointer-events: auto;
+/* ===== ACORDEÓN DE CLIENTES ===== */
+.card-head {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease;
 }
 
-/* Ajustar padding de las filas para el botón flotante */
-.modo-edicion .glass-table tbody tr {
-  padding-right: 32px;
+.card-head:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.card-head > div:first-child::before {
+  content: "▶";
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform 0.3s ease;
+  color: var(--inactive-color);
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.card-head.expanded > div:first-child::before {
+  transform: rotate(90deg);
+}
+
+.card-content {
+  overflow: hidden;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  opacity: 0;
+  transform: translateY(-10px);
+  max-height: 0;
+}
+
+.card-content.expanded {
+  opacity: 1;
+  transform: translateY(0);
+  max-height: none;
+}
+
+/* Asegurar que las tablas dentro del contenido expandido sean visibles */
+.card-content.expanded .table-wrap {
+  max-height: none;
+  overflow: visible;
+}
+
+/* Asegurar que las secciones de productos se muestren correctamente */
+#secPorCliente,
+#secPorSucursal {
+  display: block !important;
+  visibility: visible !important;
+  position: relative;
+  z-index: 1;
+}
+
+#listaPorCliente,
+#listaPorSucursal {
+  display: grid !important;
+  gap: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Asegurar que las tablas mantengan su layout fijo */
+.glass-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+/* Evitar que el contenido se desplace */
+.table-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 /* ===== ANCHOS FIJOS PARA COLUMNAS DE TABLAS ===== */
@@ -618,9 +705,11 @@ body {
 
 .tabla-por-cliente th:nth-child(6), /* Bodega */
 .tabla-por-cliente td:nth-child(6) {
-  width: 140px;
-  min-width: 140px;
-  max-width: 140px;
+  width: 70px;
+  min-width: 70px;
+  max-width: 70px;
+  text-align: center;
+  vertical-align: middle;
 }
 
 /* Tabla de Productos - Por Sucursal */
@@ -661,9 +750,26 @@ body {
 
 .tabla-por-sucursal th:nth-child(6), /* Bodega */
 .tabla-por-sucursal td:nth-child(6) {
-  width: 140px;
-  min-width: 140px;
-  max-width: 140px;
+  width: 70px;
+  min-width: 70px;
+  max-width: 70px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* Columna de Bodega - Estilos específicos */
+.col-bodega {
+  width: 70px !important;
+  min-width: 70px !important;
+  max-width: 70px !important;
+  text-align: center !important;
+  vertical-align: middle !important;
+}
+
+.col-bodega .bodega {
+  text-align: center !important;
+  width: 100%;
+  display: inline-block;
 }
 
 /* Tabla de Detalle de Pedido (Modal) */
