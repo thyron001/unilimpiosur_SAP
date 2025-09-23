@@ -72,7 +72,7 @@ body {
 /* App container */
 .app {
   background-color: var(--theme-bg-color);
-  width: min(1250px, 100%);
+  width: min(1400px, 100%);
   height: min(90vh, 860px);
   display: flex;
   flex-direction: column;
@@ -146,12 +146,17 @@ body {
 
 .left-side {
   width: 240px;
+  min-width: 240px;
+  max-width: 240px;
+  flex-shrink: 0;
   border-right: 1px solid var(--border-color);
   padding: 20px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  max-height: 100%;
 }
 
 .side-title {
@@ -259,13 +264,17 @@ body {
 .table-wrap {
   position: relative;
   padding: 8px 12px 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .glass-table {
   width: 100%;
+  min-width: max-content;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 14px;
+  table-layout: fixed;
 }
 
 .glass-table thead th {
@@ -334,6 +343,34 @@ body {
     font-weight: 600;
     color: var(--inactive-color);
     margin-bottom: 2px;
+  }
+}
+
+/* Asegurar que la barra lateral mantenga su tamaño fijo en pantallas pequeñas */
+@media (max-width: 1024px) {
+  .left-side {
+    width: 240px !important;
+    min-width: 240px !important;
+    max-width: 240px !important;
+    flex-shrink: 0 !important;
+  }
+  
+  .wrapper {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .left-side {
+    width: 240px !important;
+    min-width: 240px !important;
+    max-width: 240px !important;
+    flex-shrink: 0 !important;
+  }
+  
+  .app {
+    width: 100%;
+    min-width: 1200px; /* 240px sidebar + 960px mínimo para contenido con columnas fijas */
   }
 }
 
@@ -431,3 +468,222 @@ body {
 .btn-close:hover { filter: brightness(1.08); }
 
 .glass-table th .num, .glass-table td.num { text-align: right; }
+
+/* ===== BOTÓN DE BORRAR FLOTANTE ===== */
+.glass-table tbody tr {
+  position: relative;
+}
+
+.btn-borrar-flotante {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  appearance: none;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 107, 107, 0.1);
+  color: #ff6b6b;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.btn-borrar-flotante:hover {
+  background: rgba(255, 107, 107, 0.2);
+  border-color: #ff6b6b;
+  transform: translateY(-50%) scale(1.1);
+}
+
+/* Mostrar botón solo en modo edición */
+.modo-edicion .btn-borrar-flotante {
+  display: flex;
+  pointer-events: auto;
+}
+
+/* Ajustar padding de las filas para el botón flotante */
+.modo-edicion .glass-table tbody tr {
+  padding-right: 32px;
+}
+
+/* ===== ANCHOS FIJOS PARA COLUMNAS DE TABLAS ===== */
+
+/* Tabla de Pedidos */
+#ordersTable th:nth-child(1), /* # Pedido */
+#ordersTable td:nth-child(1) {
+  width: 100px;
+  min-width: 100px;
+  max-width: 100px;
+}
+
+#ordersTable th:nth-child(2), /* Cliente */
+#ordersTable td:nth-child(2) {
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+}
+
+#ordersTable th:nth-child(3), /* Sucursal */
+#ordersTable td:nth-child(3) {
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
+}
+
+#ordersTable th:nth-child(4), /* Fecha */
+#ordersTable td:nth-child(4) {
+  width: 180px;
+  min-width: 180px;
+  max-width: 180px;
+}
+
+#ordersTable th:nth-child(5), /* Origen */
+#ordersTable td:nth-child(5) {
+  width: 100px;
+  min-width: 100px;
+  max-width: 100px;
+}
+
+/* Tabla de Clientes/Sucursales */
+.tabla-sucursales th:nth-child(1), /* Nombre (sistema) */
+.tabla-sucursales td:nth-child(1) {
+  width: 220px;
+  min-width: 220px;
+  max-width: 220px;
+}
+
+.tabla-sucursales th:nth-child(2), /* Alias (PDF) - cuando existe */
+.tabla-sucursales td:nth-child(2) {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+.tabla-sucursales th:nth-child(3), /* Dirección */
+.tabla-sucursales td:nth-child(3) {
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
+}
+
+.tabla-sucursales th:nth-child(4), /* Teléfono */
+.tabla-sucursales td:nth-child(4) {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+/* Tabla de Productos - Por Cliente */
+.tabla-por-cliente th:nth-child(1), /* SKU */
+.tabla-por-cliente td:nth-child(1) {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+.tabla-por-cliente th:nth-child(2), /* Nombre del Producto */
+.tabla-por-cliente td:nth-child(2) {
+  width: 350px;
+  min-width: 350px;
+  max-width: 350px;
+}
+
+.tabla-por-cliente th:nth-child(3), /* Alias 1 */
+.tabla-por-cliente td:nth-child(3) {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+.tabla-por-cliente th:nth-child(4), /* Alias 2 */
+.tabla-por-cliente td:nth-child(4) {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+.tabla-por-cliente th:nth-child(5), /* Alias 3 */
+.tabla-por-cliente td:nth-child(5) {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+.tabla-por-cliente th:nth-child(6), /* Bodega */
+.tabla-por-cliente td:nth-child(6) {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+/* Tabla de Productos - Por Sucursal */
+.tabla-por-sucursal th:nth-child(1), /* SKU */
+.tabla-por-sucursal td:nth-child(1) {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+.tabla-por-sucursal th:nth-child(2), /* Nombre del Producto */
+.tabla-por-sucursal td:nth-child(2) {
+  width: 350px;
+  min-width: 350px;
+  max-width: 350px;
+}
+
+.tabla-por-sucursal th:nth-child(3), /* Alias 1 */
+.tabla-por-sucursal td:nth-child(3) {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+.tabla-por-sucursal th:nth-child(4), /* Alias 2 */
+.tabla-por-sucursal td:nth-child(4) {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+.tabla-por-sucursal th:nth-child(5), /* Alias 3 */
+.tabla-por-sucursal td:nth-child(5) {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+.tabla-por-sucursal th:nth-child(6), /* Bodega */
+.tabla-por-sucursal td:nth-child(6) {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+/* Tabla de Detalle de Pedido (Modal) */
+.glass-modal .glass-table th:nth-child(1), /* SKU */
+.glass-modal .glass-table td:nth-child(1) {
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+}
+
+.glass-modal .glass-table th:nth-child(2), /* Descripción */
+.glass-modal .glass-table td:nth-child(2) {
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
+}
+
+.glass-modal .glass-table th:nth-child(3), /* Cantidad */
+.glass-modal .glass-table td:nth-child(3) {
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
+}

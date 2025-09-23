@@ -157,9 +157,8 @@
         <tr>
             <th>SKU</th>
             <th>Nombre del Producto</th>
-            <th>Bodega</th>
             ${headersAlias}
-            <th></th>
+            <th>Bodega</th>
         </tr>`; 
     }
 
@@ -178,12 +177,17 @@
         tr.innerHTML = `
             <td data-label="SKU"><span contenteditable="false" class="sku">${esc(row.sku||"")}</span></td>
             <td data-label="Nombre del Producto"><span contenteditable="false" class="nombre">${esc(row.nombre_producto||"")}</span></td>
-            <td data-label="Bodega"><span contenteditable="false" class="bodega">${esc(row.bodega||"")}</span></td>
             ${celdasAlias}
-            <td style="width:1%; white-space:nowrap;">
-            <button class="btn-mini" data-accion="borrar" title="Marcar para borrar">🗑️</button>
-            </td>
+            <td data-label="Bodega"><span contenteditable="false" class="bodega">${esc(row.bodega||"")}</span></td>
         `;
+        
+        // Agregar botón flotante después de crear la fila
+        const btnBorrar = document.createElement("button");
+        btnBorrar.className = "btn-borrar-flotante";
+        btnBorrar.setAttribute("data-accion", "borrar");
+        btnBorrar.setAttribute("title", "Marcar para borrar");
+        btnBorrar.innerHTML = "🗑️";
+        tr.appendChild(btnBorrar);
         
         // Configurar celdas editables
         const spans = ["sku","nombre","bodega"].map(c=>tr.querySelector("."+c));
@@ -213,7 +217,9 @@
             }
         }
         
-        tr.querySelector("[data-accion='borrar']").addEventListener("click", ()=>tr.classList.toggle("marcada-borrado"));
+        tr.querySelector("[data-accion='borrar']").addEventListener("click", ()=>{
+          tr.classList.toggle("marcada-borrado");
+        });
         return tr;
         }
 
@@ -230,10 +236,17 @@
         tr.innerHTML = `
             <td data-label="SKU"><span contenteditable="true" class="sku celda-editable" list="dlSkus"></span></td>
             <td data-label="Nombre del Producto"><span contenteditable="true" class="nombre celda-editable" list="dlNombres"></span></td>
-            <td data-label="Bodega"><span contenteditable="true" class="bodega celda-editable"></span></td>
             ${celdasAlias}
-            <td style="width:1%; white-space:nowrap;"><button class="btn-mini" data-accion="agregar">＋</button></td>
+            <td data-label="Bodega"><span contenteditable="true" class="bodega celda-editable"></span></td>
         `;
+        
+        // Agregar botón flotante después de crear la fila
+        const btnAgregar = document.createElement("button");
+        btnAgregar.className = "btn-borrar-flotante";
+        btnAgregar.setAttribute("data-accion", "agregar");
+        btnAgregar.setAttribute("title", "Agregar producto");
+        btnAgregar.innerHTML = "＋";
+        tr.appendChild(btnAgregar);
         tbody.appendChild(tr);
         tr.querySelector("[data-accion='agregar']").addEventListener("click", ()=>{
             const sku   = tr.querySelector(".sku").textContent.trim();
@@ -473,6 +486,14 @@
     }
 
     function activarEdicionUI(habilitar){
+        // Agregar/quitar clase modo-edicion al contenedor principal
+        const app = $$(".app");
+        if(habilitar){
+          app.classList.add("modo-edicion");
+        }else{
+          app.classList.remove("modo-edicion");
+        }
+        
         // Alternar celdas + fila nueva
         for(const tabla of $$$(".tabla-por-cliente, .tabla-por-sucursal")){
             const tbody = tabla.tBodies[0];

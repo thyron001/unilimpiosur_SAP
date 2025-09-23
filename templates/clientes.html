@@ -184,10 +184,15 @@
           ${celdaAlias}
           <td data-label="Dirección"></td>
           <td data-label="Teléfono"></td>
-          <td style="width:1%; white-space:nowrap;">
-            <button class="btn-mini" data-accion="agregar">＋</button>
-          </td>
         `;
+        
+        // Agregar botón flotante después de crear la fila
+        const btnAgregar = document.createElement("button");
+        btnAgregar.className = "btn-borrar-flotante";
+        btnAgregar.setAttribute("data-accion", "agregar");
+        btnAgregar.setAttribute("title", "Agregar sucursal");
+        btnAgregar.innerHTML = "＋";
+        tr.appendChild(btnAgregar);
         tbody.appendChild(tr);
 
         // Hacer celdas editables - ajustar según si hay columna de alias
@@ -195,7 +200,7 @@
         $$$("td", tr).slice(0, celdasEditables).forEach(td=>configurarCeldaEditable(td, true));
 
         // Acción guardar nueva fila a la tabla (no envía todavía al backend)
-        $$("[data-accion='agregar']", tr).addEventListener("click", ()=>{
+        tr.querySelector("[data-accion='agregar']").addEventListener("click", ()=>{
           const celdas = $$$("td", tr).slice(0, celdasEditables);
           let nombre, alias, direccion, telefono;
           
@@ -232,17 +237,22 @@
           ${celdaAlias}
           <td data-label="Dirección">${esc(suc.direccion || "")}</td>
           <td data-label="Teléfono">${esc(suc.telefono || "")}</td>
-          <td style="width:1%; white-space:nowrap;">
-            <button class="btn-mini" data-accion="borrar" title="Marcar para borrar">🗑️</button>
-          </td>
         `;
+        
+        // Agregar botón flotante después de crear la fila
+        const btnBorrar = document.createElement("button");
+        btnBorrar.className = "btn-borrar-flotante";
+        btnBorrar.setAttribute("data-accion", "borrar");
+        btnBorrar.setAttribute("title", "Marcar para borrar");
+        btnBorrar.innerHTML = "🗑️";
+        tr.appendChild(btnBorrar);
         
         // editable ON/OFF - ajustar según si hay columna de alias
         const celdasEditables = mostrarAlias ? 4 : 3;
         $$$("td", tr).slice(0, celdasEditables).forEach(td=>configurarCeldaEditable(td, editable));
         
         // borrar (solo marca; se eliminará al guardar)
-        $$("[data-accion='borrar']", tr).addEventListener("click", ()=>{
+        tr.querySelector("[data-accion='borrar']").addEventListener("click", ()=>{
           tr.classList.toggle("marcada-borrado");
         });
         return tr;
@@ -284,7 +294,6 @@
                 ${headerAlias}
                 <th>Dirección</th>
                 <th>Teléfono</th>
-                <th></th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -335,6 +344,14 @@
 
       // Activar/Desactivar edición (UI)
       function activarEdicionUI(habilitar){
+        // Agregar/quitar clase modo-edicion al contenedor principal
+        const app = $$(".app");
+        if(habilitar){
+          app.classList.add("modo-edicion");
+        }else{
+          app.classList.remove("modo-edicion");
+        }
+        
         // Todas las filas de todas las tablas
         const tablas = $$$(".tabla-sucursales");
         for(const table of tablas){
