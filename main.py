@@ -131,6 +131,38 @@ def ver_pedidos():
 def vista_clientes():
     return render_template("clientes.html")
 
+@app.route("/api/clientes")
+def api_clientes():
+    """Obtiene lista de clientes para filtros"""
+    with db.obtener_conexion() as conn, conn.cursor() as cur:
+        # Verificar si la columna activo existe
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'clientes' AND column_name = 'activo';
+        """)
+        tiene_columna_activo = cur.fetchone() is not None
+        
+        if tiene_columna_activo:
+            cur.execute("""
+                SELECT id, nombre, ruc
+                FROM clientes
+                WHERE activo = TRUE
+                ORDER BY upper(nombre);
+            """)
+        else:
+            cur.execute("""
+                SELECT id, nombre, ruc
+                FROM clientes
+                ORDER BY upper(nombre);
+            """)
+        
+        clientes = [
+            {"id": cid, "nombre": nom, "ruc": ruc}
+            for (cid, nom, ruc) in cur.fetchall()
+        ]
+    return jsonify({"clientes": clientes})
+
 @app.route("/api/clientes_con_sucursales")
 def api_clientes_con_sucursales():
     with db.obtener_conexion() as conn, conn.cursor() as cur:
@@ -627,17 +659,40 @@ def api_pedidos_por_estado(estado: str):
     if estado not in estados_validos:
         return jsonify({"error": "Estado inválido"}), 400
     
+    # Obtener parámetros de filtro de la query string
+    cliente_id = request.args.get('cliente_id', type=int)
+    fecha_desde = request.args.get('fecha_desde')
+    fecha_hasta = request.args.get('fecha_hasta')
+    
     with db.obtener_conexion() as conn, conn.cursor() as cur:
-        cur.execute("""
-            SELECT id, numero_pedido, fecha, sucursal, estado
-            FROM pedidos
-            WHERE estado = %s
-            ORDER BY id DESC
-            LIMIT 200;
-        """, (estado,))
+        # Construir query base
+        query = """
+            SELECT p.id, p.numero_pedido, p.fecha, p.sucursal, p.estado, c.nombre as cliente_nombre
+            FROM pedidos p
+            LEFT JOIN clientes c ON c.id = p.cliente_id
+            WHERE p.estado = %s
+        """
+        params = [estado]
+        
+        # Agregar filtros opcionales
+        if cliente_id:
+            query += " AND p.cliente_id = %s"
+            params.append(cliente_id)
+        
+        if fecha_desde:
+            query += " AND p.fecha >= %s"
+            params.append(fecha_desde)
+        
+        if fecha_hasta:
+            query += " AND p.fecha <= %s"
+            params.append(fecha_hasta)
+        
+        query += " ORDER BY p.id DESC LIMIT 200;"
+        
+        cur.execute(query, params)
         filas = [
-            {"id": i, "numero_pedido": n, "fecha": f, "sucursal": s, "estado": e}
-            for (i, n, f, s, e) in cur.fetchall()
+            {"id": i, "numero_pedido": n, "fecha": f, "sucursal": s, "estado": e, "cliente_nombre": cn}
+            for (i, n, f, s, e, cn) in cur.fetchall()
         ]
     return jsonify({"pedidos": filas, "estado": estado})
 

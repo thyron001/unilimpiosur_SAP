@@ -46,10 +46,51 @@ Sección 2: CSS  (static/css/glass.css)
             </nav>
           </section>
           <section class="side-wrapper">
-            <h3 class="side-title">Filtros rápidos</h3>
+            <h3 class="side-title">Filtros</h3>
             <div class="side-menu">
-              <span class="chip">Origen: Email</span>
-              <span class="chip">Sucursal: Cuenca</span>
+              <div class="filter-container">
+                <div class="filter-chip" id="filter-cliente" data-filter="cliente">
+                  <span class="filter-label">Cliente:</span>
+                  <span class="filter-value">Todos</span>
+                  <span class="filter-clear">×</span>
+                </div>
+                <div class="filter-dropdown" id="dropdown-cliente">
+                  <div class="cliente-option" data-cliente-id="0">
+                    <span class="cliente-nombre">Todos los clientes</span>
+                  </div>
+                  <div id="clientes-container"></div>
+                </div>
+              </div>
+              
+              <div class="filter-container">
+                <div class="filter-chip" id="filter-desde" data-filter="desde">
+                  <span class="filter-label">Desde:</span>
+                  <span class="filter-value">Todos</span>
+                  <span class="filter-clear">×</span>
+                </div>
+                <div class="filter-dropdown" id="dropdown-desde">
+                  <input type="date" id="fecha-desde-input" class="fecha-input">
+                  <div class="fecha-actions">
+                    <button id="btn-limpiar-desde" class="btn-fecha-limpiar">Limpiar</button>
+                    <button id="btn-aplicar-desde" class="btn-fecha-aplicar">Aplicar</button>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="filter-container">
+                <div class="filter-chip" id="filter-hasta" data-filter="hasta">
+                  <span class="filter-label">Hasta:</span>
+                  <span class="filter-value">Todos</span>
+                  <span class="filter-clear">×</span>
+                </div>
+                <div class="filter-dropdown" id="dropdown-hasta">
+                  <input type="date" id="fecha-hasta-input" class="fecha-input">
+                  <div class="fecha-actions">
+                    <button id="btn-limpiar-hasta" class="btn-fecha-limpiar">Limpiar</button>
+                    <button id="btn-aplicar-hasta" class="btn-fecha-aplicar">Aplicar</button>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
           <section class="side-wrapper">
@@ -174,6 +215,7 @@ Sección 2: CSS  (static/css/glass.css)
 
       </div>
     </div>
+
 
     <style>
     /* Estilos para configuración */
@@ -334,6 +376,160 @@ Sección 2: CSS  (static/css/glass.css)
       background: rgba(102, 126, 234, 0.2);
       border-bottom: 2px solid #667eea;
     }
+
+    /* Estilos para los contenedores de filtros */
+    .filter-container {
+      position: relative;
+      margin-bottom: 8px;
+    }
+
+    /* Estilos para las pastillas de filtros */
+    .filter-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-size: 0.9rem;
+    }
+
+    .filter-chip:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .filter-chip.active {
+      background: rgba(102, 126, 234, 0.3);
+      border-color: #667eea;
+    }
+
+    .filter-label {
+      color: var(--content-title-color);
+      font-weight: 500;
+    }
+
+    .filter-value {
+      color: var(--theme-color);
+      font-weight: 400;
+    }
+
+    .filter-clear {
+      color: var(--inactive-color);
+      font-size: 1.2rem;
+      font-weight: bold;
+      opacity: 0.7;
+      transition: opacity 0.2s ease;
+    }
+
+    .filter-clear:hover {
+      opacity: 1;
+    }
+
+    /* Estilos para los dropdowns pequeños */
+    .filter-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: var(--theme-bg-color);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      z-index: 1000;
+      display: none;
+      margin-top: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .filter-dropdown.show {
+      display: block;
+    }
+
+    /* Estilos para opciones de cliente */
+    .cliente-option {
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .cliente-option:last-child {
+      border-bottom: none;
+    }
+
+    .cliente-option:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .cliente-option.selected {
+      background: rgba(102, 126, 234, 0.2);
+    }
+
+    .cliente-nombre {
+      color: var(--theme-color);
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+
+    /* Estilos para inputs de fecha */
+    .fecha-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: var(--theme-bg-color);
+      color: var(--theme-color);
+      font-size: 0.9rem;
+      transition: border-color 0.2s ease;
+      margin-bottom: 8px;
+    }
+
+    .fecha-input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+    }
+
+    .fecha-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      padding: 0 8px 8px 8px;
+    }
+
+    .btn-fecha-limpiar,
+    .btn-fecha-aplicar {
+      padding: 6px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      background: var(--theme-bg-color);
+      color: var(--theme-color);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-size: 0.8rem;
+    }
+
+    .btn-fecha-limpiar:hover {
+      background: rgba(255, 107, 107, 0.1);
+      border-color: #ff6b6b;
+      color: #ff6b6b;
+    }
+
+    .btn-fecha-aplicar {
+      background: rgba(102, 126, 234, 0.2);
+      border-color: #667eea;
+      color: #667eea;
+    }
+
+    .btn-fecha-aplicar:hover {
+      background: rgba(102, 126, 234, 0.3);
+    }
     </style>
 
     <script>
@@ -347,7 +543,7 @@ Sección 2: CSS  (static/css/glass.css)
       const btnSAP  = $$("#btnSAP");
       const estadoActual = $$("#estado-actual");
 
-      let estadoSeleccionado = "{{ estado_actual or 'por_procesar' }}";
+      window.estadoSeleccionado = "{{ estado_actual or 'por_procesar' }}";
 
       const fmtMoney = (n) => (n===null || n===undefined) ? "-" : n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
       const fmtDate  = (iso) => {
@@ -560,7 +756,7 @@ Sección 2: CSS  (static/css/glass.css)
             alert("✅ Pedido verificado exitosamente. El estado ha cambiado a 'Por procesar'.");
             // Cerrar modal y recargar lista
             cerrarModal();
-            cargarPedidosPorEstado("con_errores");
+            window.cargarPedidosPorEstado("con_errores");
           } else {
             alert("❌ Error al verificar el pedido: " + (resultado.error || "Error desconocido"));
           }
@@ -574,10 +770,30 @@ Sección 2: CSS  (static/css/glass.css)
         }
       }
 
-      // Función para cargar pedidos por estado
-      async function cargarPedidosPorEstado(estado) {
+      // Variables globales para filtros
+      window.filtrosActuales = {
+        cliente_id: null,
+        fecha_desde: null,
+        fecha_hasta: null
+      };
+
+      // Función para cargar pedidos por estado con filtros
+      window.cargarPedidosPorEstado = async function(estado) {
         try {
-          const resp = await fetch(`/api/pedidos/por_estado/${estado}`);
+          // Construir URL con filtros
+          const params = new URLSearchParams();
+          if (window.filtrosActuales.cliente_id) {
+            params.append('cliente_id', window.filtrosActuales.cliente_id);
+          }
+          if (window.filtrosActuales.fecha_desde) {
+            params.append('fecha_desde', window.filtrosActuales.fecha_desde);
+          }
+          if (window.filtrosActuales.fecha_hasta) {
+            params.append('fecha_hasta', window.filtrosActuales.fecha_hasta);
+          }
+          
+          const url = `/api/pedidos/por_estado/${estado}${params.toString() ? '?' + params.toString() : ''}`;
+          const resp = await fetch(url);
           if (!resp.ok) throw new Error("Error al cargar pedidos");
           const data = await resp.json();
           
@@ -594,7 +810,7 @@ Sección 2: CSS  (static/css/glass.css)
             
             tr.innerHTML = `
               <td class="mono" data-label="# Pedido">${pedido.numero_pedido}</td>
-              <td data-label="Cliente">Roldan</td>
+              <td data-label="Cliente">${pedido.cliente_nombre || 'Roldan'}</td>
               <td data-label="Sucursal">${pedido.sucursal || '-'}</td>
               <td data-label="Fecha">${pedido.fecha ? new Date(pedido.fecha).toLocaleString() : ''}</td>
               <td data-label="Origen">Email</td>
@@ -624,7 +840,7 @@ Sección 2: CSS  (static/css/glass.css)
           }
           
           estadoActual.textContent = estado;
-          estadoSeleccionado = estado;
+          window.estadoSeleccionado = estado;
           
           // Mostrar/ocultar botón SAP
           if (estado === "por_procesar") {
@@ -650,7 +866,7 @@ Sección 2: CSS  (static/css/glass.css)
           link.classList.add("is-active");
           
           // Cargar pedidos del estado seleccionado
-          cargarPedidosPorEstado(estado);
+          window.cargarPedidosPorEstado(estado);
         });
       });
 
@@ -676,7 +892,7 @@ Sección 2: CSS  (static/css/glass.css)
           if (data.ok) {
             alert(`✅ ${data.mensaje}\n\nArchivos generados:\n- ${data.archivos.odrf}\n- ${data.archivos.drf1}`);
             // Recargar pedidos por procesar
-            cargarPedidosPorEstado("por_procesar");
+            window.cargarPedidosPorEstado("por_procesar");
           } else {
             alert(`❌ ${data.mensaje || data.error}`);
           }
@@ -690,15 +906,226 @@ Sección 2: CSS  (static/css/glass.css)
       });
 
       // Inicializar con el estado actual
-      const linkActivo = $$(`[data-estado="${estadoSeleccionado}"]`);
+      const linkActivo = $$(`[data-estado="${window.estadoSeleccionado}"]`);
       if (linkActivo) {
         linkActivo.classList.add("is-active");
       }
       
       // Mostrar/ocultar botón SAP según estado inicial
-      if (estadoSeleccionado === "por_procesar") {
+      if (window.estadoSeleccionado === "por_procesar") {
         btnSAP.classList.remove("hidden");
       }
+    })();
+    </script>
+
+    <script>
+    // Sistema de filtros con dropdowns
+    (function(){
+      const $$ = (sel, ctx=document) => ctx.querySelector(sel);
+      const $$$ = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
+
+      // Elementos del DOM
+      const filterCliente = $$("#filter-cliente");
+      const filterDesde = $$("#filter-desde");
+      const filterHasta = $$("#filter-hasta");
+      
+      const dropdownCliente = $$("#dropdown-cliente");
+      const dropdownDesde = $$("#dropdown-desde");
+      const dropdownHasta = $$("#dropdown-hasta");
+      
+      const clientesContainer = $$("#clientes-container");
+      const fechaDesdeInput = $$("#fecha-desde-input");
+      const fechaHastaInput = $$("#fecha-hasta-input");
+
+      // Variables globales
+      let clientesLista = [];
+      let clienteSeleccionado = null;
+      let fechaDesdeSeleccionada = null;
+      let fechaHastaSeleccionada = null;
+
+      // Función para cerrar todos los dropdowns
+      function cerrarTodosLosDropdowns() {
+        $$$(".filter-dropdown").forEach(dropdown => {
+          dropdown.classList.remove("show");
+        });
+      }
+
+      // Función para actualizar la visualización de filtros
+      function actualizarVisualizacionFiltros() {
+        // Actualizar pastilla de cliente
+        const clienteValue = $$("#filter-cliente .filter-value");
+        if (clienteSeleccionado) {
+          clienteValue.textContent = clienteSeleccionado.nombre;
+          filterCliente.classList.add("active");
+        } else {
+          clienteValue.textContent = "Todos";
+          filterCliente.classList.remove("active");
+        }
+
+        // Actualizar pastilla de fecha desde
+        const desdeValue = $$("#filter-desde .filter-value");
+        if (fechaDesdeSeleccionada) {
+          desdeValue.textContent = new Date(fechaDesdeSeleccionada).toLocaleDateString();
+          filterDesde.classList.add("active");
+        } else {
+          desdeValue.textContent = "Todos";
+          filterDesde.classList.remove("active");
+        }
+
+        // Actualizar pastilla de fecha hasta
+        const hastaValue = $$("#filter-hasta .filter-value");
+        if (fechaHastaSeleccionada) {
+          hastaValue.textContent = new Date(fechaHastaSeleccionada).toLocaleDateString();
+          filterHasta.classList.add("active");
+        } else {
+          hastaValue.textContent = "Todos";
+          filterHasta.classList.remove("active");
+        }
+      }
+
+      // Función para aplicar filtros
+      function aplicarFiltros() {
+        // Actualizar filtros globales
+        window.filtrosActuales = {
+          cliente_id: clienteSeleccionado ? clienteSeleccionado.id : null,
+          fecha_desde: fechaDesdeSeleccionada,
+          fecha_hasta: fechaHastaSeleccionada
+        };
+
+        // Recargar pedidos del estado actual
+        if (window.cargarPedidosPorEstado) {
+          window.cargarPedidosPorEstado(window.estadoSeleccionado || "por_procesar");
+        }
+      }
+
+      // Función para cargar clientes
+      async function cargarClientes() {
+        try {
+          const resp = await fetch("/api/clientes");
+          if (!resp.ok) throw new Error("Error al cargar clientes");
+          const data = await resp.json();
+          clientesLista = data.clientes;
+          
+          // Renderizar lista de clientes
+          clientesContainer.innerHTML = "";
+          clientesLista.forEach(cliente => {
+            const div = document.createElement("div");
+            div.className = "cliente-option";
+            div.setAttribute("data-cliente-id", cliente.id);
+            div.innerHTML = `<span class="cliente-nombre">${cliente.nombre}</span>`;
+            clientesContainer.appendChild(div);
+          });
+        } catch (error) {
+          console.error("Error al cargar clientes:", error);
+        }
+      }
+
+      // Event listeners para pastillas de filtros
+      filterCliente.addEventListener("click", (e) => {
+        e.stopPropagation();
+        cerrarTodosLosDropdowns();
+        dropdownCliente.classList.toggle("show");
+      });
+
+      filterDesde.addEventListener("click", (e) => {
+        e.stopPropagation();
+        cerrarTodosLosDropdowns();
+        dropdownDesde.classList.toggle("show");
+      });
+
+      filterHasta.addEventListener("click", (e) => {
+        e.stopPropagation();
+        cerrarTodosLosDropdowns();
+        dropdownHasta.classList.toggle("show");
+      });
+
+      // Event listener para cerrar dropdowns al hacer clic fuera
+      document.addEventListener("click", () => {
+        cerrarTodosLosDropdowns();
+      });
+
+      // Event listeners para selección de cliente
+      dropdownCliente.addEventListener("click", (e) => {
+        const clienteOption = e.target.closest(".cliente-option");
+        if (clienteOption) {
+          const clienteId = parseInt(clienteOption.getAttribute("data-cliente-id"));
+          
+          // Actualizar selección visual
+          $$$(".cliente-option").forEach(opt => opt.classList.remove("selected"));
+          clienteOption.classList.add("selected");
+          
+          // Guardar selección
+          if (clienteId === 0) {
+            clienteSeleccionado = null;
+          } else {
+            clienteSeleccionado = clientesLista.find(c => c.id === clienteId);
+          }
+          
+          // Aplicar filtros y cerrar dropdown
+          actualizarVisualizacionFiltros();
+          aplicarFiltros();
+          cerrarTodosLosDropdowns();
+        }
+      });
+
+      // Event listeners para fechas
+      $$("#btn-aplicar-desde").addEventListener("click", () => {
+        const fecha = fechaDesdeInput.value;
+        fechaDesdeSeleccionada = fecha || null;
+        actualizarVisualizacionFiltros();
+        aplicarFiltros();
+        cerrarTodosLosDropdowns();
+      });
+
+      $$("#btn-limpiar-desde").addEventListener("click", () => {
+        fechaDesdeSeleccionada = null;
+        fechaDesdeInput.value = "";
+        actualizarVisualizacionFiltros();
+        aplicarFiltros();
+        cerrarTodosLosDropdowns();
+      });
+
+      $$("#btn-aplicar-hasta").addEventListener("click", () => {
+        const fecha = fechaHastaInput.value;
+        fechaHastaSeleccionada = fecha || null;
+        actualizarVisualizacionFiltros();
+        aplicarFiltros();
+        cerrarTodosLosDropdowns();
+      });
+
+      $$("#btn-limpiar-hasta").addEventListener("click", () => {
+        fechaHastaSeleccionada = null;
+        fechaHastaInput.value = "";
+        actualizarVisualizacionFiltros();
+        aplicarFiltros();
+        cerrarTodosLosDropdowns();
+      });
+
+      // Event listeners para botones de limpiar en las pastillas
+      $$("#filter-cliente .filter-clear").addEventListener("click", (e) => {
+        e.stopPropagation();
+        clienteSeleccionado = null;
+        actualizarVisualizacionFiltros();
+        aplicarFiltros();
+      });
+
+      $$("#filter-desde .filter-clear").addEventListener("click", (e) => {
+        e.stopPropagation();
+        fechaDesdeSeleccionada = null;
+        actualizarVisualizacionFiltros();
+        aplicarFiltros();
+      });
+
+      $$("#filter-hasta .filter-clear").addEventListener("click", (e) => {
+        e.stopPropagation();
+        fechaHastaSeleccionada = null;
+        actualizarVisualizacionFiltros();
+        aplicarFiltros();
+      });
+
+      // Inicializar
+      cargarClientes();
+      actualizarVisualizacionFiltros();
     })();
     </script>
 

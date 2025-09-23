@@ -545,6 +545,7 @@ body {
   color: var(--inactive-color);
   font-size: 12px;
   vertical-align: middle;
+  transform-origin: center;
 }
 
 .card-head.expanded > div:first-child::before {
@@ -553,16 +554,18 @@ body {
 
 .card-content {
   overflow: hidden;
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition: opacity 0.3s ease, transform 0.3s ease, padding 0.3s ease;
   opacity: 0;
   transform: translateY(-10px);
+  padding: 0 16px;
   max-height: 0;
 }
 
 .card-content.expanded {
   opacity: 1;
   transform: translateY(0);
-  max-height: none;
+  padding: 16px;
+  max-height: 999999px; /* Valor absurdamente grande para nunca cortar el contenido */
 }
 
 /* Asegurar que las tablas dentro del contenido expandido sean visibles */
