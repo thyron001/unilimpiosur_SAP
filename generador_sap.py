@@ -188,6 +188,53 @@ def actualizar_estado_pedidos(pedido_ids: List[int], nuevo_estado: str) -> None:
         
         print(f"✅ Actualizados {cur.rowcount} pedidos a estado '{nuevo_estado}'")
 
+def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
+    """Obtiene pedidos específicos por sus IDs con sus datos completos"""
+    if not pedidos_ids:
+        return []
+    
+    with obtener_conexion() as conn, conn.cursor() as cur:
+        placeholders = ','.join(['%s'] * len(pedidos_ids))
+        cur.execute(f"""
+            SELECT 
+                p.id,
+                p.numero_pedido,
+                p.fecha,
+                p.sucursal,
+                p.cliente_id,
+                p.sucursal_id,
+                c.ruc,
+                c.nombre as cliente_nombre,
+                s.nombre as sucursal_nombre,
+                s.direccion,
+                s.telefono,
+                s.almacen
+            FROM pedidos p
+            LEFT JOIN clientes c ON c.id = p.cliente_id
+            LEFT JOIN sucursales s ON s.id = p.sucursal_id
+            WHERE p.id IN ({placeholders})
+            ORDER BY p.numero_pedido;
+        """, pedidos_ids)
+        
+        pedidos = []
+        for row in cur.fetchall():
+            pedidos.append({
+                "id": row[0],
+                "numero_pedido": row[1],
+                "fecha": row[2],
+                "sucursal": row[3],
+                "cliente_id": row[4],
+                "sucursal_id": row[5],
+                "ruc": row[6],
+                "cliente_nombre": row[7],
+                "sucursal_nombre": row[8],
+                "direccion": row[9],
+                "telefono": row[10],
+                "almacen": row[11]
+            })
+        
+        return pedidos
+
 def generar_archivos_sap(carpeta_salida: str | Path = ".") -> Tuple[str, str]:
     """
     Función principal que genera los archivos ODRF.txt y DRF1.txt
@@ -219,6 +266,48 @@ def generar_archivos_sap(carpeta_salida: str | Path = ".") -> Tuple[str, str]:
     # Actualizar estado de pedidos a 'procesado'
     pedido_ids = [p["id"] for p in pedidos]
     actualizar_estado_pedidos(pedido_ids, "procesado")
+    
+    print(f"✅ Archivos SAP generados:")
+    print(f"   → ODRF: {odrf_path}")
+    print(f"   → DRF1: {drf1_path}")
+    print(f"   → {len(pedidos)} pedidos marcados como 'procesado'")
+    
+    return str(odrf_path), str(drf1_path)
+
+def generar_archivos_sap_por_ids(pedidos_ids: List[int], carpeta_salida: str | Path = ".") -> Tuple[str, str]:
+    """
+    Función que genera los archivos ODRF.txt y DRF1.txt
+    para pedidos específicos por sus IDs
+    
+    Args:
+        pedidos_ids: Lista de IDs de pedidos a procesar
+        carpeta_salida: Carpeta donde guardar los archivos
+    
+    Returns:
+        Tuple[str, str]: Rutas de los archivos generados (odrf_path, drf1_path)
+    """
+    carpeta_salida = Path(carpeta_salida)
+    carpeta_salida.mkdir(exist_ok=True)
+    
+    # Obtener pedidos específicos
+    pedidos = obtener_pedidos_por_ids(pedidos_ids)
+    
+    if not pedidos:
+        print("⚠️ No se encontraron pedidos con los IDs especificados")
+        return None, None
+    
+    print(f"📋 Generando archivos SAP para {len(pedidos)} pedidos seleccionados...")
+    
+    # Generar archivos
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    odrf_path = carpeta_salida / f"ODRF_{timestamp}.txt"
+    drf1_path = carpeta_salida / f"DRF1_{timestamp}.txt"
+    
+    generar_archivo_odrf(pedidos, odrf_path)
+    generar_archivo_drf1(pedidos, drf1_path)
+    
+    # Actualizar estado de pedidos a 'procesado'
+    actualizar_estado_pedidos(pedidos_ids, "procesado")
     
     print(f"✅ Archivos SAP generados:")
     print(f"   → ODRF: {odrf_path}")

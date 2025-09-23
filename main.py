@@ -698,10 +698,20 @@ def api_pedidos_por_estado(estado: str):
 
 @app.route("/api/generar_sap", methods=["POST"])
 def api_generar_sap():
-    """Genera archivos SAP para pedidos por procesar"""
+    """Genera archivos SAP para pedidos seleccionados o todos los por procesar"""
     try:
         import generador_sap
-        odrf_path, drf1_path = generador_sap.generar_archivos_sap()
+        
+        # Obtener datos del request
+        data = request.get_json() or {}
+        pedidos_ids = data.get('pedidos_ids', [])
+        
+        # Si no se especifican pedidos, usar todos los por procesar
+        if not pedidos_ids:
+            odrf_path, drf1_path = generador_sap.generar_archivos_sap()
+        else:
+            # Generar archivos solo para los pedidos seleccionados
+            odrf_path, drf1_path = generador_sap.generar_archivos_sap_por_ids(pedidos_ids)
         
         if odrf_path and drf1_path:
             return jsonify({
@@ -715,7 +725,7 @@ def api_generar_sap():
         else:
             return jsonify({
                 "ok": False,
-                "mensaje": "No hay pedidos por procesar para generar archivos SAP"
+                "mensaje": "No hay pedidos seleccionados para generar archivos SAP"
             })
     except Exception as e:
         return jsonify({

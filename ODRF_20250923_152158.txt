@@ -1,0 +1,4 @@
+DocEntry	DocNum	DocType	Printed	DocDate	DocDueDate	CardCode	DocObjectCode	Series	ShipToCode	U_EXX_ALMACEN	Comments
+DocEntry	DocNum	DocType	Printed	DocDate	DocDueDate	CardCode	ObjType	Series	ShipToCode	U_EXX_ALMACEN	Comments
+100027	100027	dDocument_Items	Y	20250921	20250921	CL1790012345002	17	13	PATIO	5	
+100028	100028	dDocument_Items	Y	20250921	20250921	CL1790012345002	17	13	PATIO	5	

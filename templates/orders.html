@@ -38,14 +38,6 @@ Sección 2: CSS  (static/css/glass.css)
         <!-- Sidebar izquierda -->
         <aside class="left-side">
           <section class="side-wrapper">
-            <h3 class="side-title">Vistas</h3>
-            <nav class="side-menu">
-              <a href="#">📥 Todos los pedidos</a>
-              <a href="#">⚡ Recientes</a>
-              <a href="#">⭐ Destacados</a>
-            </nav>
-          </section>
-          <section class="side-wrapper">
             <h3 class="side-title">Filtros</h3>
             <div class="side-menu">
               <div class="filter-container">
@@ -68,12 +60,23 @@ Sección 2: CSS  (static/css/glass.css)
                   <span class="filter-value">Todos</span>
                   <span class="filter-clear">×</span>
                 </div>
-                <div class="filter-dropdown" id="dropdown-desde">
-                  <input type="date" id="fecha-desde-input" class="fecha-input">
-                  <div class="fecha-actions">
-                    <button id="btn-limpiar-desde" class="btn-fecha-limpiar">Limpiar</button>
-                    <button id="btn-aplicar-desde" class="btn-fecha-aplicar">Aplicar</button>
+                <!-- Calendario personalizado glassmorphism -->
+                <div class="glass-calendar" id="calendar-desde">
+                  <div class="calendar-header">
+                    <button class="calendar-nav" id="prev-desde">‹</button>
+                    <span class="calendar-month-year" id="month-year-desde"></span>
+                    <button class="calendar-nav" id="next-desde">›</button>
                   </div>
+                  <div class="calendar-weekdays">
+                    <div class="weekday">L</div>
+                    <div class="weekday">M</div>
+                    <div class="weekday">X</div>
+                    <div class="weekday">J</div>
+                    <div class="weekday">V</div>
+                    <div class="weekday">S</div>
+                    <div class="weekday">D</div>
+                  </div>
+                  <div class="calendar-days" id="days-desde"></div>
                 </div>
               </div>
               
@@ -83,12 +86,23 @@ Sección 2: CSS  (static/css/glass.css)
                   <span class="filter-value">Todos</span>
                   <span class="filter-clear">×</span>
                 </div>
-                <div class="filter-dropdown" id="dropdown-hasta">
-                  <input type="date" id="fecha-hasta-input" class="fecha-input">
-                  <div class="fecha-actions">
-                    <button id="btn-limpiar-hasta" class="btn-fecha-limpiar">Limpiar</button>
-                    <button id="btn-aplicar-hasta" class="btn-fecha-aplicar">Aplicar</button>
+                <!-- Calendario personalizado glassmorphism -->
+                <div class="glass-calendar" id="calendar-hasta">
+                  <div class="calendar-header">
+                    <button class="calendar-nav" id="prev-hasta">‹</button>
+                    <span class="calendar-month-year" id="month-year-hasta"></span>
+                    <button class="calendar-nav" id="next-hasta">›</button>
                   </div>
+                  <div class="calendar-weekdays">
+                    <div class="weekday">L</div>
+                    <div class="weekday">M</div>
+                    <div class="weekday">X</div>
+                    <div class="weekday">J</div>
+                    <div class="weekday">V</div>
+                    <div class="weekday">S</div>
+                    <div class="weekday">D</div>
+                  </div>
+                  <div class="calendar-days" id="days-hasta"></div>
                 </div>
               </div>
             </div>
@@ -138,6 +152,9 @@ Sección 2: CSS  (static/css/glass.css)
                   <table id="ordersTable" class="glass-table">
                     <thead>
                       <tr>
+                          <th class="col-checkbox" title="Seleccionar todos">
+                            <input type="checkbox" id="selectAllCheckbox" class="glass-checkbox">
+                          </th>
                         <th># Pedido</th>
                         <th>Cliente</th>
                         <th>Sucursal</th>
@@ -148,6 +165,9 @@ Sección 2: CSS  (static/css/glass.css)
                     <tbody id="ordersTableBody">
                       {% for o in orders %}
                       <tr class="row-pedido" data-pedido-id="{{ o.id }}" role="button" tabindex="0" title="Ver detalle">
+                        <td class="col-checkbox" data-label="Seleccionar">
+                          <input type="checkbox" class="glass-checkbox pedido-checkbox" data-pedido-id="{{ o.id }}">
+                        </td>
                         <td class="mono" data-label="# Pedido">{{ o.numero_pedido }}</td>
                         <td data-label="Cliente">Roldan</td>
                         <td data-label="Sucursal">{{ o.sucursal or '-' }}</td>
@@ -162,9 +182,12 @@ Sección 2: CSS  (static/css/glass.css)
             </section>
 
             <!-- Botón flotante SAP (solo visible en "Por procesar") -->
-            <button id="btnSAP" class="btn-flotante-sap hidden" title="Generar archivos SAP">
+            <div id="btnSAP" class="button-wrap btn-flotante-sap hidden" title="Generar archivos SAP">
+              <button>
               <span>SAP</span>
             </button>
+              <div class="button-shadow"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -249,26 +272,268 @@ Sección 2: CSS  (static/css/glass.css)
         box-shadow: 0 0 0 2px rgba(159, 213, 255, 0.2);
     }
     
-    /* Estilos para el botón flotante SAP */
+    /* Defs */
+    @property --angle-1 {
+      syntax: "<angle>";
+      inherits: false;
+      initial-value: -75deg;
+    }
+
+    @property --angle-2 {
+      syntax: "<angle>";
+      inherits: false;
+      initial-value: -45deg;
+    }
+
+    /* Variables para el botón */
+    :root {
+      --global--size: clamp(2rem, 4vw, 5rem);
+      --anim--hover-time: 400ms;
+      --anim--hover-ease: cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    /* Estilos para el botón flotante SAP - Glass Button Style */
     .btn-flotante-sap {
       position: fixed;
       bottom: 30px;
       right: 30px;
-      width: 60px;
-      height: 60px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      border: none;
-      color: white;
-      font-weight: bold;
-      font-size: 14px;
-      cursor: pointer;
-      box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
-      transition: all 0.3s ease;
       z-index: 1000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    }
+
+    /* Button Wrap Container */
+    .button-wrap {
+      z-index: 2;
+      border-radius: 999vw;
+      background: transparent;
+      pointer-events: none;
+      transition: all var(--anim--hover-time) var(--anim--hover-ease);
+    }
+
+    /* Button Shadow Container */
+    .button-shadow {
+      --shadow-cuttoff-fix: 2em;
+      position: absolute;
+      width: calc(100% + var(--shadow-cuttoff-fix));
+      height: calc(100% + var(--shadow-cuttoff-fix));
+      top: calc(0% - var(--shadow-cuttoff-fix) / 2);
+      left: calc(0% - var(--shadow-cuttoff-fix) / 2);
+      filter: blur(clamp(2px, 0.125em, 12px));
+      -webkit-filter: blur(clamp(2px, 0.125em, 12px));
+      -moz-filter: blur(clamp(2px, 0.125em, 12px));
+      -ms-filter: blur(clamp(2px, 0.125em, 12px));
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    /* Shadow */
+    .button-shadow::after {
+      content: "";
+      position: absolute;
+      z-index: 0;
+      inset: 0;
+      border-radius: 999vw;
+      background: linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.1));
+      width: calc(100% - var(--shadow-cuttoff-fix) - 0.25em);
+      height: calc(100% - var(--shadow-cuttoff-fix) - 0.25em);
+      top: calc(var(--shadow-cuttoff-fix) - 0.5em);
+      left: calc(var(--shadow-cuttoff-fix) - 0.875em);
+      padding: 0.125em;
+      box-sizing: border-box;
+      mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      mask-composite: exclude;
+      transition: all var(--anim--hover-time) var(--anim--hover-ease);
+      overflow: visible;
+      opacity: 1;
+    }
+
+    /* ========== BUTTON BASE STYLES ========== */
+    .button-wrap button {
+      /* Basic Styling */
+      --border-width: clamp(1px, 0.0625em, 4px);
+      all: unset;
+      cursor: pointer;
+      position: relative;
+      -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+      pointer-events: auto;
+      z-index: 3;
+      background: linear-gradient(
+        -75deg,
+        rgba(144, 238, 144, 0.8),
+        rgba(152, 251, 152, 0.85),
+        rgba(144, 238, 144, 0.8)
+      );
+      border-radius: 999vw;
+      box-shadow: inset 0 0.125em 0.125em rgba(0, 0, 0, 0.1),
+        inset 0 -0.125em 0.125em rgba(255, 255, 255, 0.3),
+        0 0.25em 0.125em -0.125em rgba(0, 0, 0, 0.2),
+        0 0 0.1em 0.25em inset rgba(255, 255, 255, 0.2),
+        0 0 0 0 rgba(255, 255, 255, 1);
+      backdrop-filter: blur(clamp(1px, 0.125em, 4px));
+      -webkit-backdrop-filter: blur(clamp(1px, 0.125em, 4px));
+      -moz-backdrop-filter: blur(clamp(1px, 0.125em, 4px));
+      -ms-backdrop-filter: blur(clamp(1px, 0.125em, 4px));
+      transition: all var(--anim--hover-time) var(--anim--hover-ease);
+    }
+
+    .button-wrap button:hover {
+      transform: scale(0.975);
+      backdrop-filter: blur(0.01em);
+      -webkit-backdrop-filter: blur(0.01em);
+      -moz-backdrop-filter: blur(0.01em);
+      -ms-backdrop-filter: blur(0.01em);
+      box-shadow: inset 0 0.125em 0.125em rgba(0, 0, 0, 0.1),
+        inset 0 -0.125em 0.125em rgba(255, 255, 255, 0.4),
+        0 0.15em 0.05em -0.1em rgba(0, 0, 0, 0.2),
+        0 0 0.05em 0.1em inset rgba(255, 255, 255, 0.3),
+        0 0 0 0 rgba(255, 255, 255, 1);
+    }
+
+    /* Button Text */
+    .button-wrap button span {
+      position: relative;
+      display: block;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      font-family: "Inter", sans-serif;
+      letter-spacing: -0.05em;
+      font-weight: 500;
+      font-size: 1.2em;
+      color: rgba(255, 255, 255, 0.95);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-shadow: 0em 0.1em 0.05em rgba(0, 0, 0, 0.3);
+      transition: all var(--anim--hover-time) var(--anim--hover-ease);
+      padding-inline: 2em;
+      padding-block: 1.2em;
+    }
+
+    .button-wrap button:hover span {
+      color: rgba(255, 255, 255, 1);
+      text-shadow: 0.025em 0.025em 0.025em rgba(0, 0, 0, 0.4);
+    }
+
+    /* Text */
+    .button-wrap button span::after {
+      content: "";
+      display: block;
+      position: absolute;
+      z-index: 1;
+      width: calc(100% - var(--border-width));
+      height: calc(100% - var(--border-width));
+      top: calc(0% + var(--border-width) / 2);
+      left: calc(0% + var(--border-width) / 2);
+      box-sizing: border-box;
+      border-radius: 999vw;
+      overflow: clip;
+      background: linear-gradient(
+        var(--angle-2),
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.5) 40% 50%,
+        rgba(255, 255, 255, 0) 55%
+      );
+      z-index: 3;
+      mix-blend-mode: screen;
+      pointer-events: none;
+      background-size: 200% 200%;
+      background-position: 0% 50%;
+      background-repeat: no-repeat;
+      transition: background-position calc(var(--anim--hover-time) * 1.25)
+          var(--anim--hover-ease),
+        --angle-2 calc(var(--anim--hover-time) * 1.25) var(--anim--hover-ease);
+    }
+
+    .button-wrap button:hover span::after {
+      background-position: 25% 50%;
+    }
+
+    .button-wrap button:active span::after {
+      background-position: 50% 15%;
+      --angle-2: -15deg;
+    }
+
+    /* ========== BUTTON OUTLINE ========== */
+    .button-wrap button::after {
+      content: "";
+      position: absolute;
+      z-index: 1;
+      inset: 0;
+      border-radius: 999vw;
+      width: calc(100% + var(--border-width));
+      height: calc(100% + var(--border-width));
+      top: calc(0% - var(--border-width) / 2);
+      left: calc(0% - var(--border-width) / 2);
+      padding: var(--border-width);
+      box-sizing: border-box;
+      background: conic-gradient(
+          from var(--angle-1) at 50% 50%,
+          rgba(0, 0, 0, 0.5),
+          rgba(0, 0, 0, 0) 5% 40%,
+          rgba(0, 0, 0, 0.5) 50%,
+          rgba(0, 0, 0, 0) 60% 95%,
+          rgba(0, 0, 0, 0.5)
+        ),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5));
+      mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      mask-composite: exclude;
+      transition: all var(--anim--hover-time) var(--anim--hover-ease),
+        --angle-1 500ms ease;
+      box-shadow: inset 0 0 0 calc(var(--border-width) / 2) rgba(255, 255, 255, 0.5);
+    }
+
+    .button-wrap button:hover::after {
+      --angle-1: -125deg;
+    }
+
+    .button-wrap button:active::after {
+      --angle-1: -75deg;
+    }
+
+    /* Shadow Hover */
+    .button-wrap:has(button:hover) .button-shadow {
+      filter: blur(clamp(2px, 0.0625em, 6px));
+      -webkit-filter: blur(clamp(2px, 0.0625em, 6px));
+      -moz-filter: blur(clamp(2px, 0.0625em, 6px));
+      -ms-filter: blur(clamp(2px, 0.0625em, 6px));
+      transition: filter var(--anim--hover-time) var(--anim--hover-ease);
+    }
+
+    .button-wrap:has(button:hover) .button-shadow::after {
+      top: calc(var(--shadow-cuttoff-fix) - 0.875em);
+      opacity: 1;
+    }
+
+    /* Rotation */
+    .button-wrap:has(button:active) {
+      transform: rotate3d(1, 0, 0, 25deg);
+    }
+
+    .button-wrap:has(button:active) button {
+      box-shadow: inset 0 0.125em 0.125em rgba(0, 0, 0, 0.2),
+        inset 0 -0.125em 0.125em rgba(255, 255, 255, 0.4),
+        0 0.125em 0.125em -0.125em rgba(0, 0, 0, 0.2),
+        0 0 0.1em 0.25em inset rgba(255, 255, 255, 0.3),
+        0 0.225em 0.05em 0 rgba(0, 0, 0, 0.1),
+        0 0.25em 0 0 rgba(255, 255, 255, 0.7),
+        inset 0 0.25em 0.05em 0 rgba(0, 0, 0, 0.15);
+    }
+
+    .button-wrap:has(button:active) .button-shadow {
+      filter: blur(clamp(2px, 0.125em, 12px));
+      -webkit-filter: blur(clamp(2px, 0.125em, 12px));
+      -moz-filter: blur(clamp(2px, 0.125em, 12px));
+      -ms-filter: blur(clamp(2px, 0.125em, 12px));
+    }
+
+    .button-wrap:has(button:active) .button-shadow::after {
+      top: calc(var(--shadow-cuttoff-fix) - 0.5em);
+      opacity: 0.75;
+    }
+
+    .button-wrap:has(button:active) span {
+      color: rgba(255, 255, 255, 0.9);
+      text-shadow: 0.025em 0.25em 0.05em rgba(0, 0, 0, 0.5);
     }
 
     /* Estilos para verificación de errores */
@@ -358,17 +623,101 @@ Sección 2: CSS  (static/css/glass.css)
       background: rgba(255, 107, 107, 0.1);
     }
 
-    .btn-flotante-sap:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 12px 35px rgba(102, 126, 234, 0.6);
-    }
 
-    .btn-flotante-sap:active {
-      transform: translateY(-1px);
-    }
+    .btn-flotante-sap      .hidden {
+        display: none;
+      }
 
-    .btn-flotante-sap.hidden {
-      display: none;
+      /* Estilos para checkboxes glassmorphism */
+      .col-checkbox {
+        width: 40px;
+        text-align: center;
+        padding: 4px 8px;
+        min-width: 40px;
+      }
+
+      .glass-checkbox {
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        width: 20px;
+        height: 20px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        cursor: pointer;
+        position: relative;
+        transition: all 0.3s ease;
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+
+      .glass-checkbox:hover {
+        border-color: rgba(255, 255, 255, 0.5);
+        background: rgba(255, 255, 255, 0.15);
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1), 0 0 0 2px rgba(255, 255, 255, 0.1);
+      }
+
+      .glass-checkbox:checked {
+        background: linear-gradient(135deg, rgba(144, 238, 144, 0.8), rgba(152, 251, 152, 0.9));
+        border-color: rgba(255, 255, 255, 0.6);
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1), 0 0 0 2px rgba(144, 238, 144, 0.3);
+      }
+
+      .glass-checkbox:checked::after {
+        content: "✓";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: rgba(255, 255, 255, 0.95);
+        font-size: 12px;
+        font-weight: bold;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+      }
+
+      .glass-checkbox:focus {
+        outline: none;
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1), 0 0 0 3px rgba(255, 255, 255, 0.2);
+      }
+
+      /* Mejorar organización de la tabla */
+      .glass-table th.col-checkbox {
+        padding: 8px 4px;
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .glass-table td.col-checkbox {
+        padding: 8px 4px;
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+        vertical-align: middle;
+      }
+
+      /* Asegurar que las columnas tengan anchos apropiados */
+      .glass-table th:nth-child(2) { /* # Pedido */
+        width: 120px;
+        min-width: 120px;
+      }
+
+      .glass-table th:nth-child(3) { /* Cliente */
+        width: 150px;
+        min-width: 150px;
+      }
+
+      .glass-table th:nth-child(4) { /* Sucursal */
+        width: 120px;
+        min-width: 120px;
+      }
+
+      .glass-table th:nth-child(5) { /* Fecha */
+        width: 180px;
+        min-width: 180px;
+      }
+
+      .glass-table th:nth-child(6) { /* Origen */
+        width: 80px;
+        min-width: 80px;
     }
 
     /* Estilos para las subpestañas activas */
@@ -381,6 +730,7 @@ Sección 2: CSS  (static/css/glass.css)
     .filter-container {
       position: relative;
       margin-bottom: 8px;
+      overflow: visible;
     }
 
     /* Estilos para las pastillas de filtros */
@@ -395,6 +745,7 @@ Sección 2: CSS  (static/css/glass.css)
       cursor: pointer;
       transition: all 0.2s ease;
       font-size: 0.9rem;
+      justify-content: space-between;
     }
 
     .filter-chip:hover {
@@ -477,58 +828,128 @@ Sección 2: CSS  (static/css/glass.css)
       font-size: 0.9rem;
     }
 
-    /* Estilos para inputs de fecha */
-    .fecha-input {
-      width: 100%;
-      padding: 8px 12px;
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
+    /* Estilos para el calendario glassmorphism */
+    .glass-calendar {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
       background: var(--theme-bg-color);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      backdrop-filter: blur(20px) saturate(140%);
+      -webkit-backdrop-filter: blur(20px) saturate(140%);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      z-index: 1000;
+      margin-top: 2px;
+      padding: 16px;
+      display: none;
+      min-width: 280px;
+      overflow: visible;
+    }
+
+    .glass-calendar.show {
+      display: block;
+    }
+
+    .calendar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .calendar-nav {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
       color: var(--theme-color);
-      font-size: 0.9rem;
-      transition: border-color 0.2s ease;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .calendar-nav:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.3);
+      transform: scale(1.05);
+    }
+
+    .calendar-month-year {
+      color: var(--theme-color);
+      font-weight: 600;
+      font-size: 1rem;
+    }
+
+    .calendar-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
       margin-bottom: 8px;
     }
 
-    .fecha-input:focus {
-      outline: none;
-      border-color: #667eea;
-      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+    .weekday {
+      text-align: center;
+      color: var(--content-title-color);
+      font-size: 0.8rem;
+      font-weight: 500;
+      padding: 8px 4px;
     }
 
-    .fecha-actions {
-      display: flex;
-      gap: 8px;
-      justify-content: flex-end;
-      padding: 0 8px 8px 8px;
+    .calendar-days {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
     }
 
-    .btn-fecha-limpiar,
-    .btn-fecha-aplicar {
-      padding: 6px 12px;
-      border: 1px solid var(--border-color);
-      border-radius: 4px;
-      background: var(--theme-bg-color);
+    .calendar-day {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
       color: var(--theme-color);
+      padding: 8px 4px;
+      text-align: center;
       cursor: pointer;
       transition: all 0.2s ease;
-      font-size: 0.8rem;
+      font-size: 0.85rem;
+      min-height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
-    .btn-fecha-limpiar:hover {
-      background: rgba(255, 107, 107, 0.1);
-      border-color: #ff6b6b;
-      color: #ff6b6b;
+    .calendar-day:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.3);
+      transform: scale(1.05);
     }
 
-    .btn-fecha-aplicar {
-      background: rgba(102, 126, 234, 0.2);
+    .calendar-day.selected {
+      background: rgba(102, 126, 234, 0.4);
       border-color: #667eea;
-      color: #667eea;
+      color: white;
+      font-weight: 600;
     }
 
-    .btn-fecha-aplicar:hover {
-      background: rgba(102, 126, 234, 0.3);
+    .calendar-day.other-month {
+      color: var(--inactive-color);
+      opacity: 0.5;
+    }
+
+    .calendar-day.today {
+      background: rgba(102, 126, 234, 0.2);
+      border-color: rgba(102, 126, 234, 0.5);
+    }
+
+    .calendar-day.today.selected {
+      background: rgba(102, 126, 234, 0.6);
+      border-color: #667eea;
     }
     </style>
 
@@ -809,15 +1230,22 @@ Sección 2: CSS  (static/css/glass.css)
             tr.setAttribute("title", "Ver detalle");
             
             tr.innerHTML = `
+                <td class="col-checkbox" data-label="Seleccionar">
+                  <input type="checkbox" class="glass-checkbox pedido-checkbox" data-pedido-id="${pedido.id}">
+                </td>
               <td class="mono" data-label="# Pedido">${pedido.numero_pedido}</td>
-              <td data-label="Cliente">${pedido.cliente_nombre || 'Roldan'}</td>
+                <td data-label="Cliente">${pedido.cliente_nombre || 'Roldan'}</td>
               <td data-label="Sucursal">${pedido.sucursal || '-'}</td>
               <td data-label="Fecha">${pedido.fecha ? new Date(pedido.fecha).toLocaleString() : ''}</td>
               <td data-label="Origen">Email</td>
             `;
             
             // Agregar event listeners para el modal
-            tr.addEventListener("click", async ()=>{
+            tr.addEventListener("click", async (e)=>{
+              // No abrir modal si se hace clic en el checkbox
+              if (e.target.classList.contains('glass-checkbox')) {
+                return;
+              }
               try{
                 window.pedidoActualId = pedido.id; // Guardar ID del pedido
                 const data = await cargarDetalle(pedido.id);
@@ -849,10 +1277,56 @@ Sección 2: CSS  (static/css/glass.css)
             btnSAP.classList.add("hidden");
           }
           
+          // Reiniciar checkboxes
+          reiniciarCheckboxes();
+          
         } catch (error) {
           console.error("Error:", error);
           alert("Error al cargar los pedidos");
         }
+      }
+
+      // Función para reiniciar checkboxes
+      function reiniciarCheckboxes() {
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        const pedidoCheckboxes = document.querySelectorAll('.pedido-checkbox');
+        
+        // Desmarcar todos los checkboxes
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+        pedidoCheckboxes.forEach(checkbox => {
+          checkbox.checked = false;
+        });
+        
+        // Remover event listeners existentes para evitar duplicados
+        const newSelectAllCheckbox = selectAllCheckbox.cloneNode(true);
+        selectAllCheckbox.parentNode.replaceChild(newSelectAllCheckbox, selectAllCheckbox);
+        
+        // Agregar event listener al nuevo checkbox
+        newSelectAllCheckbox.addEventListener('change', function() {
+          const currentPedidoCheckboxes = document.querySelectorAll('.pedido-checkbox');
+          currentPedidoCheckboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
+          });
+        });
+      }
+
+      // Event listener global para checkboxes individuales (solo se agrega una vez)
+      if (!window.checkboxListenerAdded) {
+        document.addEventListener('change', function(e) {
+          if (e.target.classList.contains('pedido-checkbox')) {
+            const totalCheckboxes = document.querySelectorAll('.pedido-checkbox').length;
+            const checkedCheckboxes = document.querySelectorAll('.pedido-checkbox:checked').length;
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            
+            if (selectAllCheckbox) {
+              // Actualizar checkbox "Seleccionar todo"
+              selectAllCheckbox.checked = checkedCheckboxes === totalCheckboxes;
+              selectAllCheckbox.indeterminate = checkedCheckboxes > 0 && checkedCheckboxes < totalCheckboxes;
+            }
+          }
+        });
+        window.checkboxListenerAdded = true;
       }
 
       // Event listeners para las subpestañas
@@ -872,19 +1346,34 @@ Sección 2: CSS  (static/css/glass.css)
 
       // Event listener para el botón SAP
       btnSAP.addEventListener("click", async () => {
-        if (!confirm("¿Generar archivos SAP para todos los pedidos por procesar?")) {
+        // Verificar si hay pedidos seleccionados
+        const pedidosSeleccionados = document.querySelectorAll('.pedido-checkbox:checked');
+        
+        if (pedidosSeleccionados.length === 0) {
+          alert("No hay pedidos seleccionados para exportar. Por favor, selecciona al menos un pedido.");
           return;
         }
         
-        btnSAP.disabled = true;
-        btnSAP.textContent = "Generando...";
+        const idsSeleccionados = Array.from(pedidosSeleccionados).map(checkbox => checkbox.dataset.pedidoId);
+        
+        if (!confirm(`¿Generar archivos SAP para ${idsSeleccionados.length} pedido(s) seleccionado(s)?`)) {
+          return;
+        }
+        
+        const button = btnSAP.querySelector("button");
+        const span = btnSAP.querySelector("span");
+        button.disabled = true;
+        span.textContent = "Generando...";
         
         try {
           const resp = await fetch("/api/generar_sap", {
             method: "POST",
             headers: {
               "Content-Type": "application/json"
-            }
+            },
+            body: JSON.stringify({
+              pedidos_ids: idsSeleccionados
+            })
           });
           
           const data = await resp.json();
@@ -900,8 +1389,8 @@ Sección 2: CSS  (static/css/glass.css)
           console.error("Error:", error);
           alert("Error al generar archivos SAP");
         } finally {
-          btnSAP.disabled = false;
-          btnSAP.innerHTML = "<span>SAP</span>";
+          button.disabled = false;
+          span.textContent = "SAP";
         }
       });
 
@@ -930,12 +1419,10 @@ Sección 2: CSS  (static/css/glass.css)
       const filterHasta = $$("#filter-hasta");
       
       const dropdownCliente = $$("#dropdown-cliente");
-      const dropdownDesde = $$("#dropdown-desde");
-      const dropdownHasta = $$("#dropdown-hasta");
       
       const clientesContainer = $$("#clientes-container");
-      const fechaDesdeInput = $$("#fecha-desde-input");
-      const fechaHastaInput = $$("#fecha-hasta-input");
+      const calendarDesde = $$("#calendar-desde");
+      const calendarHasta = $$("#calendar-hasta");
 
       // Variables globales
       let clientesLista = [];
@@ -943,11 +1430,98 @@ Sección 2: CSS  (static/css/glass.css)
       let fechaDesdeSeleccionada = null;
       let fechaHastaSeleccionada = null;
 
+      // Variables para calendarios
+      let currentMonthDesde = new Date();
+      let currentMonthHasta = new Date();
+      let selectedDateDesde = null;
+      let selectedDateHasta = null;
+
+      // Función para mostrar calendario
+      function mostrarCalendario(calendar) {
+        calendar.classList.add("show");
+        if (calendar === calendarDesde) {
+          renderCalendar(calendarDesde, currentMonthDesde, selectedDateDesde);
+        } else {
+          renderCalendar(calendarHasta, currentMonthHasta, selectedDateHasta);
+        }
+      }
+
+      // Función para renderizar calendario
+      function renderCalendar(calendar, currentMonth, selectedDate) {
+        const monthYear = calendar.querySelector('.calendar-month-year');
+        const daysContainer = calendar.querySelector('.calendar-days');
+        
+        const year = currentMonth.getFullYear();
+        const month = currentMonth.getMonth();
+        
+        monthYear.textContent = currentMonth.toLocaleDateString('es-ES', { 
+          month: 'long', 
+          year: 'numeric' 
+        });
+        
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const startDate = new Date(firstDay);
+        startDate.setDate(startDate.getDate() - firstDay.getDay() + 1); // Lunes
+        
+        daysContainer.innerHTML = '';
+        
+        for (let i = 0; i < 42; i++) {
+          const date = new Date(startDate);
+          date.setDate(startDate.getDate() + i);
+          
+          const dayElement = document.createElement('div');
+          dayElement.className = 'calendar-day';
+          dayElement.textContent = date.getDate();
+          
+          // Marcar días de otros meses
+          if (date.getMonth() !== month) {
+            dayElement.classList.add('other-month');
+          }
+          
+          // Marcar día actual
+          const today = new Date();
+          if (date.toDateString() === today.toDateString()) {
+            dayElement.classList.add('today');
+          }
+          
+          // Marcar día seleccionado
+          if (selectedDate && date.toDateString() === selectedDate.toDateString()) {
+            dayElement.classList.add('selected');
+          }
+          
+          dayElement.addEventListener('click', () => {
+            selectDate(calendar, date);
+          });
+          
+          daysContainer.appendChild(dayElement);
+        }
+      }
+
+      // Función para seleccionar fecha
+      function selectDate(calendar, date) {
+        if (calendar === calendarDesde) {
+          selectedDateDesde = date;
+          fechaDesdeSeleccionada = date.toISOString().split('T')[0];
+        } else {
+          selectedDateHasta = date;
+          fechaHastaSeleccionada = date.toISOString().split('T')[0];
+        }
+        
+        actualizarVisualizacionFiltros();
+        aplicarFiltros();
+        cerrarTodosLosDropdowns();
+      }
+
       // Función para cerrar todos los dropdowns
       function cerrarTodosLosDropdowns() {
         $$$(".filter-dropdown").forEach(dropdown => {
           dropdown.classList.remove("show");
         });
+        
+        // Ocultar calendarios
+        calendarDesde.classList.remove("show");
+        calendarHasta.classList.remove("show");
       }
 
       // Función para actualizar la visualización de filtros
@@ -965,7 +1539,9 @@ Sección 2: CSS  (static/css/glass.css)
         // Actualizar pastilla de fecha desde
         const desdeValue = $$("#filter-desde .filter-value");
         if (fechaDesdeSeleccionada) {
-          desdeValue.textContent = new Date(fechaDesdeSeleccionada).toLocaleDateString();
+          // Crear fecha local para evitar problemas de zona horaria
+          const fechaLocal = new Date(fechaDesdeSeleccionada + 'T00:00:00');
+          desdeValue.textContent = fechaLocal.toLocaleDateString();
           filterDesde.classList.add("active");
         } else {
           desdeValue.textContent = "Todos";
@@ -975,7 +1551,9 @@ Sección 2: CSS  (static/css/glass.css)
         // Actualizar pastilla de fecha hasta
         const hastaValue = $$("#filter-hasta .filter-value");
         if (fechaHastaSeleccionada) {
-          hastaValue.textContent = new Date(fechaHastaSeleccionada).toLocaleDateString();
+          // Crear fecha local para evitar problemas de zona horaria
+          const fechaLocal = new Date(fechaHastaSeleccionada + 'T00:00:00');
+          hastaValue.textContent = fechaLocal.toLocaleDateString();
           filterHasta.classList.add("active");
         } else {
           hastaValue.textContent = "Todos";
@@ -1030,13 +1608,13 @@ Sección 2: CSS  (static/css/glass.css)
       filterDesde.addEventListener("click", (e) => {
         e.stopPropagation();
         cerrarTodosLosDropdowns();
-        dropdownDesde.classList.toggle("show");
+        mostrarCalendario(calendarDesde);
       });
 
       filterHasta.addEventListener("click", (e) => {
         e.stopPropagation();
         cerrarTodosLosDropdowns();
-        dropdownHasta.classList.toggle("show");
+        mostrarCalendario(calendarHasta);
       });
 
       // Event listener para cerrar dropdowns al hacer clic fuera
@@ -1068,59 +1646,65 @@ Sección 2: CSS  (static/css/glass.css)
         }
       });
 
-      // Event listeners para fechas
-      $$("#btn-aplicar-desde").addEventListener("click", () => {
-        const fecha = fechaDesdeInput.value;
-        fechaDesdeSeleccionada = fecha || null;
-        actualizarVisualizacionFiltros();
-        aplicarFiltros();
-        cerrarTodosLosDropdowns();
-      });
-
-      $$("#btn-limpiar-desde").addEventListener("click", () => {
-        fechaDesdeSeleccionada = null;
-        fechaDesdeInput.value = "";
-        actualizarVisualizacionFiltros();
-        aplicarFiltros();
-        cerrarTodosLosDropdowns();
-      });
-
-      $$("#btn-aplicar-hasta").addEventListener("click", () => {
-        const fecha = fechaHastaInput.value;
-        fechaHastaSeleccionada = fecha || null;
-        actualizarVisualizacionFiltros();
-        aplicarFiltros();
-        cerrarTodosLosDropdowns();
-      });
-
-      $$("#btn-limpiar-hasta").addEventListener("click", () => {
-        fechaHastaSeleccionada = null;
-        fechaHastaInput.value = "";
-        actualizarVisualizacionFiltros();
-        aplicarFiltros();
-        cerrarTodosLosDropdowns();
-      });
+      // Event listeners para fechas removidos - ahora usamos calendario personalizado
 
       // Event listeners para botones de limpiar en las pastillas
-      $$("#filter-cliente .filter-clear").addEventListener("click", (e) => {
-        e.stopPropagation();
-        clienteSeleccionado = null;
-        actualizarVisualizacionFiltros();
-        aplicarFiltros();
+      document.addEventListener("click", function(e) {
+        if (e.target && e.target.classList && e.target.classList.contains("filter-clear")) {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          console.log("✓ Click en botón filter-clear detectado");
+          
+          // Determinar qué filtro limpiar basado en el contenedor padre
+          const filterContainer = e.target.closest(".filter-container");
+          if (!filterContainer) return;
+          
+          const filterChip = filterContainer.querySelector(".filter-chip");
+          if (!filterChip) return;
+          
+          const filterId = filterChip.id;
+          console.log("✓ Limpiando filtro:", filterId);
+          
+          if (filterId === "filter-cliente") {
+            clienteSeleccionado = null;
+          } else if (filterId === "filter-desde") {
+            fechaDesdeSeleccionada = null;
+            selectedDateDesde = null;
+          } else if (filterId === "filter-hasta") {
+            fechaHastaSeleccionada = null;
+            selectedDateHasta = null;
+          }
+          
+          actualizarVisualizacionFiltros();
+          aplicarFiltros();
+          console.log("✓ Filtro limpiado exitosamente");
+        }
       });
 
-      $$("#filter-desde .filter-clear").addEventListener("click", (e) => {
+      // Event listeners para navegación del calendario
+      $$("#prev-desde").addEventListener("click", (e) => {
         e.stopPropagation();
-        fechaDesdeSeleccionada = null;
-        actualizarVisualizacionFiltros();
-        aplicarFiltros();
+        currentMonthDesde.setMonth(currentMonthDesde.getMonth() - 1);
+        renderCalendar(calendarDesde, currentMonthDesde, selectedDateDesde);
       });
 
-      $$("#filter-hasta .filter-clear").addEventListener("click", (e) => {
+      $$("#next-desde").addEventListener("click", (e) => {
         e.stopPropagation();
-        fechaHastaSeleccionada = null;
-        actualizarVisualizacionFiltros();
-        aplicarFiltros();
+        currentMonthDesde.setMonth(currentMonthDesde.getMonth() + 1);
+        renderCalendar(calendarDesde, currentMonthDesde, selectedDateDesde);
+      });
+
+      $$("#prev-hasta").addEventListener("click", (e) => {
+        e.stopPropagation();
+        currentMonthHasta.setMonth(currentMonthHasta.getMonth() - 1);
+        renderCalendar(calendarHasta, currentMonthHasta, selectedDateHasta);
+      });
+
+      $$("#next-hasta").addEventListener("click", (e) => {
+        e.stopPropagation();
+        currentMonthHasta.setMonth(currentMonthHasta.getMonth() + 1);
+        renderCalendar(calendarHasta, currentMonthHasta, selectedDateHasta);
       });
 
       // Inicializar
