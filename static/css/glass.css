@@ -607,8 +607,8 @@ body {
 /* ===== ANCHOS FIJOS PARA COLUMNAS DE TABLAS ===== */
 
 /* Tabla de Pedidos */
-#ordersTable th:nth-child(1), /* # Pedido */
-#ordersTable td:nth-child(1) {
+#ordersTable th:nth-child(2), /* # Pedido */
+#ordersTable td:nth-child(2) {
   width: 100px;
   min-width: 100px;
   max-width: 100px;

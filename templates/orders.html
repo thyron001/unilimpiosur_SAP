@@ -145,7 +145,6 @@ Sección 2: CSS  (static/css/glass.css)
                 <div class="card-head">
                   <div style="display:flex; align-items:center; gap:10px;">
                     <strong>Pedidos</strong>
-                    <span id="estado-actual" class="chip">{{ estado_actual or 'por_procesar' }}</span>
                   </div>
                 </div>
                 <div class="table-wrap">
@@ -630,10 +629,10 @@ Sección 2: CSS  (static/css/glass.css)
 
       /* Estilos para checkboxes glassmorphism */
       .col-checkbox {
-        width: 40px;
+        width: 50px;
         text-align: center;
         padding: 4px 8px;
-        min-width: 40px;
+        min-width: 50px;
       }
 
       .glass-checkbox {
@@ -686,6 +685,7 @@ Sección 2: CSS  (static/css/glass.css)
       .glass-table th.col-checkbox {
         padding: 8px 4px;
         border-right: 1px solid rgba(255, 255, 255, 0.1);
+        
       }
 
       .glass-table td.col-checkbox {
@@ -962,7 +962,6 @@ Sección 2: CSS  (static/css/glass.css)
       const modal   = $$("#modalDetalle");
       const btnX    = $$("#m-cerrar");
       const btnSAP  = $$("#btnSAP");
-      const estadoActual = $$("#estado-actual");
 
       window.estadoSeleccionado = "{{ estado_actual or 'por_procesar' }}";
 
@@ -1221,6 +1220,12 @@ Sección 2: CSS  (static/css/glass.css)
           const tbody = $$("#ordersTableBody");
           tbody.innerHTML = "";
           
+          // Mostrar/ocultar encabezado de checkbox según el estado
+          const checkboxHeader = document.querySelector("#ordersTable thead th.col-checkbox");
+          if (checkboxHeader) {
+            checkboxHeader.style.display = estado === "por_procesar" ? "" : "none";
+          }
+          
           for (const pedido of data.pedidos) {
             const tr = document.createElement("tr");
             tr.className = "row-pedido";
@@ -1229,10 +1234,13 @@ Sección 2: CSS  (static/css/glass.css)
             tr.setAttribute("tabindex", "0");
             tr.setAttribute("title", "Ver detalle");
             
+            // Solo mostrar checkbox en estado "por_procesar"
+            const mostrarCheckbox = estado === "por_procesar";
+            
             tr.innerHTML = `
-                <td class="col-checkbox" data-label="Seleccionar">
+                ${mostrarCheckbox ? `<td class="col-checkbox" data-label="Seleccionar">
                   <input type="checkbox" class="glass-checkbox pedido-checkbox" data-pedido-id="${pedido.id}">
-                </td>
+                </td>` : ''}
               <td class="mono" data-label="# Pedido">${pedido.numero_pedido}</td>
                 <td data-label="Cliente">${pedido.cliente_nombre || 'Roldan'}</td>
               <td data-label="Sucursal">${pedido.sucursal || '-'}</td>
@@ -1240,34 +1248,11 @@ Sección 2: CSS  (static/css/glass.css)
               <td data-label="Origen">Email</td>
             `;
             
-            // Agregar event listeners para el modal
-            tr.addEventListener("click", async (e)=>{
-              // No abrir modal si se hace clic en el checkbox
-              if (e.target.classList.contains('glass-checkbox')) {
-                return;
-              }
-              try{
-                window.pedidoActualId = pedido.id; // Guardar ID del pedido
-                const data = await cargarDetalle(pedido.id);
-                renderDetalle(data);
-                abrirModal();
-              }catch(e){
-                console.error(e);
-                alert("No se pudo cargar el detalle del pedido.");
-              }
-            });
-            tr.addEventListener("keydown", (e)=>{
-              if(e.key==="Enter" || e.key===" "){ 
-                e.preventDefault(); 
-                window.pedidoActualId = pedido.id; // Guardar ID del pedido
-                tr.click(); 
-              }
-            });
+            // Los event listeners ahora se manejan con event delegation en la tabla
             
             tbody.appendChild(tr);
           }
           
-          estadoActual.textContent = estado;
           window.estadoSeleccionado = estado;
           
           // Mostrar/ocultar botón SAP
@@ -1291,24 +1276,33 @@ Sección 2: CSS  (static/css/glass.css)
         const selectAllCheckbox = document.getElementById('selectAllCheckbox');
         const pedidoCheckboxes = document.querySelectorAll('.pedido-checkbox');
         
+        // Solo reiniciar si estamos en estado "por_procesar"
+        if (window.estadoSeleccionado !== "por_procesar") {
+          return;
+        }
+        
         // Desmarcar todos los checkboxes
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = false;
+        if (selectAllCheckbox) {
+          selectAllCheckbox.checked = false;
+          selectAllCheckbox.indeterminate = false;
+        }
         pedidoCheckboxes.forEach(checkbox => {
           checkbox.checked = false;
         });
         
         // Remover event listeners existentes para evitar duplicados
-        const newSelectAllCheckbox = selectAllCheckbox.cloneNode(true);
-        selectAllCheckbox.parentNode.replaceChild(newSelectAllCheckbox, selectAllCheckbox);
-        
-        // Agregar event listener al nuevo checkbox
-        newSelectAllCheckbox.addEventListener('change', function() {
-          const currentPedidoCheckboxes = document.querySelectorAll('.pedido-checkbox');
-          currentPedidoCheckboxes.forEach(checkbox => {
-            checkbox.checked = this.checked;
+        if (selectAllCheckbox) {
+          const newSelectAllCheckbox = selectAllCheckbox.cloneNode(true);
+          selectAllCheckbox.parentNode.replaceChild(newSelectAllCheckbox, selectAllCheckbox);
+          
+          // Agregar event listener al nuevo checkbox
+          newSelectAllCheckbox.addEventListener('change', function() {
+            const currentPedidoCheckboxes = document.querySelectorAll('.pedido-checkbox');
+            currentPedidoCheckboxes.forEach(checkbox => {
+              checkbox.checked = this.checked;
+            });
           });
-        });
+        }
       }
 
       // Event listener global para checkboxes individuales (solo se agrega una vez)
@@ -1328,6 +1322,17 @@ Sección 2: CSS  (static/css/glass.css)
         });
         window.checkboxListenerAdded = true;
       }
+
+      // Función para inicializar checkboxes al cargar la página
+      function inicializarCheckboxes() {
+        // Esperar un poco para que se cargue el DOM
+        setTimeout(() => {
+          reiniciarCheckboxes();
+        }, 100);
+      }
+
+      // Inicializar checkboxes cuando se carga la página
+      document.addEventListener('DOMContentLoaded', inicializarCheckboxes);
 
       // Event listeners para las subpestañas
       $$$(".main-header-link").forEach(link => {
@@ -1393,6 +1398,47 @@ Sección 2: CSS  (static/css/glass.css)
           span.textContent = "SAP";
         }
       });
+
+      // Event delegation para filas de pedidos (más robusto)
+      const ordersTable = $$("#ordersTable");
+      if (ordersTable) {
+        ordersTable.addEventListener("click", async (e) => {
+          const row = e.target.closest(".row-pedido");
+          if (!row) return;
+          
+          // No abrir modal si se hace clic en el checkbox
+          if (e.target.classList.contains('glass-checkbox')) {
+            return;
+          }
+          
+          e.preventDefault();
+          e.stopPropagation();
+          
+          const pedidoId = row.getAttribute("data-pedido-id");
+          if (!pedidoId) return;
+          
+          try {
+            window.pedidoActualId = pedidoId;
+            const data = await cargarDetalle(pedidoId);
+            renderDetalle(data);
+            abrirModal();
+          } catch (error) {
+            console.error(error);
+            alert("No se pudo cargar el detalle del pedido.");
+          }
+        });
+        
+        ordersTable.addEventListener("keydown", (e) => {
+          const row = e.target.closest(".row-pedido");
+          if (!row) return;
+          
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            row.click();
+          }
+        });
+      }
 
       // Inicializar con el estado actual
       const linkActivo = $$(`[data-estado="${window.estadoSeleccionado}"]`);
