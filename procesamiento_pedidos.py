@@ -229,13 +229,14 @@ def _buscar_cliente_por_nombre(nombre: str) -> Tuple[int, bool]:
 
 def _resolver_sucursal_por_alias(cliente_id: int, alias_pdf: str | None) -> Dict[str, Any]:
     """
-    Busca sucursal del cliente por alias (o nombre) que viene en el PDF.
-    Devuelve dict {id, nombre} o {} si no encontró.
+    Busca sucursal del cliente SOLO por alias que viene en el PDF.
+    Devuelve dict {id, nombre} si encuentra coincidencia en alias, o {} si no encontró.
+    NO busca por nombre del sistema, solo por alias (PDF).
     """
     if not alias_pdf:
         return {}
     target = normalizar_texto(alias_pdf)
-    mejor = None
+    
     with _pg.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
             SELECT id, nombre, COALESCE(alias, '')
@@ -244,18 +245,21 @@ def _resolver_sucursal_por_alias(cliente_id: int, alias_pdf: str | None) -> Dict
         """, (cliente_id,))
         filas = cur.fetchall()
 
-    # Igualdad exacta (normalizada) contra alias o nombre
+    # Buscar SOLO por alias (no por nombre del sistema)
     for (sid, nombre, alias) in filas:
-        if normalizar_texto(alias) == target or normalizar_texto(nombre) == target:
+        alias_norm = normalizar_texto(alias)
+        if alias_norm == target:
+            # Coincidencia exacta en alias - devolver el nombre del sistema
             return {"id": int(sid), "nombre": nombre}
 
-    # Contención con mejor solapamiento
+    # Si no hay coincidencia exacta, buscar por contención en alias
+    mejor = None
     max_sc = -1.0
     for (sid, nombre, alias) in filas:
-        a = normalizar_texto(alias); n = normalizar_texto(nombre)
-        for cand in (a, n):
-            sc = solapamiento_tokens(target, cand)
-            if sc > max_sc and (target in cand or cand in target):
+        alias_norm = normalizar_texto(alias)
+        if alias_norm:  # Solo si el alias no está vacío
+            sc = solapamiento_tokens(target, alias_norm)
+            if sc > max_sc and (target in alias_norm or alias_norm in target):
                 mejor = {"id": int(sid), "nombre": nombre}
                 max_sc = sc
 
@@ -340,67 +344,61 @@ def _puntaje_similitud(q_norm: str, cand_norm: str, cand_tokens: set[str]) -> fl
 
 def _buscar_producto_por_nombre_similar(catalogo: List[Dict[str, Any]], texto_pdf: str) -> Tuple[Dict[str, Any] | None, float]:
     """
-    Busca el producto cuyo NOMBRE es más parecido al texto del PDF (unidad + desc).
+    Busca el producto cuyo NOMBRE o SKU coincide exactamente (100%) con el texto del PDF.
+    Si no encuentra coincidencia exacta, devuelve None.
     Devuelve (producto_dict | None, score)
     """
     q_norm = normalizar_texto(texto_pdf or "")
     if not q_norm:
         return None, 0.0
 
-    mejor, mejor_sc = None, -1.0
+    # Buscar SOLO por igualdad exacta (100%) - primero por SKU, luego por nombre
     for p in catalogo:
-        sc = _puntaje_similitud(q_norm, p["nombre_norm"], p["tokens"])
-        # aceptación dura
-        if sc < UMBRAL_SIMILITUD and difflib.SequenceMatcher(None, q_norm, p["nombre_norm"]).ratio() >= UMBRAL_HARD_SEQ:
-            sc = UMBRAL_SIMILITUD + 0.001
-        if sc > mejor_sc:
-            mejor_sc = sc
-            mejor = p
+        # Buscar por SKU exacto
+        if q_norm == normalizar_texto(p["sku"]):
+            return p, 1.0
+        # Buscar por nombre exacto
+        if q_norm == p["nombre_norm"]:
+            return p, 1.0
 
-    if mejor and mejor_sc >= UMBRAL_SIMILITUD:
-        return mejor, mejor_sc
-    return None, mejor_sc
+    # No se encontró coincidencia exacta
+    return None, 0.0
 
 def _buscar_producto_por_alias(alias_list: List[Dict[str, Any]], catalogo: List[Dict[str, Any]], texto_pdf: str) -> Tuple[Dict[str, Any] | None, float]:
     """
-    Busca el producto cuyo ALIAS es más parecido al texto del PDF.
+    Busca el producto cuyo ALIAS coincide exactamente (100%) con el texto del PDF.
+    Si no encuentra coincidencia exacta, devuelve None.
     Devuelve (producto_dict | None, score)
     """
     q_norm = normalizar_texto(texto_pdf or "")
     if not q_norm:
         return None, 0.0
 
-    mejor, mejor_sc = None, -1.0
+    # Buscar SOLO por igualdad exacta (100%) en alias
     for alias_item in alias_list:
-        sc = _puntaje_similitud(q_norm, alias_item["alias_norm"], alias_item["tokens"])
-        # aceptación dura
-        if sc < UMBRAL_SIMILITUD and difflib.SequenceMatcher(None, q_norm, alias_item["alias_norm"]).ratio() >= UMBRAL_HARD_SEQ:
-            sc = UMBRAL_SIMILITUD + 0.001
-        if sc > mejor_sc:
-            mejor_sc = sc
-            # Buscar el producto correspondiente en el catálogo
+        if q_norm == alias_item["alias_norm"]:
+            # Coincidencia exacta encontrada - buscar el producto correspondiente
             for p in catalogo:
                 if p["id"] == alias_item["producto_id"]:
-                    mejor = p
-                    break
+                    return p, 1.0
 
-    if mejor and mejor_sc >= UMBRAL_SIMILITUD:
-        return mejor, mejor_sc
-    return None, mejor_sc
+    # No se encontró coincidencia exacta
+    return None, 0.0
 
 def _buscar_producto_combinado(catalogo: List[Dict[str, Any]], alias_list: List[Dict[str, Any]], texto_pdf: str) -> Tuple[Dict[str, Any] | None, float, str]:
     """
-    Busca el producto primero por nombre, luego por alias si no encuentra match.
+    Busca el producto por igualdad exacta (100%) primero por nombre, luego por alias.
+    Si no encuentra coincidencia exacta, devuelve None.
     Devuelve (producto_dict | None, score, tipo_match)
     """
-    # Primero intentar por nombre
+    # Primero intentar por nombre (igualdad exacta)
     prod_nombre, score_nombre = _buscar_producto_por_nombre_similar(catalogo, texto_pdf)
-    if prod_nombre and score_nombre >= UMBRAL_SIMILITUD:
+    if prod_nombre and score_nombre == 1.0:  # Coincidencia exacta
         return prod_nombre, score_nombre, "nombre"
     
-    # Si no encuentra por nombre, intentar por alias
+    # Si no encuentra por nombre, intentar por alias (igualdad exacta)
     prod_alias, score_alias = _buscar_producto_por_alias(alias_list, catalogo, texto_pdf)
-    if prod_alias and score_alias >= UMBRAL_SIMILITUD:
+    if prod_alias and score_alias == 1.0:  # Coincidencia exacta
         return prod_alias, score_alias, "alias"
     
     # Si no encuentra por alias, intentar con unidad + descripción
@@ -411,22 +409,18 @@ def _buscar_producto_combinado(catalogo: List[Dict[str, Any]], alias_list: List[
         descripcion = partes[1]
         texto_combinado = f"{unidad} {descripcion}"
         
-        # Buscar por nombre con el texto combinado
+        # Buscar por nombre con el texto combinado (igualdad exacta)
         prod_combinado, score_combinado = _buscar_producto_por_nombre_similar(catalogo, texto_combinado)
-        if prod_combinado and score_combinado >= UMBRAL_SIMILITUD:
+        if prod_combinado and score_combinado == 1.0:  # Coincidencia exacta
             return prod_combinado, score_combinado, "nombre_combinado"
         
-        # Buscar por alias con el texto combinado
+        # Buscar por alias con el texto combinado (igualdad exacta)
         prod_alias_combinado, score_alias_combinado = _buscar_producto_por_alias(alias_list, catalogo, texto_combinado)
-        if prod_alias_combinado and score_alias_combinado >= UMBRAL_SIMILITUD:
+        if prod_alias_combinado and score_alias_combinado == 1.0:  # Coincidencia exacta
             return prod_alias_combinado, score_alias_combinado, "alias_combinado"
     
-    # Devolver el mejor score encontrado (aunque no supere el umbral)
-    mejor_score = max(score_nombre, score_alias)
-    mejor_producto = prod_nombre if score_nombre >= score_alias else prod_alias
-    tipo_mejor = "nombre" if score_nombre >= score_alias else "alias"
-    
-    return mejor_producto, mejor_score, tipo_mejor
+    # No se encontró coincidencia exacta en ningún caso
+    return None, 0.0, "sin_match"
 
 # ---------- Mapas de bodega ----------
 
@@ -497,10 +491,14 @@ def emparejar_filas_con_bd(
     for f in filas:
         uni = (f.get("uni") or "").strip()
         desc = (f.get("desc") or "").strip()
-        consulta = (f"{uni} {desc}").strip() if uni else desc
-
-        # Usar la nueva función de búsqueda combinada
-        prod, score, tipo_match = _buscar_producto_combinado(catalogo, alias_list, consulta)
+        
+        # Primero intentar solo con la descripción (sin unidad)
+        prod, score, tipo_match = _buscar_producto_combinado(catalogo, alias_list, desc)
+        
+        # Si no encuentra con solo descripción, intentar con unidad + descripción
+        if not prod and uni:
+            consulta_completa = f"{uni} {desc}".strip()
+            prod, score, tipo_match = _buscar_producto_combinado(catalogo, alias_list, consulta_completa)
         if prod:
             pid = prod["id"]
             sku = prod["sku"]

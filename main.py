@@ -86,13 +86,29 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
         sucursal_alias=resumen.get("sucursal")
     )
 
-    # 4) Armar dict 'pedido' para persistencia_postgresql.guardar_pedido()
+    # 4) Verificar si se encontró la sucursal por alias
+    sucursal_alias_pdf = resumen.get("sucursal")
+    if sucursal_alias_pdf and not suc:
+        # No se encontró coincidencia en el alias - marcar como error
+        print(f"❌ ERROR: No se encontró sucursal con alias '{sucursal_alias_pdf}' en la base de datos")
+        pedido = {
+            "fecha": meta.get("fecha"),
+            "sucursal": f"ERROR: Alias '{sucursal_alias_pdf}' no encontrado",
+        }
+        try:
+            pedido_id, numero_pedido, estado = db.guardar_pedido(pedido, filas_enriquecidas, cliente_id, None)
+            print(f"⚠️  Pedido guardado con ERROR: ID={pedido_id}, N°={numero_pedido}, Estado={estado}")
+        except Exception as e:
+            print(f"❌ No se guardó el pedido con error: {e}")
+        return
+
+    # 5) Armar dict 'pedido' para persistencia_postgresql.guardar_pedido()
     pedido = {
         "fecha": meta.get("fecha"),
-        "sucursal": (suc.get("nombre") if suc else resumen.get("sucursal")),  # nombre del sistema si se encontró
+        "sucursal": suc.get("nombre") if suc else "SUCURSAL DESCONOCIDA",  # nombre del sistema si se encontró
     }
 
-    # 5) Guardar en PostgreSQL (usa tu función existente)
+    # 6) Guardar en PostgreSQL (usa tu función existente)
     try:
         sucursal_id = suc.get("id") if suc else None
         pedido_id, numero_pedido, estado = db.guardar_pedido(pedido, filas_enriquecidas, cliente_id, sucursal_id)
@@ -739,15 +755,16 @@ def api_generar_sap():
 def api_detalle_pedido(pedido_id: int):
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT numero_pedido, fecha, sucursal
-            FROM pedidos
-            WHERE id = %s;
+            SELECT p.numero_pedido, p.fecha, p.sucursal, p.cliente_id, c.nombre as cliente_nombre
+            FROM pedidos p
+            LEFT JOIN clientes c ON c.id = p.cliente_id
+            WHERE p.id = %s;
         """, (pedido_id,))
         row = cur.fetchone()
         if not row:
             return abort(404)
 
-        (numero_pedido, fecha, sucursal) = row
+        (numero_pedido, fecha, sucursal, cliente_id, cliente_nombre) = row
 
         cur.execute("""
             SELECT descripcion, sku, bodega, cantidad
@@ -767,7 +784,8 @@ def api_detalle_pedido(pedido_id: int):
         ]
 
     # Detectar si hay error de sucursal
-    tiene_error_sucursal = not sucursal
+    # Error si sucursal es None, vacía, o contiene mensaje de error
+    tiene_error_sucursal = not sucursal or (sucursal and sucursal.strip().startswith("ERROR:"))
     
     return jsonify({
         "id": pedido_id,
@@ -775,6 +793,8 @@ def api_detalle_pedido(pedido_id: int):
         "fecha": fecha.isoformat() if fecha else None,
         "sucursal": sucursal,
         "tiene_error_sucursal": tiene_error_sucursal,
+        "cliente_id": cliente_id,
+        "cliente_nombre": cliente_nombre,
         "items": items
     })
 
@@ -800,12 +820,12 @@ def api_verificar_pedido(pedido_id: int):
             if estado_actual != "con_errores":
                 return jsonify({"exito": False, "error": "El pedido no está en estado con_errores"}), 400
             
-            # Verificar si hay error de sucursal (sucursal actual es null o vacía)
+            # Verificar si hay error de sucursal (sucursal actual es null, vacía, o contiene mensaje de error)
             cur.execute("""
                 SELECT sucursal FROM pedidos WHERE id = %s;
             """, (pedido_id,))
             sucursal_actual = cur.fetchone()[0]
-            tiene_error_sucursal = not sucursal_actual or sucursal_actual.strip() == ""
+            tiene_error_sucursal = not sucursal_actual or sucursal_actual.strip() == "" or sucursal_actual.strip().startswith("ERROR:")
             
             # Validar y actualizar sucursal solo si hay error de sucursal
             if tiene_error_sucursal:
@@ -824,6 +844,14 @@ def api_verificar_pedido(pedido_id: int):
             
             # Actualizar items si se proporcionaron
             if items_actualizados:
+                # Obtener información del pedido (cliente_id y sucursal_id)
+                cur.execute("""
+                    SELECT cliente_id, sucursal_id FROM pedidos WHERE id = %s;
+                """, (pedido_id,))
+                pedido_info = cur.fetchone()
+                cliente_id = pedido_info[0] if pedido_info else None
+                sucursal_id = pedido_info[1] if pedido_info else None
+                
                 # Obtener todos los items del pedido ordenados por ID
                 cur.execute("""
                     SELECT id FROM pedido_items 
@@ -849,11 +877,42 @@ def api_verificar_pedido(pedido_id: int):
                     
                     # Actualizar el item específico por ID
                     item_id = item_ids[index]
+                    
+                    # Buscar bodega automáticamente para el SKU
+                    bodega_asignada = None
+                    
+                    # Primero intentar por sucursal (si el cliente usa bodega por sucursal)
+                    if sucursal_id:
+                        cur.execute("""
+                            SELECT bps.bodega 
+                            FROM bodegas_producto_por_sucursal bps
+                            WHERE bps.sucursal_id = %s AND bps.producto_id = (
+                                SELECT id FROM productos WHERE sku = %s
+                            )
+                        """, (sucursal_id, sku))
+                        resultado = cur.fetchone()
+                        if resultado:
+                            bodega_asignada = resultado[0]
+                    
+                    # Si no se encontró por sucursal, intentar por cliente
+                    if not bodega_asignada and cliente_id:
+                        cur.execute("""
+                            SELECT bpc.bodega 
+                            FROM bodegas_producto_por_cliente bpc
+                            WHERE bpc.cliente_id = %s AND bpc.producto_id = (
+                                SELECT id FROM productos WHERE sku = %s
+                            )
+                        """, (cliente_id, sku))
+                        resultado = cur.fetchone()
+                        if resultado:
+                            bodega_asignada = resultado[0]
+                    
+                    # Actualizar el item con SKU, cantidad y bodega
                     cur.execute("""
                         UPDATE pedido_items 
-                        SET sku = %s, cantidad = %s 
+                        SET sku = %s, cantidad = %s, bodega = %s
                         WHERE id = %s;
-                    """, (sku, cantidad, item_id))
+                    """, (sku, cantidad, bodega_asignada, item_id))
             
             # Verificar si aún hay errores después de la actualización
             cur.execute("""
@@ -862,8 +921,15 @@ def api_verificar_pedido(pedido_id: int):
             """, (pedido_id,))
             items_con_errores = cur.fetchone()[0]
             
-            # Determinar nuevo estado
-            nuevo_estado = "por_procesar" if items_con_errores == 0 else "con_errores"
+            # Verificar si hay error de sucursal después de la actualización
+            cur.execute("""
+                SELECT sucursal FROM pedidos WHERE id = %s;
+            """, (pedido_id,))
+            sucursal_actualizada = cur.fetchone()[0]
+            tiene_error_sucursal_actualizado = not sucursal_actualizada or sucursal_actualizada.strip() == "" or sucursal_actualizada.strip().startswith("ERROR:")
+            
+            # Determinar nuevo estado: solo "por_procesar" si no hay errores en items NI en sucursal
+            nuevo_estado = "por_procesar" if (items_con_errores == 0 and not tiene_error_sucursal_actualizado) else "con_errores"
             
             # Actualizar estado del pedido
             cur.execute("""
@@ -1003,6 +1069,32 @@ def api_siguiente_numero_pedido():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/sucursales/cliente/<int:cliente_id>")
+def api_sucursales_cliente(cliente_id: int):
+    """Obtiene las sucursales activas de un cliente específico"""
+    try:
+        with db.obtener_conexion() as conn, conn.cursor() as cur:
+            cur.execute("""
+                SELECT s.id, s.nombre, s.alias, s.direccion, s.telefono
+                FROM sucursales s
+                WHERE s.cliente_id = %s AND s.activo = TRUE
+                ORDER BY upper(s.nombre);
+            """, (cliente_id,))
+            
+            sucursales = []
+            for row in cur.fetchall():
+                sucursales.append({
+                    "id": row[0],
+                    "nombre": row[1],
+                    "alias": row[2],
+                    "direccion": row[3],
+                    "telefono": row[4]
+                })
+            
+            return jsonify({"sucursales": sucursales})
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ========= ARRANQUE =========

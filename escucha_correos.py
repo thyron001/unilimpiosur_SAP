@@ -213,8 +213,24 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
     )
     imprimir_filas_emparejadas(filas_enriquecidas)
 
-    # 4) Guardar en PostgreSQL
-    sucursal_txt = (suc.get("nombre") if suc else None) or (resumen.get("sucursal") or "SUCURSAL DESCONOCIDA")
+    # 4) Verificar si se encontró la sucursal por alias
+    sucursal_alias_pdf = resumen.get("sucursal")
+    if sucursal_alias_pdf and not suc:
+        # No se encontró coincidencia en el alias - marcar como error
+        print(f"❌ ERROR: No se encontró sucursal con alias '{sucursal_alias_pdf}' en la base de datos")
+        pedido = {
+            "fecha": meta.get("fecha") or datetime.now(),
+            "sucursal": f"ERROR: Alias '{sucursal_alias_pdf}' no encontrado",
+        }
+        try:
+            pedido_id, numero_pedido, estado = guardar_pedido(pedido, filas_enriquecidas, cliente_id, None)
+            print(f"⚠️  Pedido guardado con ERROR: ID={pedido_id}, N°={numero_pedido}, Estado={estado}")
+        except Exception as e:
+            print(f"❌ No se guardó el pedido con error: {e}")
+        return
+
+    # 5) Guardar en PostgreSQL
+    sucursal_txt = suc.get("nombre") if suc else "SUCURSAL DESCONOCIDA"
     pedido = {
         "fecha": meta.get("fecha") or datetime.now(),
         "sucursal": sucursal_txt,

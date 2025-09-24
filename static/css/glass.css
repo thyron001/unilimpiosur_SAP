@@ -23,6 +23,8 @@
   --chip-brd: rgba(255, 255, 255, .22);
   --glass: blur(20px) saturate(140%);
   --radius-xl: 14px;
+  --clr-neutral-400: hsl(226, 11%, 37%);
+  --clr-red-400: hsl(3, 86%, 64%);
 }
 
 html,
@@ -312,7 +314,8 @@ body {
   transition: transform .12s ease, background-color .12s ease, box-shadow .12s ease;
 }
 
-.glass-table tbody tr:hover {
+/* Efecto hover solo para tablas de pedidos */
+#ordersTable tbody tr:hover {
   background: rgba(255, 255, 255, 0.06);
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, .18);
@@ -607,6 +610,14 @@ body {
 /* ===== ANCHOS FIJOS PARA COLUMNAS DE TABLAS ===== */
 
 /* Tabla de Pedidos */
+#ordersTable tbody tr {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
 #ordersTable th:nth-child(2), /* # Pedido */
 #ordersTable td:nth-child(2) {
   width: 100px;
@@ -796,4 +807,69 @@ body {
   width: 80px;
   min-width: 80px;
   max-width: 80px;
+}
+
+/* ===== TOGGLE SWITCH ===== */
+.toggle {
+  position: relative;
+  cursor: pointer;
+}
+
+/* Hide checkbox but keep it accessible */
+.toggle-input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+/* Toggle background */
+.switch {
+  display: flex;
+  align-items: center;
+  width: 3.5rem;
+  height: 2rem;
+  border: none;
+  border-radius: 1rem;
+  background-color: var(--clr-neutral-400);
+  transition: all ease-in 100ms;
+}
+
+/* Toggle button */
+.switch::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  width: 1.75rem;
+  height: 1.75rem;
+  background-color: white;
+  border-radius: 50%;
+  transition: all ease-in 100ms;
+}
+
+/* Focus when navigating via keyboard */
+.toggle-input:focus-visible + .switch {
+  outline: 2px solid var(--clr-red-400);
+  outline-offset: 2px;
+}
+
+/* Change background colour when the toggle is checked */
+.toggle-input:checked + .switch {
+  background-color: var(--clr-red-400);
+}
+
+/* Move toggle button to the right when checked */
+.toggle-input:checked + .switch::before {
+  transform: translateX(1.4rem);
+}
+
+/* Disable the transitions if reduced motion is enabled */
+@media (prefers-reduced-motion: reduce) {
+  .switch {
+    transition-duration: 0ms;
+  }
+  .switch::before {
+    transition-duration: 0ms;
+  }
 }

@@ -170,7 +170,7 @@ Sección 2: CSS  (static/css/glass.css)
                         <td class="mono" data-label="# Pedido">{{ o.numero_pedido }}</td>
                         <td data-label="Cliente">Roldan</td>
                         <td data-label="Sucursal">{{ o.sucursal or '-' }}</td>
-                        <td data-label="Fecha">{{ o.fecha.strftime('%Y-%m-%d %H:%M:%S') if o.fecha else '' }}</td>
+                        <td data-label="Fecha">{{ o.fecha.strftime('%d/%m/%Y %H:%M') if o.fecha else '' }}</td>
                         <td data-label="Origen">Email</td>
                       </tr>
                       {% endfor %}
@@ -204,6 +204,7 @@ Sección 2: CSS  (static/css/glass.css)
         </div>
 
         <div class="glass-modal-sub">
+          <div><strong>Cliente:</strong> <span id="m-cliente">-</span></div>
           <div><strong>Sucursal:</strong> <span id="m-sucursal">-</span></div>
           <div><strong>Fecha:</strong> <span id="m-fecha">-</span></div>
         </div>
@@ -970,7 +971,13 @@ Sección 2: CSS  (static/css/glass.css)
         if(!iso) return "-";
         const d = new Date(iso);
         if(isNaN(d)) return iso;
-        return d.toLocaleString();
+        // Formato dd/mm/yyyy HH:MM
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${day}/${month}/${year} ${hours}:${minutes}`;
       };
 
       function abrirModal(){ overlay.classList.remove("hidden"); modal.classList.remove("hidden"); }
@@ -986,21 +993,67 @@ Sección 2: CSS  (static/css/glass.css)
         return resp.json();
       }
 
+      async function cargarSucursalesCliente(clienteId, selectElement, sucursalActual) {
+        try {
+          const resp = await fetch(`/api/sucursales/cliente/${clienteId}`);
+          if (!resp.ok) throw new Error("No se pudieron cargar las sucursales");
+          
+          const data = await resp.json();
+          const sucursales = data.sucursales || [];
+          
+          // Limpiar opciones existentes (excepto la primera que es la vacía)
+          while (selectElement.children.length > 1) {
+            selectElement.removeChild(selectElement.lastChild);
+          }
+          
+          // Agregar opciones de sucursales
+          sucursales.forEach(sucursal => {
+            const option = document.createElement("option");
+            option.value = sucursal.nombre;
+            option.textContent = sucursal.nombre;
+            if (sucursal.alias) {
+              option.textContent += ` (${sucursal.alias})`;
+            }
+            
+            // Seleccionar la sucursal actual si coincide
+            if (sucursalActual && (sucursal.nombre === sucursalActual || sucursal.alias === sucursalActual)) {
+              option.selected = true;
+            }
+            
+            selectElement.appendChild(option);
+          });
+          
+        } catch (error) {
+          console.error("Error cargando sucursales:", error);
+          // En caso de error, mantener solo la opción vacía
+        }
+      }
+
       function renderDetalle(data){
         $$("#m-numero").textContent = data.numero_pedido ?? "";
         
+        // Mostrar cliente
+        $$("#m-cliente").textContent = data.cliente_nombre || "-";
+        
         // Mostrar sucursal con indicador de error si es necesario
         const sucursalElement = $$("#m-sucursal");
-        if (data.tiene_error_sucursal) {
-          // Crear campo editable para sucursal
-          const inputSucursal = document.createElement("input");
-          inputSucursal.type = "text";
-          inputSucursal.className = "campo-sucursal-editable error";
-          inputSucursal.value = data.sucursal || "";
-          inputSucursal.placeholder = "Ingrese la sucursal";
-          inputSucursal.dataset.originalValue = data.sucursal || "";
+        if (data.tiene_error_sucursal && data.cliente_id) {
+          // Crear dropdown para seleccionar sucursal
+          const selectSucursal = document.createElement("select");
+          selectSucursal.className = "campo-sucursal-editable error";
+          selectSucursal.dataset.originalValue = data.sucursal || "";
+          
+          // Agregar opción vacía
+          const optionVacia = document.createElement("option");
+          optionVacia.value = "";
+          optionVacia.textContent = "Seleccione una sucursal...";
+          selectSucursal.appendChild(optionVacia);
+          
+          // Cargar sucursales del cliente
+          cargarSucursalesCliente(data.cliente_id, selectSucursal, data.sucursal);
+          
           sucursalElement.innerHTML = "";
-          sucursalElement.appendChild(inputSucursal);
+          sucursalElement.appendChild(selectSucursal);
         } else {
           sucursalElement.textContent = data.sucursal || "-";
           sucursalElement.classList.remove("sucursal-error");
@@ -1244,7 +1297,15 @@ Sección 2: CSS  (static/css/glass.css)
               <td class="mono" data-label="# Pedido">${pedido.numero_pedido}</td>
                 <td data-label="Cliente">${pedido.cliente_nombre || 'Roldan'}</td>
               <td data-label="Sucursal">${pedido.sucursal || '-'}</td>
-              <td data-label="Fecha">${pedido.fecha ? new Date(pedido.fecha).toLocaleString() : ''}</td>
+              <td data-label="Fecha">${pedido.fecha ? (() => {
+                const d = new Date(pedido.fecha);
+                const day = String(d.getDate()).padStart(2, '0');
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const year = d.getFullYear();
+                const hours = String(d.getHours()).padStart(2, '0');
+                const minutes = String(d.getMinutes()).padStart(2, '0');
+                return `${day}/${month}/${year} ${hours}:${minutes}`;
+              })() : ''}</td>
               <td data-label="Origen">Email</td>
             `;
             

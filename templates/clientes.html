@@ -33,11 +33,13 @@
           <section class="side-wrapper">
             <h3 class="side-title">Opciones</h3>
             <div class="side-menu">
-              <label class="chip" style="cursor:pointer; user-select:none;">
-                <input type="checkbox" id="toggleEdicion" style="accent-color:#9fd5ff; margin-right:6px;">
-                🖊️ Modo edición
-              </label>
-              <button id="btnRefrescar" class="chip" title="Recargar datos">↻ Refrescar</button>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="color: var(--theme-color); font-size: 14px;">Modo edición</span>
+                <label class='toggle' for='toggleEdicion'>
+                  <input type='checkbox' name='toggleEdicion' id='toggleEdicion' class='toggle-input' />
+                  <span class='switch'></span>
+                </label>
+              </div>
             </div>
           </section>
 
@@ -149,7 +151,6 @@
       const listaClientes = $$("#listaClientes");
       const toggleEdicion = $$("#toggleEdicion");
       const inputBusqueda = $$("#busquedaRapida");
-      const btnRefrescar  = $$("#btnRefrescar");
 
       // Normalizar texto para búsquedas
       function normalizarTexto(s){
@@ -556,7 +557,6 @@
           aplicarFiltroBusqueda(q);
         }
       });
-      btnRefrescar.addEventListener("click", inicializar);
 
       // ============================
       // Funcionalidad de edición de cliente

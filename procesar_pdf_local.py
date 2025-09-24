@@ -279,8 +279,15 @@ def main():
     else:
         fecha_obj = datetime.now()
 
-    # Si encontramos la sucursal en BD, usamos su NOMBRE de sistema; si no, el texto del PDF
-    sucursal_txt = (suc.get("nombre") if suc else None) or (resumen.get("sucursal") or "SUCURSAL DESCONOCIDA")
+    # Verificar si se encontró la sucursal por alias
+    sucursal_alias_pdf = resumen.get("sucursal")
+    if sucursal_alias_pdf and not suc:
+        # No se encontró coincidencia en el alias - marcar como error
+        print(f"❌ ERROR: No se encontró sucursal con alias '{sucursal_alias_pdf}' en la base de datos")
+        sucursal_txt = f"ERROR: Alias '{sucursal_alias_pdf}' no encontrado"
+    else:
+        # Si encontramos la sucursal en BD, usamos su NOMBRE de sistema; si no, el texto del PDF
+        sucursal_txt = suc.get("nombre") if suc else "SUCURSAL DESCONOCIDA"
 
     pedido = {
         "fecha": fecha_obj,
