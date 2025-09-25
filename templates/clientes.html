@@ -17,10 +17,9 @@
       <!-- Header -->
       <div class="header">
         <nav class="header-menu" aria-label="Secciones">
-          <a class="menu-link" href="/pedidos">Pedidos</a>
+          <a class="menu-link" href="/">Pedidos</a>
           <a class="menu-link is-active" href="/clientes">Clientes</a>
           <a class="menu-link" href="/productos">Productos</a>
-          <a class="menu-link" href="/reportes">Reportes</a>
         </nav>
         <div class="search-bar">
           <input type="text" id="busquedaRapida" placeholder="Buscar en clientes/sucursales…">
@@ -40,6 +39,13 @@
                   <span class='switch'></span>
                 </label>
               </div>
+            </div>
+          </section>
+
+          <section class="side-wrapper">
+            <h3 class="side-title">Acciones</h3>
+            <div class="side-menu">
+              <button id="btnSubirSucursales" class="glass-btn glass-btn-primary" style="width: 100%; margin: 0; background: var(--hover-menu-bg); color: var(--theme-color); border-color: var(--border-color);">📁 Subir sucursales</button>
             </div>
           </section>
 
@@ -104,6 +110,21 @@
             </div>
 
             <div class="glass-form-group">
+              <label class="glass-label">Configuración de RUC</label>
+              <div class="glass-radio-group">
+                <label class="glass-radio">
+                  <input type="radio" id="editRucPorCliente" name="rucPor" value="cliente">
+                  <span class="glass-radio-text">RUC por Cliente</span>
+                </label>
+                <label class="glass-radio">
+                  <input type="radio" id="editRucPorSucursal" name="rucPor" value="sucursal">
+                  <span class="glass-radio-text">RUC por Sucursal</span>
+                </label>
+              </div>
+              <small class="glass-help">Si selecciona "RUC por Sucursal", cada sucursal tendrá su propio RUC</small>
+            </div>
+
+            <div class="glass-form-group">
               <label class="glass-label">Configuración de Alias</label>
               <div class="glass-checkbox-group">
                 <label class="glass-checkbox">
@@ -138,6 +159,37 @@
           <button id="btnCancelarEditar" class="glass-btn glass-btn-secondary">❌ Cancelar</button>
         </div>
       </div>
+    </div>
+
+    <!-- ================= Modal Subir Sucursales ================= -->
+    <div id="modalSubirSucursales" class="glass-overlay hidden">
+        <div class="glass-modal" role="dialog" aria-modal="true" aria-labelledby="modalSubirSucursalesTitle">
+            <div class="glass-modal-card">
+                <div class="glass-modal-head">
+                    <h3 id="modalSubirSucursalesTitle" class="mono">Subir datos de sucursales (CSV / Excel)</h3>
+                    <button id="btnCerrarModalSucursales" class="btn-close" aria-label="Cerrar">✕</button>
+                </div>
+
+                <div class="glass-modal-body">
+                    <div class="campo">
+                        <label for="selectClienteSucursales"><b>Cliente</b></label>
+                        <select id="selectClienteSucursales" class="glass-select"></select>
+                        <small id="ayudaClienteSucursales" class="ayuda"></small>
+                    </div>
+
+                    <div class="campo">
+                        <label for="inputArchivoSucursales"><b>Archivo</b></label>
+                        <input id="inputArchivoSucursales" type="file" accept=".csv,.xlsx" class="glass-input" />
+                        <small id="mensajeColumnasSucursales" class="ayuda">Recuerde poner el nombre de las columnas de las siguientes maneras: SAP, Alias, Encargado, Direccion, Telefono, Bodega, RUC</small>
+                        <small>Usa .csv (UTF-8) o .xlsx. La columna SAP es obligatoria.</small>
+                    </div>
+                </div>
+
+                <div class="glass-modal-foot">
+                    <button id="btnSubirSucursalesEjecutar" class="glass-btn glass-btn-primary">Subir y actualizar</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -175,36 +227,48 @@
         const tr = document.createElement("tr");
         tr.className = "fila-nueva";
         
-        // Determinar si mostrar columna de alias
+        // Determinar si mostrar columna de alias y RUC
         const tabla = tbody.closest('table');
         const mostrarAlias = tabla.dataset.mostrarAlias === 'true';
+        const mostrarRuc = tabla.dataset.mostrarRuc === 'true';
         const celdaAlias = mostrarAlias ? '<td data-label="Alias (PDF)"></td>' : '';
+        const celdaRuc = mostrarRuc ? '<td data-label="RUC"></td>' : '';
         
         tr.innerHTML = `
           <td data-label="Nombre (sistema)"></td>
           ${celdaAlias}
+          <td data-label="Encargado"></td>
           <td data-label="Dirección"></td>
           <td data-label="Teléfono"></td>
+          ${celdaRuc}
+          <td data-label="Bodega"></td>
           <td class="col-editar">
             <button class="btn-editar" data-accion="agregar" title="Agregar sucursal">＋</button>
           </td>
         `;
         tbody.insertBefore(tr, tbody.firstChild);
 
-        // Hacer celdas editables - ajustar según si hay columna de alias
-        const celdasEditables = mostrarAlias ? 4 : 3;
+        // Hacer celdas editables - ajustar según si hay columna de alias y RUC
+        const celdasEditables = (mostrarAlias ? 1 : 0) + (mostrarRuc ? 1 : 0) + 5; // nombre, encargado, direccion, telefono, bodega + alias + ruc
         $$$("td", tr).slice(0, celdasEditables).forEach(td=>configurarCeldaEditable(td, true));
 
         // Acción guardar nueva fila a la tabla (no envía todavía al backend)
         tr.querySelector(".btn-editar[data-accion='agregar']").addEventListener("click", ()=>{
           const celdas = $$$("td", tr).slice(0, celdasEditables);
-          let nombre, alias, direccion, telefono;
+          let nombre, alias, encargado, direccion, telefono, ruc, bodega;
           
-          if (mostrarAlias) {
-            [nombre, alias, direccion, telefono] = celdas.map(td=>td.textContent.trim());
-          } else {
-            [nombre, direccion, telefono] = celdas.map(td=>td.textContent.trim());
+          if (mostrarAlias && mostrarRuc) {
+            [nombre, alias, encargado, direccion, telefono, ruc, bodega] = celdas.map(td=>td.textContent.trim());
+          } else if (mostrarAlias) {
+            [nombre, alias, encargado, direccion, telefono, bodega] = celdas.map(td=>td.textContent.trim());
+            ruc = "";
+          } else if (mostrarRuc) {
+            [nombre, encargado, direccion, telefono, ruc, bodega] = celdas.map(td=>td.textContent.trim());
             alias = "";
+          } else {
+            [nombre, encargado, direccion, telefono, bodega] = celdas.map(td=>td.textContent.trim());
+            alias = "";
+            ruc = "";
           }
           
           if(!nombre){
@@ -213,8 +277,8 @@
           }
           const nueva = construirFilaSucursal({
             id: null, // se creará en backend
-            nombre, alias, direccion, telefono
-          }, /*editable=*/true, mostrarAlias);
+            nombre, alias, encargado, direccion, telefono, ruc, bodega
+          }, /*editable=*/true, mostrarAlias, mostrarRuc);
           tr.before(nueva);
           // limpiar la fila vacía
           celdas.forEach(td=>td.textContent = "");
@@ -222,24 +286,28 @@
       }
 
       // Construir una fila de sucursal
-      function construirFilaSucursal(suc, editable, mostrarAlias = true){
+      function construirFilaSucursal(suc, editable, mostrarAlias = true, mostrarRuc = false){
         const tr = document.createElement("tr");
         tr.dataset.sucursalId = suc.id ?? "";
         
         const celdaAlias = mostrarAlias ? `<td data-label="Alias (PDF)">${esc(suc.alias || "")}</td>` : '';
+        const celdaRuc = mostrarRuc ? `<td data-label="RUC">${esc(suc.ruc || "")}</td>` : '';
         
         tr.innerHTML = `
           <td data-label="Nombre (sistema)">${esc(suc.nombre)}</td>
           ${celdaAlias}
+          <td data-label="Encargado">${esc(suc.encargado || "")}</td>
           <td data-label="Dirección">${esc(suc.direccion || "")}</td>
           <td data-label="Teléfono">${esc(suc.telefono || "")}</td>
+          ${celdaRuc}
+          <td data-label="Bodega">${esc(suc.bodega || "")}</td>
           <td class="col-editar">
             <button class="btn-editar" data-accion="borrar" title="Marcar para borrar">🗑️</button>
           </td>
         `;
         
-        // editable ON/OFF - ajustar según si hay columna de alias
-        const celdasEditables = mostrarAlias ? 4 : 3;
+        // editable ON/OFF - ajustar según si hay columna de alias y RUC
+        const celdasEditables = (mostrarAlias ? 1 : 0) + (mostrarRuc ? 1 : 0) + 5; // nombre, encargado, direccion, telefono, bodega + alias + ruc
         $$$("td", tr).slice(0, celdasEditables).forEach(td=>configurarCeldaEditable(td, editable));
         
         // borrar (solo marca; se eliminará al guardar)
@@ -277,18 +345,23 @@
         const wrap = document.createElement("div");
         wrap.className = "table-wrap";
         
-        // Determinar si mostrar columna de alias
+        // Determinar si mostrar columna de alias y RUC
         const mostrarAlias = cliente.alias_por_sucursal || false;
+        const mostrarRuc = cliente.ruc_por_sucursal || false;
         const headerAlias = mostrarAlias ? '<th>Alias (PDF)</th>' : '';
+        const headerRuc = mostrarRuc ? '<th>RUC</th>' : '';
         
         wrap.innerHTML = `
-          <table class="glass-table tabla-sucursales" data-cliente-id="${cliente.id}" data-mostrar-alias="${mostrarAlias}">
+          <table class="glass-table tabla-sucursales" data-cliente-id="${cliente.id}" data-mostrar-alias="${mostrarAlias}" data-mostrar-ruc="${mostrarRuc}">
             <thead>
               <tr>
                 <th>Nombre (sistema)</th>
                 ${headerAlias}
+                <th>Encargado</th>
                 <th>Dirección</th>
                 <th>Teléfono</th>
+                ${headerRuc}
+                <th>Bodega</th>
                 <th class="col-editar">Editar</th>
               </tr>
             </thead>
@@ -307,7 +380,7 @@
         }
         
         for(const s of (cliente.sucursales || [])){
-          tbody.appendChild(construirFilaSucursal(s, /*editable=*/toggleEdicion.checked, mostrarAlias));
+          tbody.appendChild(construirFilaSucursal(s, /*editable=*/toggleEdicion.checked, mostrarAlias, mostrarRuc));
         }
 
         // Cargar estado persistente del acordeón
@@ -420,7 +493,8 @@
         for(const table of tablas){
           const tbody = table.tBodies[0];
           const mostrarAlias = table.dataset.mostrarAlias === 'true';
-          const celdasEditables = mostrarAlias ? 4 : 3;
+          const mostrarRuc = table.dataset.mostrarRuc === 'true';
+          const celdasEditables = (mostrarAlias ? 1 : 0) + (mostrarRuc ? 1 : 0) + 5; // nombre, encargado, direccion, telefono, bodega + alias + ruc
           
           // celdas editables
           $$$("tr", tbody).forEach(tr=>{
@@ -442,20 +516,50 @@
         for(const table of $$$(".tabla-sucursales")){
           const clienteId = Number(table.dataset.clienteId);
           const mostrarAlias = table.dataset.mostrarAlias === 'true';
+          const mostrarRuc = table.dataset.mostrarRuc === 'true';
           const tbody = table.tBodies[0];
           for(const tr of $$$("tr", tbody)){
             if(tr.classList.contains("fila-nueva")) continue; // no recolectar esta
             const celdas = $$$("td", tr);
             
             let obj;
-            if (mostrarAlias) {
+            if (mostrarAlias && mostrarRuc) {
               obj = {
                 cliente_id: clienteId,
                 sucursal_id: tr.dataset.sucursalId ? Number(tr.dataset.sucursalId) : null,
                 nombre:   celdas[0].textContent.trim(),
                 alias:    celdas[1].textContent.trim(),
+                encargado: celdas[2].textContent.trim(),
+                direccion:celdas[3].textContent.trim(),
+                telefono: celdas[4].textContent.trim(),
+                ruc:      celdas[5].textContent.trim(),
+                bodega:   celdas[6].textContent.trim(),
+                borrar:   tr.classList.contains("marcada-borrado")
+              };
+            } else if (mostrarAlias) {
+              obj = {
+                cliente_id: clienteId,
+                sucursal_id: tr.dataset.sucursalId ? Number(tr.dataset.sucursalId) : null,
+                nombre:   celdas[0].textContent.trim(),
+                alias:    celdas[1].textContent.trim(),
+                encargado: celdas[2].textContent.trim(),
+                direccion:celdas[3].textContent.trim(),
+                telefono: celdas[4].textContent.trim(),
+                ruc:      "",
+                bodega:   celdas[5].textContent.trim(),
+                borrar:   tr.classList.contains("marcada-borrado")
+              };
+            } else if (mostrarRuc) {
+              obj = {
+                cliente_id: clienteId,
+                sucursal_id: tr.dataset.sucursalId ? Number(tr.dataset.sucursalId) : null,
+                nombre:   celdas[0].textContent.trim(),
+                alias:    "",
+                encargado: celdas[1].textContent.trim(),
                 direccion:celdas[2].textContent.trim(),
                 telefono: celdas[3].textContent.trim(),
+                ruc:      celdas[4].textContent.trim(),
+                bodega:   celdas[5].textContent.trim(),
                 borrar:   tr.classList.contains("marcada-borrado")
               };
             } else {
@@ -464,14 +568,17 @@
                 sucursal_id: tr.dataset.sucursalId ? Number(tr.dataset.sucursalId) : null,
                 nombre:   celdas[0].textContent.trim(),
                 alias:    "", // No hay columna de alias
-                direccion:celdas[1].textContent.trim(),
-                telefono: celdas[2].textContent.trim(),
+                encargado: celdas[1].textContent.trim(),
+                direccion:celdas[2].textContent.trim(),
+                telefono: celdas[3].textContent.trim(),
+                ruc:      "",
+                bodega:   celdas[4].textContent.trim(),
                 borrar:   tr.classList.contains("marcada-borrado")
               };
             }
             
             // ignorar filas completamente vacías
-            const tieneAlgo = obj.nombre || obj.alias || obj.direccion || obj.telefono || obj.sucursal_id || obj.borrar;
+            const tieneAlgo = obj.nombre || obj.alias || obj.encargado || obj.direccion || obj.telefono || obj.ruc || obj.sucursal_id || obj.borrar;
             if(tieneAlgo) payload.push(obj);
           }
         }
@@ -569,9 +676,89 @@
       const formEditarCliente = $$("#formEditarCliente");
       const campoCantidadAlias = $$("#campoCantidadAlias");
       const editAliasPorProducto = $$("#editAliasPorProducto");
-
+      const editRucPorCliente = $$("#editRucPorCliente");
+      const editRucPorSucursal = $$("#editRucPorSucursal");
 
       let clienteEditando = null;
+
+      // Función para reconstruir filas de sucursales cuando cambie la configuración
+      function reconstruirFilasSucursales(cliente, mostrarRuc) {
+        // Encontrar la tabla del cliente
+        const tabla = $$(`table[data-cliente-id="${cliente.id}"]`);
+        if (!tabla) return;
+        
+        const tbody = tabla.tBodies[0];
+        const mostrarAlias = tabla.dataset.mostrarAlias === 'true';
+        
+        // Actualizar el dataset de la tabla
+        tabla.dataset.mostrarRuc = mostrarRuc;
+        
+        // Reconstruir el header
+        const headerAlias = mostrarAlias ? '<th>Alias (PDF)</th>' : '';
+        const headerRuc = mostrarRuc ? '<th>RUC</th>' : '';
+        
+        const thead = tabla.querySelector('thead tr');
+        thead.innerHTML = `
+          <th>Nombre (sistema)</th>
+          ${headerAlias}
+          <th>Encargado</th>
+          <th>Dirección</th>
+          <th>Teléfono</th>
+          ${headerRuc}
+          <th>Bodega</th>
+          <th class="col-editar">Editar</th>
+        `;
+        
+        // Reconstruir todas las filas existentes
+        const filasExistentes = $$$('tr', tbody).filter(tr => !tr.classList.contains('fila-nueva'));
+        filasExistentes.forEach(tr => {
+          const sucursalId = tr.dataset.sucursalId;
+          if (sucursalId) {
+            // Extraer datos de la fila actual
+            const celdas = $$$('td', tr);
+            let sucursal = {
+              id: sucursalId,
+              nombre: celdas[0].textContent.trim(),
+              encargado: '',
+              direccion: '',
+              telefono: '',
+              alias: '',
+              ruc: '',
+              bodega: ''
+            };
+            
+            if (mostrarAlias && mostrarRuc) {
+              sucursal.alias = celdas[1].textContent.trim();
+              sucursal.encargado = celdas[2].textContent.trim();
+              sucursal.direccion = celdas[3].textContent.trim();
+              sucursal.telefono = celdas[4].textContent.trim();
+              sucursal.ruc = celdas[5].textContent.trim();
+              sucursal.bodega = celdas[6].textContent.trim();
+            } else if (mostrarAlias) {
+              sucursal.alias = celdas[1].textContent.trim();
+              sucursal.encargado = celdas[2].textContent.trim();
+              sucursal.direccion = celdas[3].textContent.trim();
+              sucursal.telefono = celdas[4].textContent.trim();
+              sucursal.bodega = celdas[5].textContent.trim();
+            } else if (mostrarRuc) {
+              sucursal.encargado = celdas[1].textContent.trim();
+              sucursal.direccion = celdas[2].textContent.trim();
+              sucursal.telefono = celdas[3].textContent.trim();
+              sucursal.ruc = celdas[4].textContent.trim();
+              sucursal.bodega = celdas[5].textContent.trim();
+            } else {
+              sucursal.encargado = celdas[1].textContent.trim();
+              sucursal.direccion = celdas[2].textContent.trim();
+              sucursal.telefono = celdas[3].textContent.trim();
+              sucursal.bodega = celdas[4].textContent.trim();
+            }
+            
+            // Reemplazar la fila con la nueva estructura
+            const nuevaFila = construirFilaSucursal(sucursal, toggleEdicion.checked, mostrarAlias, mostrarRuc);
+            tr.parentNode.replaceChild(nuevaFila, tr);
+          }
+        });
+      }
 
       // Función para abrir modal de edición
       function abrirModalEditar(cliente) {
@@ -590,6 +777,13 @@
           $$("#editBodegaPorSucursal").checked = true;
         } else {
           $$("#editBodegaPor").checked = true;
+        }
+        
+        // Configurar radio buttons de RUC
+        if (cliente.ruc_por_sucursal) {
+          $$("#editRucPorSucursal").checked = true;
+        } else {
+          $$("#editRucPorCliente").checked = true;
         }
         
         // Configurar checkboxes
@@ -632,6 +826,7 @@
           nombre: $$("#editNombre").value.trim(),
           ruc: $$("#editRuc").value.trim(),
           usa_bodega_por_sucursal: $$("#editBodegaPorSucursal").checked,
+          ruc_por_sucursal: $$("#editRucPorSucursal").checked,
           alias_por_sucursal: $$("#editAliasPorSucursal").checked,
           alias_por_producto: $$("#editAliasPorProducto").checked,
           cantidad_alias_producto: parseInt($$("#editCantidadAlias").value)
@@ -672,6 +867,21 @@
       if (editAliasPorProducto) {
         editAliasPorProducto.addEventListener("change", actualizarVisibilidadCantidadAlias);
       }
+      
+      // Listener para radio buttons de RUC - reconstruir filas cuando cambie la configuración
+      if (editRucPorCliente && editRucPorSucursal) {
+        editRucPorCliente.addEventListener("change", () => {
+          if (clienteEditando && editRucPorCliente.checked) {
+            reconstruirFilasSucursales(clienteEditando, false); // false = no mostrar RUC
+          }
+        });
+        
+        editRucPorSucursal.addEventListener("change", () => {
+          if (clienteEditando && editRucPorSucursal.checked) {
+            reconstruirFilasSucursales(clienteEditando, true); // true = mostrar RUC
+          }
+        });
+      }
       if (btnCerrarEditar) {
         btnCerrarEditar.addEventListener("click", cerrarModalEditar);
       }
@@ -708,6 +918,144 @@
           }
         }
       });
+
+      // ============================
+      // Modal Subir Sucursales
+      // ============================
+      
+      // Referencias del modal de sucursales
+      const btnSubirSucursales = document.getElementById("btnSubirSucursales");
+      const modalSubirSucursales = document.getElementById("modalSubirSucursales");
+      const btnCerrarModalSucursales = document.getElementById("btnCerrarModalSucursales");
+      const inputArchivoSucursales = document.getElementById("inputArchivoSucursales");
+      const selectClienteSucursales = document.getElementById("selectClienteSucursales");
+      const ayudaClienteSucursales = document.getElementById("ayudaClienteSucursales");
+      const btnSubirSucursalesEjecutar = document.getElementById("btnSubirSucursalesEjecutar");
+      const mensajeColumnasSucursales = document.getElementById("mensajeColumnasSucursales");
+
+      let cacheClientesModal = [];
+      let mapaClientesModal = {};
+
+      async function cargarClientesParaModalSucursales() {
+        try {
+          const r = await fetch("/api/clientes");
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const data = await r.json();
+          
+          // El endpoint devuelve {clientes: [...]}, no directamente un array
+          const clientes = data.clientes || data;
+          
+          // Verificar que la respuesta sea un array
+          if (!Array.isArray(clientes)) {
+            throw new Error("La respuesta del API no es un array válido");
+          }
+          
+          cacheClientesModal = clientes;
+          mapaClientesModal = {};
+          selectClienteSucursales.innerHTML = '<option value="">Selecciona un cliente...</option>';
+          
+          for (const c of cacheClientesModal) {
+            mapaClientesModal[c.id] = c;
+            const opt = document.createElement("option");
+            opt.value = String(c.id);
+            opt.textContent = c.nombre;
+            selectClienteSucursales.appendChild(opt);
+          }
+        } catch (e) {
+          console.error("Error cargando clientes para modal:", e);
+          alert("Error al cargar clientes: " + e.message);
+        }
+      }
+
+      function actualizarMensajeColumnasSucursales() {
+        const id = Number(selectClienteSucursales.value);
+        const cli = mapaClientesModal[id];
+        if (!cli) return;
+
+        let columnas = ["SAP", "Alias", "Encargado", "Direccion", "Telefono", "Bodega"];
+        
+        // Si el cliente tiene RUC por sucursal activado, agregar RUC
+        if (cli.ruc_por_sucursal) {
+          columnas.push("RUC");
+        }
+        
+        mensajeColumnasSucursales.textContent = `Recuerde poner el nombre de las columnas de las siguientes maneras: ${columnas.join(", ")}`;
+        ayudaClienteSucursales.textContent = "Selecciona el cliente para subir datos de sus sucursales.";
+      }
+
+      function abrirModalSucursales() {
+        modalSubirSucursales.classList.remove("hidden");
+        inputArchivoSucursales.value = "";
+      }
+
+      function cerrarModalSucursales() {
+        modalSubirSucursales.classList.add("hidden");
+      }
+
+      async function enviarArchivoSucursales() {
+        const archivo = inputArchivoSucursales.files?.[0];
+        if (!archivo) {
+          alert("Selecciona un archivo CSV o XLSX.");
+          return;
+        }
+        const cliente_id = Number(selectClienteSucursales.value);
+        if (!cliente_id) {
+          alert("Selecciona un cliente.");
+          return;
+        }
+
+        const fd = new FormData();
+        fd.append("archivo", archivo, archivo.name);
+        fd.append("cliente_id", String(cliente_id));
+
+        btnSubirSucursalesEjecutar.disabled = true;
+        btnSubirSucursalesEjecutar.textContent = "Subiendo…";
+
+        try {
+          const r = await fetch("/api/subir_sucursales", { method: "POST", body: fd });
+          const js = await r.json().catch(() => ({}));
+          if (!r.ok || js.ok === false) {
+            const msg = js.error || `Fallo al subir (${r.status})`;
+            throw new Error(msg);
+          }
+          // Informe
+          const { insertados = 0, actualizados = 0, omitidos = 0, errores = [] } = js;
+          alert(
+            `Actualización completada:\n` +
+            `- Insertados: ${insertados}\n` +
+            `- Actualizados: ${actualizados}\n` +
+            `- Omitidos: ${omitidos}\n` +
+            (errores?.length ? `- Errores: ${errores.length}\nEj:\n${errores.slice(0, 3).join("\n")}` : "")
+          );
+          cerrarModalSucursales();
+          // Reload de datos
+          await inicializar();
+        } catch (e) {
+          console.error(e);
+          alert(e.message || "No se pudo procesar el archivo.");
+        } finally {
+          btnSubirSucursalesEjecutar.disabled = false;
+          btnSubirSucursalesEjecutar.textContent = "Subir y actualizar";
+        }
+      }
+
+      // Event listeners para el modal de sucursales
+      btnSubirSucursales?.addEventListener("click", async () => {
+        try {
+          await cargarClientesParaModalSucursales();
+          abrirModalSucursales();
+        } catch (e) {
+          console.error(e);
+          alert("Error al abrir modal: " + e.message);
+        }
+      });
+
+      btnCerrarModalSucursales?.addEventListener("click", cerrarModalSucursales);
+      modalSubirSucursales?.addEventListener("click", (ev) => {
+        if (ev.target === modalSubirSucursales) cerrarModalSucursales();
+      });
+      selectClienteSucursales?.addEventListener("change", actualizarMensajeColumnasSucursales);
+      btnSubirSucursalesEjecutar?.addEventListener("click", enviarArchivoSucursales);
 
       // Arranque
       inicializar();
@@ -884,6 +1232,12 @@
     }
     .glass-btn-secondary:hover {
       background: var(--hover-menu-bg);
+    }
+    
+    /* Estilo específico para el botón de subir sucursales */
+    #btnSubirSucursales:hover {
+      filter: brightness(1.1);
+      background: rgba(102, 126, 234, 0.2) !important;
     }
     </style>
   </body>

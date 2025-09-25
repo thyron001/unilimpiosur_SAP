@@ -124,6 +124,12 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
 
 # ========= RUTAS FLASK =========
 
+@app.route("/")
+def index():
+    """Redirige a la página de pedidos"""
+    from flask import redirect, url_for
+    return redirect(url_for('ver_pedidos'))
+
 @app.route("/pedidos")
 def ver_pedidos():
     # Por defecto mostrar pedidos por procesar
@@ -184,7 +190,8 @@ def api_clientes_con_sucursales():
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
             SELECT c.id, c.nombre, c.ruc, c.usa_bodega_por_sucursal, 
-                   c.alias_por_sucursal, c.alias_por_producto, c.cantidad_alias_producto
+                   c.alias_por_sucursal, c.alias_por_producto, c.cantidad_alias_producto,
+                   c.ruc_por_sucursal
             FROM clientes c
             ORDER BY upper(c.nombre);
         """)
@@ -195,24 +202,25 @@ def api_clientes_con_sucursales():
                 "alias_por_sucursal": bool(alias_suc),
                 "alias_por_producto": bool(alias_prod),
                 "cantidad_alias_producto": cantidad_alias or 1,
+                "ruc_por_sucursal": bool(ruc_por_suc),
                 "sucursales": []
             }
-            for (cid, nom, ruc, ubs, alias_suc, alias_prod, cantidad_alias) in cur.fetchall()
+            for (cid, nom, ruc, ubs, alias_suc, alias_prod, cantidad_alias, ruc_por_suc) in cur.fetchall()
         ]
         idx = {c["id"]: c for c in clientes}
 
         if clientes:
             cur.execute("""
-                SELECT s.id, s.cliente_id, s.alias, s.nombre, s.encargado, s.direccion, s.telefono, s.activo
+                SELECT s.id, s.cliente_id, s.alias, s.nombre, s.encargado, s.direccion, s.telefono, s.activo, s.ruc, s.bodega
                 FROM sucursales s
                 WHERE s.activo = TRUE
                 ORDER BY upper(s.nombre);
             """)
-            for (sid, cliente_id, alias, nombre, encargado, direccion, telefono, activo) in cur.fetchall():
+            for (sid, cliente_id, alias, nombre, encargado, direccion, telefono, activo, ruc, bodega) in cur.fetchall():
                 if cliente_id in idx:
                     idx[cliente_id]["sucursales"].append({
                         "id": sid, "alias": alias, "nombre": nombre,
-                        "encargado": encargado, "direccion": direccion, "telefono": telefono
+                        "encargado": encargado, "direccion": direccion, "telefono": telefono, "ruc": ruc, "bodega": bodega
                     })
 
     return jsonify(list(idx.values()))
@@ -257,7 +265,8 @@ def api_actualizar_cliente(cliente_id):
                     usa_bodega_por_sucursal = %s,
                     alias_por_sucursal = %s,
                     alias_por_producto = %s,
-                    cantidad_alias_producto = %s
+                    cantidad_alias_producto = %s,
+                    ruc_por_sucursal = %s
                 WHERE id = %s
             """, (
                 nombre,
@@ -266,6 +275,7 @@ def api_actualizar_cliente(cliente_id):
                 data.get("alias_por_sucursal", False),
                 data.get("alias_por_producto", False),
                 data.get("cantidad_alias_producto", 1),
+                data.get("ruc_por_sucursal", False),
                 cliente_id
             ))
             
@@ -293,8 +303,11 @@ def api_sucursales_bulk():
             sucursal_id = c.get("sucursal_id")
             nombre      = (c.get("nombre") or "").strip()
             alias       = (c.get("alias") or "").strip() or None
+            encargado   = (c.get("encargado") or "").strip() or None
             direccion   = (c.get("direccion") or "").strip() or None
             telefono    = (c.get("telefono") or "").strip() or None
+            ruc         = (c.get("ruc") or "").strip() or None
+            bodega      = (c.get("bodega") or "").strip() or None
             borrar      = bool(c.get("borrar"))
 
             if borrar and sucursal_id:
@@ -309,16 +322,16 @@ def api_sucursales_bulk():
             if sucursal_id:
                 cur.execute("""
                     UPDATE sucursales
-                       SET nombre = %s, alias = %s, direccion = %s, telefono = %s
+                       SET nombre = %s, alias = %s, encargado = %s, direccion = %s, telefono = %s, ruc = %s, bodega = %s
                      WHERE id = %s;
-                """, (nombre, alias, direccion, telefono, sucursal_id))
+                """, (nombre, alias, encargado, direccion, telefono, ruc, bodega, sucursal_id))
                 resultados["actualizados"] += (cur.rowcount or 0)
             else:
                 cur.execute("""
-                    INSERT INTO sucursales (cliente_id, nombre, alias, direccion, telefono, activo)
-                    VALUES (%s, %s, %s, %s, %s, TRUE)
+                    INSERT INTO sucursales (cliente_id, nombre, alias, encargado, direccion, telefono, ruc, bodega, activo)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
                     RETURNING id;
-                """, (cliente_id, nombre, alias, direccion, telefono))
+                """, (cliente_id, nombre, alias, encargado, direccion, telefono, ruc, bodega))
                 nuevo_id = cur.fetchone()[0]
                 resultados["insertados"] += 1
 
@@ -990,6 +1003,36 @@ def api_subir_productos():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
 
+@app.route("/api/subir_sucursales", methods=["POST"])
+def api_subir_sucursales():
+    """
+    Recibe multipart/form-data:
+      - archivo: CSV o XLSX con columnas SAP, Alias, Encargado, Direccion, Telefono, RUC
+      - cliente_id: int (obligatorio)
+    """
+    f = request.files.get("archivo")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "No se adjuntó archivo."}), 400
+
+    try:
+        cliente_id = int(request.form.get("cliente_id") or "0")
+    except ValueError:
+        cliente_id = 0
+
+    if not cliente_id:
+        return jsonify({"ok": False, "error": "cliente_id inválido."}), 400
+
+    # Ejecutar en módulo separado
+    try:
+        resultado = subir.cargar_y_aplicar_mapeos_sucursales(
+            archivo_bytes=f.read(),
+            nombre_archivo=f.filename,
+            cliente_id=cliente_id
+        )
+        return jsonify({"ok": True, **resultado})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
 
 # ========= ENDPOINTS DE CONFIGURACIÓN =========
 
@@ -1075,7 +1118,7 @@ def api_sucursales_cliente(cliente_id: int):
     try:
         with db.obtener_conexion() as conn, conn.cursor() as cur:
             cur.execute("""
-                SELECT s.id, s.nombre, s.alias, s.direccion, s.telefono
+                SELECT s.id, s.nombre, s.alias, s.encargado, s.direccion, s.telefono
                 FROM sucursales s
                 WHERE s.cliente_id = %s AND s.activo = TRUE
                 ORDER BY upper(s.nombre);
@@ -1087,8 +1130,9 @@ def api_sucursales_cliente(cliente_id: int):
                     "id": row[0],
                     "nombre": row[1],
                     "alias": row[2],
-                    "direccion": row[3],
-                    "telefono": row[4]
+                    "encargado": row[3],
+                    "direccion": row[4],
+                    "telefono": row[5]
                 })
             
             return jsonify({"sucursales": sucursales})

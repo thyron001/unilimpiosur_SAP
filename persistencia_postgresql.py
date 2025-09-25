@@ -54,8 +54,8 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
     # Detectar errores en productos y sucursal
     tiene_errores = False
     
-    # Error si no se detectó sucursal
-    if not sucursal:
+    # Error si no se detectó sucursal o si contiene mensajes de error
+    if not sucursal or sucursal.strip() == "" or "SUCURSAL DESCONOCIDA" in sucursal or sucursal.strip().startswith("ERROR:"):
         tiene_errores = True
     
     # Error si algún producto no tiene SKU o bodega

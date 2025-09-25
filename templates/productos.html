@@ -18,11 +18,10 @@
             <!-- Header -->
             <div class="header">
                 <nav class="header-menu" aria-label="Secciones">
-                    <a class="menu-link" href="/pedidos">Pedidos</a>
+                    <a class="menu-link" href="/">Pedidos</a>
                     <a class="menu-link" href="/clientes">Clientes</a>
                     <a class="menu-link is-active"
                         href="/productos">Productos</a>
-                    <a class="menu-link" href="/reportes">Reportes</a>
                 </nav>
                 <div class="search-bar">
                     <input type="text" id="busquedaRapida"
@@ -43,9 +42,13 @@
                                     <span class='switch'></span>
                                 </label>
                             </div>
-                            <button id="btnSubirArchivos" class="chip"
-                                title="Subir CSV/Excel con SKU, nombre, bodega">⤴️
-                                Subir archivos</button>
+                        </div>
+                    </section>
+
+                    <section class="side-wrapper">
+                        <h3 class="side-title">Acciones</h3>
+                        <div class="side-menu">
+                            <button id="btnSubirArchivos" class="btn-editar-cliente" style="width: 100%; margin: 0;">📁 Subir productos</button>
                         </div>
                     </section>
                 </aside>
@@ -95,6 +98,23 @@
     .btn-mini:hover { filter: brightness(1.1); }
     .fila-nueva td { background: rgba(255,255,255,.03); }
     .subtitulo { color: var(--inactive-color); font-size: 13px; margin: 0 0 8px; }
+    
+    /* Estilos para el botón de editar cliente (igual que en clientes.html) */
+    .btn-editar-cliente {
+      appearance: none;
+      cursor: pointer;
+      border: 1px solid var(--border-color);
+      background: var(--hover-menu-bg);
+      color: var(--theme-color);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      transition: all 0.2s ease;
+    }
+    .btn-editar-cliente:hover {
+      filter: brightness(1.1);
+      background: rgba(102, 126, 234, 0.2);
+    }
   </style>
 
         <script>
@@ -191,6 +211,24 @@
             sp.classList.add("celda-editable");
             if(sp.classList.contains("sku"))    sp.setAttribute("list","dlSkus");
             if(sp.classList.contains("nombre")) sp.setAttribute("list","dlNombres");
+            if(sp.classList.contains("bodega")){
+              // Restringir a dígitos y longitud 2, y zfill al perder foco
+              sp.addEventListener("input", ()=>{
+                let t = sp.textContent.replace(/\D+/g, "");
+                if(t.length > 2) t = t.slice(0,2);
+                sp.textContent = t;
+                // mover cursor al final
+                const sel = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(sp);
+                range.collapse(false);
+                sel.removeAllRanges(); sel.addRange(range);
+              });
+              sp.addEventListener("blur", ()=>{
+                let t = (sp.textContent || "").trim();
+                if(t !== "") sp.textContent = t.padStart(2, "0");
+              });
+            }
             } else {
             sp.removeAttribute("contenteditable");
             sp.classList.remove("celda-editable");
@@ -237,10 +275,37 @@
             </td>
         `;
         tbody.insertBefore(tr, tbody.firstChild);
+        // Listeners de bodega 2 dígitos en fila nueva
+        const bodegaSpan = tr.querySelector(".bodega");
+        if(bodegaSpan){
+          bodegaSpan.addEventListener("input", ()=>{
+            let t = bodegaSpan.textContent.replace(/\D+/g, "");
+            if(t.length > 2) t = t.slice(0,2);
+            bodegaSpan.textContent = t;
+            const sel = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(bodegaSpan);
+            range.collapse(false);
+            sel.removeAllRanges(); sel.addRange(range);
+          });
+          bodegaSpan.addEventListener("blur", ()=>{
+            let t = (bodegaSpan.textContent || "").trim();
+            if(t !== "") bodegaSpan.textContent = t.padStart(2, "0");
+          });
+        }
         tr.querySelector(".btn-editar[data-accion='agregar']").addEventListener("click", ()=>{
-            const sku   = tr.querySelector(".sku").textContent.trim();
-            const nombre= tr.querySelector(".nombre").textContent.trim();
-            const bodega= tr.querySelector(".bodega").textContent.trim();
+            const skuSpan = tr.querySelector(".sku");
+            const nombreSpan = tr.querySelector(".nombre");
+            const bodegaSpan = tr.querySelector(".bodega");
+            
+            if (!skuSpan || !nombreSpan || !bodegaSpan) {
+                console.error("Error: No se encontraron elementos requeridos en la fila");
+                return;
+            }
+            
+            const sku   = skuSpan.textContent.trim();
+            const nombre= nombreSpan.textContent.trim();
+            const bodega= bodegaSpan.textContent.trim();
             
             // Recopilar alias
             const alias = {};
@@ -262,9 +327,14 @@
             }
             const nueva = construirFilaProducto({sku, nombre_producto:nombre, bodega, ...alias}, true, cantidadAlias);
             tr.before(nueva);
-            tr.querySelector(".sku").textContent = "";
-            tr.querySelector(".nombre").textContent = "";
-            tr.querySelector(".bodega").textContent = "";
+            const skuSpanClear = tr.querySelector(".sku");
+            const nombreSpanClear = tr.querySelector(".nombre");
+            const bodegaSpanClear = tr.querySelector(".bodega");
+            
+            if (skuSpanClear) skuSpanClear.textContent = "";
+            if (nombreSpanClear) nombreSpanClear.textContent = "";
+            if (bodegaSpanClear) bodegaSpanClear.textContent = "";
+            
             // Limpiar alias
             for(let i = 1; i <= cantidadAlias; i++) {
                 const aliasSpan = tr.querySelector(`.alias-${i}`);
@@ -502,9 +572,19 @@
             const cantidadAlias = Number(t.dataset.cantidadAlias) || 0;
             for(const tr of $$$("tbody tr", t)){
             if(tr.classList.contains("fila-nueva")) continue;
-            const sku    = tr.querySelector(".sku").textContent.trim();
-            const nombre = tr.querySelector(".nombre").textContent.trim();
-            const bodega = tr.querySelector(".bodega").textContent.trim();
+            
+            const skuSpan = tr.querySelector(".sku");
+            const nombreSpan = tr.querySelector(".nombre");
+            const bodegaSpan = tr.querySelector(".bodega");
+            
+            if (!skuSpan || !nombreSpan || !bodegaSpan) {
+                console.error("Error: No se encontraron elementos requeridos en la fila para recolectar cambios (por cliente)");
+                continue;
+            }
+            
+            const sku    = skuSpan.textContent.trim();
+            const nombre = nombreSpan.textContent.trim();
+            const bodega = bodegaSpan.textContent.trim();
             const borrar = tr.classList.contains("marcada-borrado");
             const mapeoId= tr.dataset.mapeoId ? Number(tr.dataset.mapeoId) : null;
             
@@ -530,9 +610,19 @@
             const cantidadAlias = Number(t.dataset.cantidadAlias) || 0;
             for(const tr of $$$("tbody tr", t)){
             if(tr.classList.contains("fila-nueva")) continue;
-            const sku    = tr.querySelector(".sku").textContent.trim();
-            const nombre = tr.querySelector(".nombre").textContent.trim();
-            const bodega = tr.querySelector(".bodega").textContent.trim();
+            
+            const skuSpan = tr.querySelector(".sku");
+            const nombreSpan = tr.querySelector(".nombre");
+            const bodegaSpan = tr.querySelector(".bodega");
+            
+            if (!skuSpan || !nombreSpan || !bodegaSpan) {
+                console.error("Error: No se encontraron elementos requeridos en la fila para recolectar cambios (por sucursal)");
+                continue;
+            }
+            
+            const sku    = skuSpan.textContent.trim();
+            const nombre = nombreSpan.textContent.trim();
+            const bodega = bodegaSpan.textContent.trim();
             const borrar = tr.classList.contains("marcada-borrado");
             const mapeoId= tr.dataset.mapeoId ? Number(tr.dataset.mapeoId) : null;
             
@@ -677,68 +767,109 @@
   </script>
 
         <!-- ================= Modal Subir Archivos ================= -->
-        <div id="modalSubir" class="modal-backdrop" style="display:none;">
-            <div class="modal-card">
-                <div class="modal-head">
-                    <strong>Subir productos (CSV / Excel)</strong>
-                    <button class="btn-mini" id="btnCerrarModal"
-                        aria-label="Cerrar">✖</button>
-                </div>
-
-                <div class="modal-body">
-                    <div class="campo">
-                        <label for="inputArchivo"><b>Archivo</b> (columnas:
-                            <code>SKU</code>, <code>nombre</code>,
-                            <code>bodega</code>)</label>
-                        <input id="inputArchivo" type="file"
-                            accept=".csv,.xlsx" />
-                        <small>Usa .csv (UTF-8) o .xlsx. Si vas a crear
-                            productos nuevos, <u>SKU es obligatorio</u>.</small>
+        <div id="modalSubir" class="glass-overlay hidden">
+            <div class="glass-modal" role="dialog" aria-modal="true" aria-labelledby="modalSubirTitle">
+                <div class="glass-modal-card">
+                    <div class="glass-modal-head">
+                        <h3 id="modalSubirTitle" class="mono">Subir productos (CSV / Excel)</h3>
+                        <button id="btnCerrarModal" class="btn-close" aria-label="Cerrar">✕</button>
                     </div>
 
-                    <div class="campo">
-                        <label for="selectCliente"><b>Cliente</b></label>
-                        <select id="selectCliente"></select>
-                        <small id="ayudaCliente" class="ayuda"></small>
+                    <div class="glass-modal-body">
+                        <div class="campo">
+                            <label for="selectCliente"><b>Cliente</b></label>
+                            <select id="selectCliente" class="glass-select"></select>
+                            <small id="ayudaCliente" class="ayuda"></small>
+                        </div>
+
+                        <div class="campo" id="bloqueSucursal" style="display:none;">
+                            <label for="selectSucursal"><b>Sucursal</b> (solo si el cliente usa bodega por sucursal)</label>
+                            <select id="selectSucursal" class="glass-select"></select>
+                        </div>
+
+                        <div class="campo">
+                            <label for="inputArchivo"><b>Archivo</b></label>
+                            <input id="inputArchivo" type="file" accept=".csv,.xlsx" class="glass-input" />
+                            <small id="mensajeColumnas" class="ayuda">Recuerde poner el nombre de las columnas de las siguientes maneras: SKU, Nombre, Alias1, Alias2, Alias3, Bodega</small>
+                            <small>Usa .csv (UTF-8) o .xlsx. Si vas a crear productos nuevos, <u>SKU es obligatorio</u>.</small>
+                        </div>
                     </div>
 
-                    <div class="campo" id="bloqueSucursal"
-                        style="display:none;">
-                        <label for="selectSucursal"><b>Sucursal</b> (solo si el
-                            cliente usa bodega por sucursal)</label>
-                        <select id="selectSucursal"></select>
+                    <div class="glass-modal-foot">
+                        <button id="btnSubirEjecutar" class="glass-btn glass-btn-primary">Subir y actualizar</button>
                     </div>
-                </div>
-
-                <div class="modal-foot">
-                    <button class="btn-mini" id="btnSubirEjecutar">Subir y
-                        actualizar</button>
                 </div>
             </div>
         </div>
 
         <style>
-            .modal-backdrop{
-            position: fixed; inset: 0; background: rgba(0,0,0,.45);
-            display: grid; place-items: center; z-index: 9999;
+            /* Estilos para el modal de subir archivos */
+            .campo { 
+                margin-bottom: 20px; 
             }
-            .modal-card{
-            width: min(720px, 96vw);
-            background: var(--content-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 14px;
-            box-shadow: 0 10px 30px rgba(0,0,0,.3);
-            padding: 12px 12px 14px;
+            .campo label { 
+                display: block; 
+                margin-bottom: 8px; 
+                font-weight: 500; 
+                color: rgba(255, 255, 255, 0.9);
             }
-            .modal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom: 10px; }
-            .modal-body{ display:grid; gap:12px; }
-            .modal-foot{ display:flex; justify-content:flex-end; margin-top: 6px; }
-            .campo label{ display:block; margin-bottom: 6px; }
-            .campo input[type="file"], .campo select{
-            width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border-color);
-            background: var(--hover-menu-bg); color: var(--theme-color);
+            .glass-select, .glass-input {
+                width: 100%; 
+                padding: 12px 16px; 
+                border: 1px solid rgba(255, 255, 255, 0.2); 
+                border-radius: 8px; 
+                background: rgba(255, 255, 255, 0.1); 
+                color: rgba(255, 255, 255, 0.9);
+                backdrop-filter: blur(10px);
+                font-size: 14px;
             }
-            .ayuda{ color: var(--inactive-color); }
+            .glass-select:focus, .glass-input:focus {
+                outline: none;
+                border-color: var(--theme-color);
+                box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.2);
+            }
+            .glass-select option {
+                background: rgba(30, 30, 30, 0.95);
+                color: rgba(255, 255, 255, 0.9);
+            }
+            .campo small { 
+                display: block; 
+                margin-top: 6px; 
+                color: rgba(255, 255, 255, 0.7); 
+                font-size: 12px;
+                line-height: 1.4;
+            }
+            .ayuda { 
+                color: var(--theme-color) !important; 
+            }
+            .glass-modal-foot {
+                display: flex; 
+                justify-content: flex-end; 
+                gap: 12px;
+                padding: 20px 24px; 
+                border-top: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            .glass-btn {
+                padding: 10px 20px; 
+                border: none; 
+                border-radius: 8px;
+                cursor: pointer;
+                font-weight: 500;
+                transition: all 0.2s ease;
+            }
+            .glass-btn-primary {
+                background: var(--theme-color); 
+                color: white;
+            }
+            .glass-btn-primary:hover { 
+                background: var(--theme-hover); 
+                transform: translateY(-1px);
+            }
+            .glass-btn:disabled { 
+                background: rgba(255, 255, 255, 0.2); 
+                cursor: not-allowed; 
+                transform: none;
+            }
         </style>
 
         <script>
@@ -753,6 +884,8 @@
         const bloqueSucursal   = document.getElementById("bloqueSucursal");
         const ayudaCliente     = document.getElementById("ayudaCliente");
         const btnSubirEjecutar = document.getElementById("btnSubirEjecutar");
+        const modalSubirTitle  = document.getElementById("modalSubirTitle");
+        const mensajeColumnas  = document.getElementById("mensajeColumnas");
 
         let cacheClientes = [];  // [{id, nombre, ruc, usa_bodega_por_sucursal, sucursales:[{id,nombre,...}]}]
         let mapaClientes  = {};  // id -> cliente
@@ -776,6 +909,7 @@
             actualizarUIClienteSeleccionado();
         }
 
+
         function actualizarUIClienteSeleccionado(){
             const id = Number(selectCliente.value);
             const cli = mapaClientes[id];
@@ -784,6 +918,9 @@
             ayudaCliente.textContent = cli.usa_bodega_por_sucursal
             ? "Este cliente usa asignación de bodega por sucursal. Debes elegir la sucursal."
             : "Este cliente usa asignación de bodega por cliente.";
+
+            // Actualizar mensaje de columnas según configuración de alias del cliente
+            actualizarMensajeColumnas(cli);
 
             if(cli.usa_bodega_por_sucursal){
             bloqueSucursal.style.display = "";
@@ -809,18 +946,34 @@
             }
         }
 
+        function actualizarMensajeColumnas(cliente) {
+            let columnas = ["SKU", "Nombre"];
+            
+            // Si el cliente tiene alias por producto activado
+            if (cliente.alias_por_producto && cliente.cantidad_alias_producto > 0) {
+                for (let i = 1; i <= cliente.cantidad_alias_producto; i++) {
+                    columnas.push(`Alias${i}`);
+                }
+            }
+            
+            columnas.push("Bodega");
+            
+            const mensaje = `Recuerde poner el nombre de las columnas de las siguientes maneras: ${columnas.join(", ")}`;
+            mensajeColumnas.textContent = mensaje;
+        }
+
         function abrirModal(){
-            modalSubir.style.display = "grid";
+            modalSubir.classList.remove("hidden");
             inputArchivo.value = "";
         }
         function cerrarModal(){
-            modalSubir.style.display = "none";
+            modalSubir.classList.add("hidden");
         }
 
         async function enviarArchivo(){
             const archivo = inputArchivo.files?.[0];
             if(!archivo){
-            alert("Selecciona un archivo CSV o XLSX con columnas: SKU, nombre, bodega.");
+            alert("Selecciona un archivo CSV o XLSX.");
             return;
             }
             const cliente_id = Number(selectCliente.value);
@@ -828,7 +981,10 @@
             alert("Selecciona un cliente.");
             return;
             }
+            
             const cli = mapaClientes[cliente_id];
+            
+            // Verificar sucursal si es necesario
             let sucursal_id = "";
             if(cli?.usa_bodega_por_sucursal){
             sucursal_id = selectSucursal.value || "";

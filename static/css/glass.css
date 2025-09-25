@@ -74,7 +74,7 @@ body {
 /* App container */
 .app {
   background-color: var(--theme-bg-color);
-  width: min(1400px, 100%);
+  width: min(1600px, 100%);
   height: min(90vh, 860px);
   display: flex;
   flex-direction: column;
@@ -386,7 +386,7 @@ body {
   
   .app {
     width: 100%;
-    min-width: 1200px; /* 240px sidebar + 960px mínimo para contenido con columnas fijas */
+    min-width: 1400px; /* 240px sidebar + 1160px mínimo para contenido con columnas fijas */
   }
 }
 

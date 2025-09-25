@@ -57,7 +57,7 @@ def _normalizar_bodega(bodega_val) -> str:
     """
     if bodega_val is None:
         return ""
-    return str(bodega_val).strip()
+    return str(bodega_val).strip().zfill(2)
 
 
 def _tomar_campo_item(item: dict, claves_posibles: list[str], default=None):
@@ -128,8 +128,8 @@ def generar_archivo_drf1(ruta_salida: str | Path,
     lineas: list[str] = []
 
     # Cabeceras EXACTAS (dos variantes)
-    cab1 = "ParentKey\tItemCode\tQuantity\tWarehouseCode\tShipToCode\tUseShpdGoodsAct"
-    cab2 = "DocNum\tItemCode\tQuantity\tWhsCode\tCogsOcrCo5\tUseShpdGd"
+    cab1 = "ParentKey\tItemCode\tPrice\tQuantity\tWarehouseCode\tShipToCode\tUseShpdGoodsAct"
+    cab2 = "DocNum\tItemCode\tPrice\tQuantity\tWhsCode\tCogsOcrCo5\tUseShpdGd"
     lineas.append(cab1)
     lineas.append(cab2)
 
@@ -156,6 +156,7 @@ def generar_archivo_drf1(ruta_salida: str | Path,
         fila = [
             str(docnum),          # DocNum / ParentKey
             sku,                  # ItemCode
+            "1",                 # Price (fijo 1)
             str(qty_num),         # Quantity
             whs,                  # WhsCode / WarehouseCode
             suc,                  # CogsOcrCo5 / ShipToCode
@@ -262,7 +263,8 @@ def main():
     filas_enriquecidas, suc, cliente_id = emparejar_filas_con_bd(
         filas,
         cliente_nombre=args.cliente,
-        sucursal_alias=resumen.get("sucursal")
+        sucursal_alias=resumen.get("sucursal"),
+        sucursal_ruc=resumen.get("ruc")
     )
     imprimir_filas_emparejadas(filas_enriquecidas)
 
@@ -279,12 +281,18 @@ def main():
     else:
         fecha_obj = datetime.now()
 
-    # Verificar si se encontró la sucursal por alias
+    # Verificar si se encontró la sucursal por alias o RUC
     sucursal_alias_pdf = resumen.get("sucursal")
-    if sucursal_alias_pdf and not suc:
-        # No se encontró coincidencia en el alias - marcar como error
-        print(f"❌ ERROR: No se encontró sucursal con alias '{sucursal_alias_pdf}' en la base de datos")
-        sucursal_txt = f"ERROR: Alias '{sucursal_alias_pdf}' no encontrado"
+    sucursal_ruc_pdf = resumen.get("ruc")
+    if (sucursal_alias_pdf or sucursal_ruc_pdf) and not suc:
+        # No se encontró coincidencia en el alias ni en el RUC - marcar como error
+        error_msg = []
+        if sucursal_alias_pdf:
+            error_msg.append(f"alias '{sucursal_alias_pdf}'")
+        if sucursal_ruc_pdf:
+            error_msg.append(f"RUC '{sucursal_ruc_pdf}'")
+        print(f"❌ ERROR: No se encontró sucursal con {' ni '.join(error_msg)} en la base de datos")
+        sucursal_txt = f"ERROR: {' ni '.join(error_msg)} no encontrado"
     else:
         # Si encontramos la sucursal en BD, usamos su NOMBRE de sistema; si no, el texto del PDF
         sucursal_txt = suc.get("nombre") if suc else "SUCURSAL DESCONOCIDA"

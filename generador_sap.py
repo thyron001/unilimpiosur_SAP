@@ -33,12 +33,15 @@ def obtener_pedidos_por_procesar() -> List[Dict[str, Any]]:
                 p.sucursal,
                 p.cliente_id,
                 p.sucursal_id,
-                c.ruc,
+                c.ruc as cliente_ruc,
+                c.ruc_por_sucursal,
                 c.nombre as cliente_nombre,
                 s.nombre as sucursal_nombre,
                 s.direccion,
                 s.telefono,
-                s.almacen
+                s.almacen,
+                s.ruc as sucursal_ruc,
+                s.bodega as sucursal_bodega
             FROM pedidos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
             LEFT JOIN sucursales s ON s.id = p.sucursal_id
@@ -55,12 +58,15 @@ def obtener_pedidos_por_procesar() -> List[Dict[str, Any]]:
                 "sucursal": row[3],
                 "cliente_id": row[4],
                 "sucursal_id": row[5],
-                "ruc": row[6],
-                "cliente_nombre": row[7],
-                "sucursal_nombre": row[8],
-                "direccion": row[9],
-                "telefono": row[10],
-                "almacen": row[11]
+                "cliente_ruc": row[6],
+                "ruc_por_sucursal": bool(row[7]),
+                "cliente_nombre": row[8],
+                "sucursal_nombre": row[9],
+                "direccion": row[10],
+                "telefono": row[11],
+                "almacen": row[12],
+                "sucursal_ruc": row[13],
+                "sucursal_bodega": row[14]
             })
         
         return pedidos
@@ -106,8 +112,14 @@ def generar_archivo_odrf(pedidos: List[Dict[str, Any]], ruta_salida: str | Path)
         
         # Escribir datos de cada pedido
         for pedido in pedidos:
-            # Formatear RUC como CLXXXXXXXXXXXXX
-            ruc = pedido.get("ruc", "")
+            # Formatear RUC como CLXXXXXXXXXXXXX (cliente o sucursal según configuración)
+            ruc_fuente = pedido.get("cliente_ruc", "")
+            if pedido.get("ruc_por_sucursal"):
+                ruc_suc = pedido.get("sucursal_ruc") or ""
+                if ruc_suc:
+                    ruc_fuente = ruc_suc
+            ruc = ruc_fuente
+            
             if ruc and not ruc.startswith("CL"):
                 # Limpiar RUC de espacios y caracteres especiales
                 ruc_limpio = ''.join(filter(str.isdigit, str(ruc)))
@@ -124,8 +136,8 @@ def generar_archivo_odrf(pedidos: List[Dict[str, Any]], ruta_salida: str | Path)
             # Sucursal (ShipToCode)
             ship_to_code = pedido.get("sucursal_nombre") or pedido.get("sucursal") or ""
             
-            # Almacén (U_EXX_ALMACEN)
-            almacen = pedido.get("almacen") or "5"  # Default almacén 5
+            # Almacén (U_EXX_ALMACEN) - usar bodega de sucursal si está disponible
+            almacen = pedido.get("sucursal_bodega") or pedido.get("almacen") or "5"  # Default almacén 5
             
             # Comments: dirección y teléfono separados por espacio
             direccion = pedido.get("direccion") or ""
@@ -152,8 +164,8 @@ def generar_archivo_drf1(pedidos: List[Dict[str, Any]], ruta_salida: str | Path)
     
     with open(ruta_salida, 'w', encoding='utf-8') as f:
         # Escribir ambos encabezados como en DRF1 FINAL.txt
-        f.write("ParentKey\tItemCode\tQuantity\tWarehouseCode\tShipToCode\n")
-        f.write("DocNum\tItemCode\tQuantity\tWhsCode\tCogsOcrCo5\n")
+        f.write("ParentKey\tItemCode\tPrice\tQuantity\tWarehouseCode\tShipToCode\n")
+        f.write("DocNum\tItemCode\tPrice\tQuantity\tWhsCode\tCogsOcrCo5\n")
         
         # Escribir datos de cada item de cada pedido
         for pedido in pedidos:
@@ -169,8 +181,9 @@ def generar_archivo_drf1(pedidos: List[Dict[str, Any]], ruta_salida: str | Path)
                 # Escribir línea (sin UseShpdGd ya que no está en los encabezados)
                 f.write(f"{pedido['numero_pedido']}\t")  # DocNum
                 f.write(f"{item['sku'] or ''}\t")        # ItemCode
+                f.write("1\t")                           # Price (fijo 1)
                 f.write(f"{item['cantidad'] or 0}\t")    # Quantity
-                f.write(f"{whs_code}\t")                 # WhsCode
+                f.write(f"{str(whs_code).zfill(2)}\t")   # WhsCode (2 dígitos)
                 f.write(f"{cogs_ocr_co5}\n")             # CogsOcrCo5
 
 def actualizar_estado_pedidos(pedido_ids: List[int], nuevo_estado: str) -> None:
@@ -189,7 +202,7 @@ def actualizar_estado_pedidos(pedido_ids: List[int], nuevo_estado: str) -> None:
         print(f"✅ Actualizados {cur.rowcount} pedidos a estado '{nuevo_estado}'")
 
 def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
-    """Obtiene pedidos específicos por sus IDs con sus datos completos"""
+    """Obtiene pedidos específicos por sus IDs con sus datos completos, SOLO si están en estado 'por_procesar'"""
     if not pedidos_ids:
         return []
     
@@ -203,16 +216,19 @@ def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
                 p.sucursal,
                 p.cliente_id,
                 p.sucursal_id,
-                c.ruc,
+                c.ruc as cliente_ruc,
+                c.ruc_por_sucursal,
                 c.nombre as cliente_nombre,
                 s.nombre as sucursal_nombre,
                 s.direccion,
                 s.telefono,
-                s.almacen
+                s.almacen,
+                s.ruc as sucursal_ruc,
+                s.bodega as sucursal_bodega
             FROM pedidos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
             LEFT JOIN sucursales s ON s.id = p.sucursal_id
-            WHERE p.id IN ({placeholders})
+            WHERE p.id IN ({placeholders}) AND p.estado = 'por_procesar'
             ORDER BY p.numero_pedido;
         """, pedidos_ids)
         
@@ -225,12 +241,15 @@ def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
                 "sucursal": row[3],
                 "cliente_id": row[4],
                 "sucursal_id": row[5],
-                "ruc": row[6],
-                "cliente_nombre": row[7],
-                "sucursal_nombre": row[8],
-                "direccion": row[9],
-                "telefono": row[10],
-                "almacen": row[11]
+                "cliente_ruc": row[6],
+                "ruc_por_sucursal": bool(row[7]),
+                "cliente_nombre": row[8],
+                "sucursal_nombre": row[9],
+                "direccion": row[10],
+                "telefono": row[11],
+                "almacen": row[12],
+                "sucursal_ruc": row[13],
+                "sucursal_bodega": row[14]
             })
         
         return pedidos
@@ -293,7 +312,22 @@ def generar_archivos_sap_por_ids(pedidos_ids: List[int], carpeta_salida: str | P
     pedidos = obtener_pedidos_por_ids(pedidos_ids)
     
     if not pedidos:
-        print("⚠️ No se encontraron pedidos con los IDs especificados")
+        print("⚠️ No se encontraron pedidos en estado 'por_procesar' con los IDs especificados")
+        # Verificar si hay pedidos con errores en la lista
+        with obtener_conexion() as conn, conn.cursor() as cur:
+            placeholders = ','.join(['%s'] * len(pedidos_ids))
+            cur.execute(f"""
+                SELECT id, numero_pedido, estado FROM pedidos 
+                WHERE id IN ({placeholders}) AND estado = 'con_errores'
+            """, pedidos_ids)
+            pedidos_con_errores = cur.fetchall()
+            
+            if pedidos_con_errores:
+                print(f"⚠️ Se encontraron {len(pedidos_con_errores)} pedidos con errores que no se pueden procesar:")
+                for pedido_id, numero_pedido, estado in pedidos_con_errores:
+                    print(f"   → Pedido #{numero_pedido} (ID: {pedido_id}) - Estado: {estado}")
+                print("   → Estos pedidos deben ser corregidos antes de poder generar archivos SAP")
+        
         return None, None
     
     print(f"📋 Generando archivos SAP para {len(pedidos)} pedidos seleccionados...")
@@ -306,13 +340,14 @@ def generar_archivos_sap_por_ids(pedidos_ids: List[int], carpeta_salida: str | P
     generar_archivo_odrf(pedidos, odrf_path)
     generar_archivo_drf1(pedidos, drf1_path)
     
-    # Actualizar estado de pedidos a 'procesado'
-    actualizar_estado_pedidos(pedidos_ids, "procesado")
+    # Actualizar estado de pedidos a 'procesado' - SOLO los que realmente se procesaron
+    pedidos_procesados_ids = [p["id"] for p in pedidos]
+    actualizar_estado_pedidos(pedidos_procesados_ids, "procesado")
     
     print(f"✅ Archivos SAP generados:")
     print(f"   → ODRF: {odrf_path}")
     print(f"   → DRF1: {drf1_path}")
-    print(f"   → {len(pedidos)} pedidos marcados como 'procesado'")
+    print(f"   → {len(pedidos)} de {len(pedidos_ids)} pedidos procesados (solo los que estaban en estado 'por_procesar')")
     
     return str(odrf_path), str(drf1_path)
 
