@@ -4,6 +4,10 @@ import os
 from datetime import datetime
 from decimal import Decimal
 
+# Cargar variables de entorno desde .env
+from dotenv import load_dotenv
+load_dotenv()
+
 import psycopg
 from threading import Thread
 from flask import Flask, render_template, jsonify, abort
@@ -768,16 +772,30 @@ def api_generar_sap():
 def api_detalle_pedido(pedido_id: int):
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT p.numero_pedido, p.fecha, p.sucursal, p.cliente_id, c.nombre as cliente_nombre
+            SELECT 
+                p.numero_pedido, 
+                p.fecha, 
+                p.sucursal, 
+                p.cliente_id, 
+                p.sucursal_id,
+                p.comentario,
+                c.nombre as cliente_nombre,
+                c.ruc as cliente_ruc,
+                s.nombre as sucursal_nombre,
+                s.encargado,
+                s.bodega,
+                s.ruc as sucursal_ruc
             FROM pedidos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
+            LEFT JOIN sucursales s ON s.id = p.sucursal_id
             WHERE p.id = %s;
         """, (pedido_id,))
         row = cur.fetchone()
         if not row:
             return abort(404)
 
-        (numero_pedido, fecha, sucursal, cliente_id, cliente_nombre) = row
+        (numero_pedido, fecha, sucursal, cliente_id, sucursal_id, comentario, 
+         cliente_nombre, cliente_ruc, sucursal_nombre, encargado, bodega, sucursal_ruc) = row
 
         cur.execute("""
             SELECT descripcion, sku, bodega, cantidad
@@ -808,6 +826,12 @@ def api_detalle_pedido(pedido_id: int):
         "tiene_error_sucursal": tiene_error_sucursal,
         "cliente_id": cliente_id,
         "cliente_nombre": cliente_nombre,
+        "sucursal_id": sucursal_id,
+        "comentario": comentario,
+        "cliente_ruc": cliente_ruc,
+        "sucursal_ruc": sucursal_ruc,
+        "encargado": encargado,
+        "bodega": bodega,
         "items": items
     })
 
@@ -841,29 +865,78 @@ def api_verificar_pedido(pedido_id: int):
             tiene_error_sucursal = not sucursal_actual or sucursal_actual.strip() == "" or sucursal_actual.strip().startswith("ERROR:")
             
             # Validar y actualizar sucursal solo si hay error de sucursal
+            sucursal_id_actualizado = None
             if tiene_error_sucursal:
                 if not sucursal:
                     return jsonify({"exito": False, "error": "La sucursal es requerida"}), 400
                 
-                # Actualizar sucursal del pedido
+                # Obtener el cliente_id del pedido para buscar la sucursal correcta
+                cur.execute("""
+                    SELECT cliente_id FROM pedidos WHERE id = %s;
+                """, (pedido_id,))
+                cliente_id = cur.fetchone()[0]
+                
+                # Buscar la sucursal por nombre en las sucursales del cliente
+                cur.execute("""
+                    SELECT id, nombre, encargado, direccion, telefono, ruc, bodega
+                    FROM sucursales 
+                    WHERE cliente_id = %s AND activo = TRUE 
+                    AND (nombre = %s OR alias = %s)
+                    LIMIT 1;
+                """, (cliente_id, sucursal, sucursal))
+                
+                sucursal_data = cur.fetchone()
+                if not sucursal_data:
+                    return jsonify({"exito": False, "error": f"No se encontró la sucursal '{sucursal}' para este cliente"}), 400
+                
+                sucursal_id_actualizado, nombre_sucursal, encargado, direccion, telefono, ruc, bodega = sucursal_data
+                
+                # Actualizar pedido con todos los datos de la sucursal
                 cur.execute("""
                     UPDATE pedidos 
-                    SET sucursal = %s 
+                    SET sucursal = %s, sucursal_id = %s
                     WHERE id = %s;
-                """, (sucursal, pedido_id))
+                """, (nombre_sucursal, sucursal_id_actualizado, pedido_id))
+                
+                # Actualizar el comentario del pedido con los datos completos de la sucursal
+                cur.execute("""
+                    SELECT comentario FROM pedidos WHERE id = %s;
+                """, (pedido_id,))
+                comentario_actual = cur.fetchone()[0] or ""
+                
+                # Si el comentario tiene placeholders, actualizarlos
+                if "[ENCARGADO_SUCURSAL]" in comentario_actual:
+                    comentario_actualizado = comentario_actual.replace("[ENCARGADO_SUCURSAL]", encargado or "Sin encargado")
+                    cur.execute("""
+                        UPDATE pedidos 
+                        SET comentario = %s 
+                        WHERE id = %s;
+                    """, (comentario_actualizado, pedido_id))
+                elif "Sin sucursal" in comentario_actual:
+                    # También actualizar si el comentario dice "Sin sucursal"
+                    comentario_actualizado = comentario_actual.replace("Sin sucursal", encargado or "Sin encargado")
+                    cur.execute("""
+                        UPDATE pedidos 
+                        SET comentario = %s 
+                        WHERE id = %s;
+                    """, (comentario_actualizado, pedido_id))
+                
+                print(f"✅ Pedido {pedido_id} actualizado con sucursal: {nombre_sucursal} (ID: {sucursal_id_actualizado})")
+                print(f"   Encargado: {encargado}, Bodega: {bodega}, RUC: {ruc}")
+                
             else:
                 # Si no hay error de sucursal, usar la sucursal actual
                 sucursal = sucursal_actual
+                # Obtener el sucursal_id actual
+                cur.execute("""
+                    SELECT sucursal_id FROM pedidos WHERE id = %s;
+                """, (pedido_id,))
+                sucursal_id_actualizado = cur.fetchone()[0]
             
             # Actualizar items si se proporcionaron
             if items_actualizados:
-                # Obtener información del pedido (cliente_id y sucursal_id)
-                cur.execute("""
-                    SELECT cliente_id, sucursal_id FROM pedidos WHERE id = %s;
-                """, (pedido_id,))
-                pedido_info = cur.fetchone()
-                cliente_id = pedido_info[0] if pedido_info else None
-                sucursal_id = pedido_info[1] if pedido_info else None
+                # Usar el sucursal_id actualizado (ya obtenido arriba)
+                sucursal_id = sucursal_id_actualizado
                 
                 # Obtener todos los items del pedido ordenados por ID
                 cur.execute("""
@@ -1118,7 +1191,7 @@ def api_sucursales_cliente(cliente_id: int):
     try:
         with db.obtener_conexion() as conn, conn.cursor() as cur:
             cur.execute("""
-                SELECT s.id, s.nombre, s.alias, s.encargado, s.direccion, s.telefono
+                SELECT s.id, s.nombre, s.alias, s.encargado, s.direccion, s.telefono, s.ruc, s.bodega
                 FROM sucursales s
                 WHERE s.cliente_id = %s AND s.activo = TRUE
                 ORDER BY upper(s.nombre);
@@ -1132,7 +1205,9 @@ def api_sucursales_cliente(cliente_id: int):
                     "alias": row[2],
                     "encargado": row[3],
                     "direccion": row[4],
-                    "telefono": row[5]
+                    "telefono": row[5],
+                    "ruc": row[6],
+                    "bodega": row[7]
                 })
             
             return jsonify({"sucursales": sucursales})

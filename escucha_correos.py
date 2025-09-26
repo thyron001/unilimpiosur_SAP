@@ -12,6 +12,10 @@ from imapclient import IMAPClient
 from email import message_from_bytes
 from email.header import decode_header, make_header
 
+# Cargar variables de entorno desde .env
+from dotenv import load_dotenv
+load_dotenv()
+
 # --- módulos del proyecto ---
 from procesamiento_pedidos import (
     extraer_filas_pdf,
@@ -30,6 +34,7 @@ IMAP_CLAVE      = os.getenv("IMAP_PASS")
 IMAP_BUZON      = os.getenv("IMAP_MAILBOX", "INBOX")
 TIEMPO_IDLE     = int(os.getenv("IMAP_IDLE_SECS", "1740"))  # 29 min por defecto
 DEFAULT_CLIENTE = os.getenv("DEFAULT_CLIENTE", "Roldan")    # cliente por defecto para bodegas/emparejado
+REMITENTE_PERMITIDO = os.getenv("REMITENTE_PERMITIDO", "tyminobra@outlook.es")  # solo procesar correos de este remitente
 
 # ---------- Utilidades ----------
 def decodificar(valor):
@@ -92,14 +97,25 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
 
         # Remitente formateado
         remitente = ""
+        correo_remitente = ""
         if sobre.from_:
             frm = sobre.from_[0]
             nombre = (frm.name or b"").decode(errors="ignore") if isinstance(frm.name, bytes) else (frm.name or "")
             buzon = (frm.mailbox or b"").decode(errors="ignore")
             host = (frm.host or b"").decode(errors="ignore")
             nombre_limpio = decodificar(nombre).strip()
-            correo = f"{buzon}@{host}" if buzon and host else ""
-            remitente = (f"{nombre_limpio} <{correo}>" if nombre_limpio else correo) or "(desconocido)"
+            correo_remitente = f"{buzon}@{host}" if buzon and host else ""
+            remitente = (f"{nombre_limpio} <{correo_remitente}>" if nombre_limpio else correo_remitente) or "(desconocido)"
+
+        # Validar que el remitente sea el permitido
+        if correo_remitente.lower() != REMITENTE_PERMITIDO.lower():
+            print(f"🚫 Correo UID {uid} ignorado: remitente '{correo_remitente}' no está en la lista de permitidos")
+            # Marcar como leído para no procesarlo de nuevo
+            try:
+                cliente.set_flags([uid], [b"\\Seen"])
+            except Exception as e:
+                print(f"⚠️  No se pudo marcar el correo UID {uid} como leído: {e}")
+            continue
 
         nombre_pdf, bytes_pdf = extraer_primer_pdf(crudo)
 
@@ -111,6 +127,7 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
         }
 
         if bytes_pdf:
+            print(f"✅ Correo UID {uid} de remitente autorizado '{correo_remitente}' - procesando PDF")
             try:
                 al_encontrar_pdf(meta, nombre_pdf or "adjunto.pdf", bytes_pdf)
                 # Marcar el correo como leído después del procesamiento exitoso
@@ -121,6 +138,13 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
                     print(f"⚠️  No se pudo marcar el correo UID {uid} como leído: {e}")
             except Exception as err_cb:
                 print(f"⚠️  Error en callback al_encontrar_pdf: {err_cb}")
+        else:
+            print(f"⚠️  Correo UID {uid} de remitente autorizado '{correo_remitente}' pero sin PDF adjunto")
+            # Marcar como leído aunque no tenga PDF
+            try:
+                cliente.set_flags([uid], [b"\\Seen"])
+            except Exception as e:
+                print(f"⚠️  No se pudo marcar el correo UID {uid} como leído: {e}")
 
     return max(ultimo_uid, max(nuevos_uids))
 

@@ -204,6 +204,8 @@ def extraer_sucursal(pdf_en_bytes: bytes) -> Dict[str, Any]:
       {
         "sucursal": "texto que viene en PDF (Solicita: …) sin fechas",
         "ruc": "RUC extraído del PDF si se encuentra",
+        "orden_compra": "número de orden de compra del título del PDF",
+        "responsable": "nombre del responsable extraído del PDF"
       }
     """
     texto = _texto_completo(pdf_en_bytes)
@@ -239,9 +241,45 @@ def extraer_sucursal(pdf_en_bytes: bytes) -> Dict[str, Any]:
             if ruc:
                 break
 
+    # Extraer orden de compra del título del PDF
+    orden_compra = None
+    # Buscar patrones como "ORDEN DE COMPRA OS-0-0-4887" o similares
+    orden_patterns = [
+        r'ORDEN\s+DE\s+COMPRA\s+([A-Z0-9\-]+)',  # ORDEN DE COMPRA OS-0-0-4887
+        r'ORDEN\s+DE\s+PEDIDO\s+([A-Z0-9\-]+)',  # ORDEN DE PEDIDO OS-0-0-4887
+        r'PEDIDO\s+([A-Z0-9\-]+)',  # PEDIDO OS-0-0-4887
+        r'OC\s+([A-Z0-9\-]+)',  # OC OS-0-0-4887
+    ]
+    
+    for pattern in orden_patterns:
+        matches = re.findall(pattern, texto, re.IGNORECASE)
+        if matches:
+            orden_compra = matches[0].strip()
+            break
+
+    # Extraer responsable del PDF
+    responsable = None
+    # Buscar patrones como "Solicita:", "Aprueba:", "Recibe:", "Analiza:"
+    responsable_patterns = [
+        r'Solicita[:\s]+([^\\n]+)',
+        r'Aprueba[:\s]+([^\\n]+)',
+        r'Recibe[:\s]+([^\\n]+)',
+        r'Analiza[:\s]+([^\\n]+)',
+    ]
+    
+    for pattern in responsable_patterns:
+        matches = re.findall(pattern, texto, re.IGNORECASE)
+        if matches:
+            responsable = matches[0].strip()
+            # Limpiar fechas al final del nombre del responsable
+            responsable = _limpiar_fecha_sucursal(responsable)
+            break
+
     return {
         "sucursal": sucursal,
         "ruc": ruc,
+        "orden_compra": orden_compra,
+        "responsable": responsable,
     }
 
 def imprimir_resumen_pedido(res: Dict[str, Any]) -> None:
@@ -249,6 +287,8 @@ def imprimir_resumen_pedido(res: Dict[str, Any]) -> None:
     print("\nResumen del pedido (extraído del PDF):")
     print(f"  Sucursal:        {res.get('sucursal') or '-'}")
     print(f"  RUC:             {res.get('ruc') or '-'}")
+    print(f"  Orden de Compra: {res.get('orden_compra') or '-'}")
+    print(f"  Responsable:     {res.get('responsable') or '-'}")
     print()
 
 # ==============================

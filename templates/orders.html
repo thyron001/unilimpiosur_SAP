@@ -206,6 +206,10 @@ Sección 2: CSS  (static/css/glass.css)
           <div><strong>Cliente:</strong> <span id="m-cliente">-</span></div>
           <div><strong>Sucursal:</strong> <span id="m-sucursal">-</span></div>
           <div><strong>Fecha:</strong> <span id="m-fecha">-</span></div>
+          <div><strong>RUC:</strong> <span id="m-ruc">-</span></div>
+          <div><strong>Encargado:</strong> <span id="m-encargado">-</span></div>
+          <div><strong>Bodega:</strong> <span id="m-bodega">-</span></div>
+          <div><strong>Comentarios:</strong> <span id="m-comentarios">-</span></div>
         </div>
 
         <div class="glass-modal-body">
@@ -238,6 +242,37 @@ Sección 2: CSS  (static/css/glass.css)
       </div>
     </div>
 
+    <!-- Modal de Selección de Sucursales -->
+    <div id="modalSucursalesOverlay" class="glass-overlay hidden"></div>
+    
+    <div id="modalSucursales" class="glass-modal hidden" role="dialog"
+      aria-modal="true" aria-labelledby="modalSucursalesTitle">
+      <div class="glass-modal-card">
+        <div class="glass-modal-head">
+          <h3 id="modalSucursalesTitle" class="mono">Seleccionar Sucursal</h3>
+          <button id="modalSucursalesCerrar" class="btn-close" aria-label="Cerrar">✕</button>
+        </div>
+        
+        <div class="glass-modal-sub">
+          <div class="sucursales-container">
+            <div class="sucursales-header">
+              <p>Selecciona la sucursal correcta para este pedido:</p>
+            </div>
+            <div id="sucursales-lista" class="sucursales-lista">
+              <!-- Las sucursales se cargarán aquí dinámicamente -->
+            </div>
+            <div class="sucursales-actions">
+              <button id="btn-cancelar-sucursal" class="glass-btn glass-btn-secondary">
+                Cancelar
+              </button>
+              <button id="btn-confirmar-sucursal" class="glass-btn glass-btn-primary" disabled>
+                Confirmar Selección
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <style>
     /* Estilos para configuración */
@@ -951,6 +986,140 @@ Sección 2: CSS  (static/css/glass.css)
       background: rgba(102, 126, 234, 0.6);
       border-color: #667eea;
     }
+
+    /* Estilos para botón de seleccionar sucursal */
+    .btn-seleccionar-sucursal {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+
+    .btn-seleccionar-sucursal:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-seleccionar-sucursal.error {
+      background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+      box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+    }
+
+    .btn-seleccionar-sucursal.error:hover {
+      box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+    }
+
+    /* Estilos para modal de sucursales */
+    .sucursales-container {
+      padding: 20px;
+    }
+
+    .sucursales-header {
+      margin-bottom: 20px;
+    }
+
+    .sucursales-header p {
+      color: #e2e8f0;
+      font-size: 16px;
+      margin: 0;
+    }
+
+    .sucursales-lista {
+      max-height: 400px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .sucursal-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .sucursal-item:last-child {
+      border-bottom: none;
+    }
+
+    .sucursal-item:hover {
+      background: rgba(102, 126, 234, 0.1);
+    }
+
+    .sucursal-item.selected {
+      background: rgba(102, 126, 234, 0.2);
+      border-left: 4px solid #667eea;
+    }
+
+    .sucursal-nombre {
+      font-weight: 500;
+      color: #e2e8f0;
+      font-size: 14px;
+    }
+
+    .sucursal-alias {
+      color: #94a3b8;
+      font-size: 12px;
+    }
+
+    .sucursal-encargado {
+      color: #64748b;
+      font-size: 12px;
+    }
+
+    .sucursales-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .glass-btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .glass-btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+
+    .glass-btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .glass-btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .glass-btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .glass-btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
     </style>
 
     <script>
@@ -985,6 +1154,27 @@ Sección 2: CSS  (static/css/glass.css)
       overlay.addEventListener("click", cerrarModal);
       btnX.addEventListener("click", cerrarModal);
       window.addEventListener("keydown", (e)=>{ if(e.key==="Escape") cerrarModal(); });
+
+      // Event listeners para el modal de sucursales
+      const modalSucursalesOverlay = $$("#modalSucursalesOverlay");
+      const modalSucursalesCerrar = $$("#modalSucursalesCerrar");
+      const btnCancelarSucursal = $$("#btn-cancelar-sucursal");
+      const btnConfirmarSucursal = $$("#btn-confirmar-sucursal");
+
+      modalSucursalesOverlay.addEventListener("click", cerrarModalSucursales);
+      modalSucursalesCerrar.addEventListener("click", cerrarModalSucursales);
+      btnCancelarSucursal.addEventListener("click", cerrarModalSucursales);
+      btnConfirmarSucursal.addEventListener("click", confirmarSeleccionSucursal);
+      
+      // Cerrar modal con Escape
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          const modalSucursales = $$("#modalSucursales");
+          if (!modalSucursales.classList.contains("hidden")) {
+            cerrarModalSucursales();
+          }
+        }
+      });
 
       async function cargarDetalle(pedidoId){
         const resp = await fetch(`/api/pedidos/${pedidoId}`);
@@ -1028,7 +1218,160 @@ Sección 2: CSS  (static/css/glass.css)
         }
       }
 
+      // Variables globales para el modal de sucursales
+      let sucursalSeleccionada = null;
+      let clienteIdActual = null;
+
+      // Función para abrir el modal de sucursales
+      window.abrirModalSucursales = async function(clienteId, sucursalActual) {
+        clienteIdActual = clienteId;
+        sucursalSeleccionada = null;
+        
+        const modal = $$("#modalSucursales");
+        const overlay = $$("#modalSucursalesOverlay");
+        const lista = $$("#sucursales-lista");
+        const btnConfirmar = $$("#btn-confirmar-sucursal");
+        
+        // Limpiar lista anterior
+        lista.innerHTML = "";
+        btnConfirmar.disabled = true;
+        
+        // Mostrar modal
+        overlay.classList.remove("hidden");
+        modal.classList.remove("hidden");
+        
+        try {
+          // Cargar sucursales del cliente
+          const resp = await fetch(`/api/sucursales/cliente/${clienteId}`);
+          if (!resp.ok) throw new Error("No se pudieron cargar las sucursales");
+          
+          const data = await resp.json();
+          const sucursales = data.sucursales || [];
+          
+          if (sucursales.length === 0) {
+            lista.innerHTML = '<div class="sucursal-item" style="text-align: center; color: #94a3b8;">No hay sucursales disponibles para este cliente</div>';
+            return;
+          }
+          
+          // Crear elementos de sucursales
+          sucursales.forEach(sucursal => {
+            const item = document.createElement("div");
+            item.className = "sucursal-item";
+            item.dataset.sucursalId = sucursal.id;
+            item.dataset.sucursalNombre = sucursal.nombre;
+            
+            // Marcar como seleccionado si coincide con la sucursal actual
+            if (sucursalActual && (sucursal.nombre === sucursalActual || sucursal.alias === sucursalActual)) {
+              item.classList.add("selected");
+              sucursalSeleccionada = sucursal;
+              btnConfirmar.disabled = false;
+            }
+            
+            item.innerHTML = `
+              <div class="sucursal-nombre">${sucursal.nombre}</div>
+              ${sucursal.alias ? `<div class="sucursal-alias">Alias: ${sucursal.alias}</div>` : ''}
+              ${sucursal.encargado ? `<div class="sucursal-encargado">Encargado: ${sucursal.encargado}</div>` : ''}
+            `;
+            
+            item.onclick = () => seleccionarSucursal(item, sucursal);
+            lista.appendChild(item);
+          });
+          
+        } catch (error) {
+          console.error("Error cargando sucursales:", error);
+          lista.innerHTML = '<div class="sucursal-item" style="text-align: center; color: #ff6b6b;">Error al cargar las sucursales</div>';
+        }
+      }
+
+      // Función para seleccionar una sucursal
+      function seleccionarSucursal(elemento, sucursal) {
+        // Remover selección anterior
+        const items = $$$(".sucursal-item");
+        items.forEach(item => item.classList.remove("selected"));
+        
+        // Seleccionar nuevo elemento
+        elemento.classList.add("selected");
+        sucursalSeleccionada = sucursal;
+        
+        // Habilitar botón de confirmar
+        $$("#btn-confirmar-sucursal").disabled = false;
+      }
+
+      // Función para cerrar el modal de sucursales
+      function cerrarModalSucursales() {
+        const modal = $$("#modalSucursales");
+        const overlay = $$("#modalSucursalesOverlay");
+        
+        overlay.classList.add("hidden");
+        modal.classList.add("hidden");
+        
+        sucursalSeleccionada = null;
+        clienteIdActual = null;
+      }
+
+      // Función para confirmar la selección de sucursal
+      function confirmarSeleccionSucursal() {
+        if (!sucursalSeleccionada) {
+          alert("Por favor selecciona una sucursal");
+          return;
+        }
+        
+        // Actualizar el botón en el modal principal
+        const sucursalElement = $$("#m-sucursal");
+        const botonSucursal = sucursalElement.querySelector(".btn-seleccionar-sucursal");
+        
+        if (botonSucursal) {
+          botonSucursal.textContent = sucursalSeleccionada.nombre;
+          botonSucursal.dataset.sucursalSeleccionada = sucursalSeleccionada.nombre;
+          botonSucursal.dataset.sucursalId = sucursalSeleccionada.id;
+          botonSucursal.classList.remove("error");
+          botonSucursal.style.background = "linear-gradient(135deg, #10b981 0%, #059669 100%)";
+        }
+        
+        // Actualizar los datos del popup inmediatamente
+        actualizarDatosPopupConSucursal(sucursalSeleccionada);
+        
+        cerrarModalSucursales();
+      }
+      
+      // Función para actualizar los datos del popup con la sucursal seleccionada
+      function actualizarDatosPopupConSucursal(sucursal) {
+        // Actualizar RUC (priorizar sucursal, sino cliente)
+        const rucSucursal = sucursal.ruc || "No asignado";
+        const rucCliente = window.pedidoActualData?.cliente_ruc || "No asignado";
+        const ruc = rucSucursal !== "No asignado" ? rucSucursal : rucCliente;
+        $$("#m-ruc").textContent = ruc;
+        
+        // Actualizar encargado
+        const encargado = sucursal.encargado || "No asignado";
+        $$("#m-encargado").textContent = encargado;
+        
+        // Actualizar bodega
+        const bodega = sucursal.bodega || "No asignado";
+        $$("#m-bodega").textContent = bodega;
+        
+        // Actualizar comentario (reemplazar placeholder del encargado si existe)
+        const comentarioActual = $$("#m-comentarios").textContent;
+        let comentarioActualizado = comentarioActual;
+        
+        if (comentarioActual.includes("[ENCARGADO_SUCURSAL]")) {
+          comentarioActualizado = comentarioActual.replace("[ENCARGADO_SUCURSAL]", encargado);
+        } else if (comentarioActual.includes("Sin sucursal")) {
+          comentarioActualizado = comentarioActual.replace("Sin sucursal", encargado);
+        }
+        
+        $$("#m-comentarios").textContent = comentarioActualizado;
+        
+        // Actualizar el nombre de la sucursal en el popup
+        $$("#m-sucursal").textContent = sucursal.nombre;
+        
+        console.log("✅ Datos del popup actualizados con la sucursal seleccionada");
+      }
+
       function renderDetalle(data){
+        // Guardar los datos del pedido actual para uso posterior
+        window.pedidoActualData = data;
+        
         $$("#m-numero").textContent = data.numero_pedido ?? "";
         
         // Mostrar cliente
@@ -1037,28 +1380,38 @@ Sección 2: CSS  (static/css/glass.css)
         // Mostrar sucursal con indicador de error si es necesario
         const sucursalElement = $$("#m-sucursal");
         if (data.tiene_error_sucursal && data.cliente_id) {
-          // Crear dropdown para seleccionar sucursal
-          const selectSucursal = document.createElement("select");
-          selectSucursal.className = "campo-sucursal-editable error";
-          selectSucursal.dataset.originalValue = data.sucursal || "";
-          
-          // Agregar opción vacía
-          const optionVacia = document.createElement("option");
-          optionVacia.value = "";
-          optionVacia.textContent = "Seleccione una sucursal...";
-          selectSucursal.appendChild(optionVacia);
-          
-          // Cargar sucursales del cliente
-          cargarSucursalesCliente(data.cliente_id, selectSucursal, data.sucursal);
+          // Crear botón para seleccionar sucursal
+          const botonSucursal = document.createElement("button");
+          botonSucursal.className = "btn-seleccionar-sucursal error";
+          botonSucursal.textContent = "Seleccionar sucursal";
+          botonSucursal.dataset.clienteId = data.cliente_id;
+          botonSucursal.dataset.sucursalActual = data.sucursal || "";
+          botonSucursal.onclick = () => abrirModalSucursales(data.cliente_id, data.sucursal || "");
           
           sucursalElement.innerHTML = "";
-          sucursalElement.appendChild(selectSucursal);
+          sucursalElement.appendChild(botonSucursal);
         } else {
           sucursalElement.textContent = data.sucursal || "-";
           sucursalElement.classList.remove("sucursal-error");
         }
         
         $$("#m-fecha").textContent = fmtDate(data.fecha);
+        
+        // Mostrar RUC (sucursal o cliente)
+        const ruc = data.sucursal_ruc || data.cliente_ruc || "No asignado";
+        $$("#m-ruc").textContent = ruc;
+        
+        // Mostrar encargado
+        const encargado = data.encargado || "No asignado";
+        $$("#m-encargado").textContent = encargado;
+        
+        // Mostrar bodega
+        const bodega = data.bodega || "No asignado";
+        $$("#m-bodega").textContent = bodega;
+        
+        // Mostrar comentarios
+        const comentarios = data.comentario || "Sin comentarios";
+        $$("#m-comentarios").textContent = comentarios;
 
         const tb = $$("#m-items");
         tb.innerHTML = "";
@@ -1151,8 +1504,23 @@ Sección 2: CSS  (static/css/glass.css)
 
         // Obtener sucursal editada solo si hay error de sucursal
         const inputSucursal = document.querySelector("#m-sucursal .campo-sucursal-editable");
+        const botonSucursal = document.querySelector("#m-sucursal .btn-seleccionar-sucursal");
+        
         if (inputSucursal) {
+          // Caso del dropdown (método anterior)
           datosActualizados.sucursal = inputSucursal.value.trim();
+        } else if (botonSucursal) {
+          // Caso del botón de selección
+          const sucursalSeleccionada = botonSucursal.dataset.sucursalSeleccionada;
+          const sucursalId = botonSucursal.dataset.sucursalId;
+          
+          if (sucursalSeleccionada && sucursalId) {
+            datosActualizados.sucursal = sucursalSeleccionada;
+            datosActualizados.sucursal_id = parseInt(sucursalId);
+          } else {
+            alert("Por favor selecciona una sucursal antes de verificar el pedido");
+            return;
+          }
         } else {
           // Si no hay campo editable, obtener la sucursal actual del texto
           const sucursalElement = document.querySelector("#m-sucursal");
