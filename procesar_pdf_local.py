@@ -317,6 +317,7 @@ def main():
         "fecha": fecha_obj,
         "sucursal": sucursal_txt,
         "comentario": comentario,
+        "orden_compra": orden_compra,  # número de orden de compra del PDF
     }
 
     # ======== DRY-RUN: Solo mostrar información sin grabar en BD ========

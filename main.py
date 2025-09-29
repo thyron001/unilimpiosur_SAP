@@ -98,6 +98,7 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
         pedido = {
             "fecha": meta.get("fecha"),
             "sucursal": f"ERROR: Alias '{sucursal_alias_pdf}' no encontrado",
+            "orden_compra": resumen.get("orden_compra"),  # número de orden de compra del PDF
         }
         try:
             pedido_id, numero_pedido, estado = db.guardar_pedido(pedido, filas_enriquecidas, cliente_id, None)
@@ -110,6 +111,7 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     pedido = {
         "fecha": meta.get("fecha"),
         "sucursal": suc.get("nombre") if suc else "SUCURSAL DESCONOCIDA",  # nombre del sistema si se encontró
+        "orden_compra": resumen.get("orden_compra"),  # número de orden de compra del PDF
     }
 
     # 6) Guardar en PostgreSQL (usa tu función existente)
@@ -779,6 +781,7 @@ def api_detalle_pedido(pedido_id: int):
                 p.cliente_id, 
                 p.sucursal_id,
                 p.comentario,
+                p.orden_compra,
                 c.nombre as cliente_nombre,
                 c.ruc as cliente_ruc,
                 s.nombre as sucursal_nombre,
@@ -794,7 +797,7 @@ def api_detalle_pedido(pedido_id: int):
         if not row:
             return abort(404)
 
-        (numero_pedido, fecha, sucursal, cliente_id, sucursal_id, comentario, 
+        (numero_pedido, fecha, sucursal, cliente_id, sucursal_id, comentario, orden_compra,
          cliente_nombre, cliente_ruc, sucursal_nombre, encargado, bodega, sucursal_ruc) = row
 
         cur.execute("""
@@ -828,6 +831,7 @@ def api_detalle_pedido(pedido_id: int):
         "cliente_nombre": cliente_nombre,
         "sucursal_id": sucursal_id,
         "comentario": comentario,
+        "orden_compra": orden_compra,
         "cliente_ruc": cliente_ruc,
         "sucursal_ruc": sucursal_ruc,
         "encargado": encargado,

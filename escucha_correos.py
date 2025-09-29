@@ -245,6 +245,7 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
         pedido = {
             "fecha": meta.get("fecha") or datetime.now(),
             "sucursal": f"ERROR: Alias '{sucursal_alias_pdf}' no encontrado",
+            "orden_compra": resumen.get("orden_compra"),  # número de orden de compra del PDF
         }
         try:
             pedido_id, numero_pedido, estado = guardar_pedido(pedido, filas_enriquecidas, cliente_id, None)
@@ -258,6 +259,7 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
     pedido = {
         "fecha": meta.get("fecha") or datetime.now(),
         "sucursal": sucursal_txt,
+        "orden_compra": resumen.get("orden_compra"),  # número de orden de compra del PDF
     }
     try:
         sucursal_id = suc.get("id") if suc else None

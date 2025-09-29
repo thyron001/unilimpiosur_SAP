@@ -206,6 +206,7 @@ Sección 2: CSS  (static/css/glass.css)
           <div><strong>Cliente:</strong> <span id="m-cliente">-</span></div>
           <div><strong>Sucursal:</strong> <span id="m-sucursal">-</span></div>
           <div><strong>Fecha:</strong> <span id="m-fecha">-</span></div>
+          <div><strong>Orden de Compra:</strong> <span id="m-orden-compra">-</span></div>
           <div><strong>RUC:</strong> <span id="m-ruc">-</span></div>
           <div><strong>Encargado:</strong> <span id="m-encargado">-</span></div>
           <div><strong>Bodega:</strong> <span id="m-bodega">-</span></div>
@@ -253,11 +254,20 @@ Sección 2: CSS  (static/css/glass.css)
           <button id="modalSucursalesCerrar" class="btn-close" aria-label="Cerrar">✕</button>
         </div>
         
-        <div class="glass-modal-sub">
+        <div class="glass-modal-sub" style="grid-template-columns: 1fr;">
           <div class="sucursales-container">
             <div class="sucursales-header">
               <p>Selecciona la sucursal correcta para este pedido:</p>
+              <div id="mensaje-error-sucursal" class="mensaje-error-sucursal" style="display: none;">
+                <!-- El mensaje de error se mostrará aquí -->
+              </div>
             </div>
+            
+            <!-- Buscador de sucursales -->
+            <div class="buscador-sucursales">
+              <input type="text" id="buscador-sucursal" placeholder="Buscar sucursal..." class="input-buscador">
+            </div>
+            
             <div id="sucursales-lista" class="sucursales-lista">
               <!-- Las sucursales se cargarán aquí dinámicamente -->
             </div>
@@ -1030,6 +1040,44 @@ Sección 2: CSS  (static/css/glass.css)
       margin: 0;
     }
 
+    .mensaje-error-sucursal {
+      margin-top: 12px;
+      padding: 12px 16px;
+      background: rgba(255, 107, 107, 0.1);
+      border: 1px solid rgba(255, 107, 107, 0.3);
+      border-radius: 8px;
+      color: #ff6b6b;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .buscador-sucursales {
+      margin-bottom: 16px;
+    }
+
+    .input-buscador {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #e2e8f0;
+      font-size: 14px;
+      transition: all 0.3s ease;
+      box-sizing: border-box;
+    }
+
+    .input-buscador::placeholder {
+      color: rgba(226, 232, 240, 0.6);
+    }
+
+    .input-buscador:focus {
+      outline: none;
+      border-color: #667eea;
+      background: rgba(255, 255, 255, 0.15);
+      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+    }
+
     .sucursales-lista {
       max-height: 400px;
       overflow-y: auto;
@@ -1039,14 +1087,21 @@ Sección 2: CSS  (static/css/glass.css)
       background: rgba(255, 255, 255, 0.05);
     }
 
+    /* Ajustar ancho del modal de sucursales */
+    #modalSucursales .glass-modal-card {
+      width: 90vw;
+      max-width: 800px;
+      min-width: 600px;
+    }
+
     .sucursal-item {
-      padding: 12px 16px;
+      padding: 16px 20px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       cursor: pointer;
       transition: all 0.3s ease;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 6px;
     }
 
     .sucursal-item:last-child {
@@ -1076,6 +1131,8 @@ Sección 2: CSS  (static/css/glass.css)
     .sucursal-encargado {
       color: #64748b;
       font-size: 12px;
+      line-height: 1.4;
+      margin-top: 4px;
     }
 
     .sucursales-actions {
@@ -1221,9 +1278,10 @@ Sección 2: CSS  (static/css/glass.css)
       // Variables globales para el modal de sucursales
       let sucursalSeleccionada = null;
       let clienteIdActual = null;
+      let todasLasSucursales = []; // Para almacenar todas las sucursales y poder filtrar
 
       // Función para abrir el modal de sucursales
-      window.abrirModalSucursales = async function(clienteId, sucursalActual) {
+      window.abrirModalSucursales = async function(clienteId, sucursalActual, mensajeError = null) {
         clienteIdActual = clienteId;
         sucursalSeleccionada = null;
         
@@ -1231,10 +1289,22 @@ Sección 2: CSS  (static/css/glass.css)
         const overlay = $$("#modalSucursalesOverlay");
         const lista = $$("#sucursales-lista");
         const btnConfirmar = $$("#btn-confirmar-sucursal");
+        const mensajeErrorElement = $$("#mensaje-error-sucursal");
+        const buscador = $$("#buscador-sucursal");
         
-        // Limpiar lista anterior
+        // Limpiar lista anterior y buscador
         lista.innerHTML = "";
         btnConfirmar.disabled = true;
+        buscador.value = "";
+        todasLasSucursales = [];
+        
+        // Mostrar u ocultar mensaje de error
+        if (mensajeError) {
+          mensajeErrorElement.textContent = mensajeError;
+          mensajeErrorElement.style.display = "block";
+        } else {
+          mensajeErrorElement.style.display = "none";
+        }
         
         // Mostrar modal
         overlay.classList.remove("hidden");
@@ -1248,39 +1318,85 @@ Sección 2: CSS  (static/css/glass.css)
           const data = await resp.json();
           const sucursales = data.sucursales || [];
           
+          // Guardar todas las sucursales para el filtrado
+          todasLasSucursales = sucursales;
+          
+          // Mostrar todas las sucursales inicialmente
+          mostrarSucursales(sucursales, sucursalActual);
+          
+          // Agregar event listener al buscador
+          buscador.addEventListener("input", function() {
+            const termino = this.value.toLowerCase().trim();
+            if (termino === "") {
+              mostrarSucursales(todasLasSucursales, sucursalActual);
+            } else {
+              const sucursalesFiltradas = todasLasSucursales.filter(sucursal => {
+                const nombre = (sucursal.nombre || "").toLowerCase();
+                const alias = (sucursal.alias || "").toLowerCase();
+                const encargado = (sucursal.encargado || "").toLowerCase();
+                const direccion = (sucursal.direccion || "").toLowerCase();
+                
+                return nombre.includes(termino) || 
+                       alias.includes(termino) || 
+                       encargado.includes(termino) || 
+                       direccion.includes(termino);
+              });
+              mostrarSucursales(sucursalesFiltradas, sucursalActual);
+            }
+          });
+          
           if (sucursales.length === 0) {
             lista.innerHTML = '<div class="sucursal-item" style="text-align: center; color: #94a3b8;">No hay sucursales disponibles para este cliente</div>';
             return;
           }
           
-          // Crear elementos de sucursales
-          sucursales.forEach(sucursal => {
-            const item = document.createElement("div");
-            item.className = "sucursal-item";
-            item.dataset.sucursalId = sucursal.id;
-            item.dataset.sucursalNombre = sucursal.nombre;
-            
-            // Marcar como seleccionado si coincide con la sucursal actual
-            if (sucursalActual && (sucursal.nombre === sucursalActual || sucursal.alias === sucursalActual)) {
-              item.classList.add("selected");
-              sucursalSeleccionada = sucursal;
-              btnConfirmar.disabled = false;
-            }
-            
-            item.innerHTML = `
-              <div class="sucursal-nombre">${sucursal.nombre}</div>
-              ${sucursal.alias ? `<div class="sucursal-alias">Alias: ${sucursal.alias}</div>` : ''}
-              ${sucursal.encargado ? `<div class="sucursal-encargado">Encargado: ${sucursal.encargado}</div>` : ''}
-            `;
-            
-            item.onclick = () => seleccionarSucursal(item, sucursal);
-            lista.appendChild(item);
-          });
+          // Mostrar todas las sucursales inicialmente
+          mostrarSucursales(sucursales, sucursalActual);
           
         } catch (error) {
           console.error("Error cargando sucursales:", error);
           lista.innerHTML = '<div class="sucursal-item" style="text-align: center; color: #ff6b6b;">Error al cargar las sucursales</div>';
         }
+      }
+
+      // Función para mostrar sucursales en la lista
+      function mostrarSucursales(sucursales, sucursalActual) {
+        const lista = $$("#sucursales-lista");
+        const btnConfirmar = $$("#btn-confirmar-sucursal");
+        lista.innerHTML = "";
+        
+        if (sucursales.length === 0) {
+          lista.innerHTML = '<div class="sucursal-item" style="text-align: center; color: #94a3b8;">No se encontraron sucursales</div>';
+          return;
+        }
+        
+        // Crear elementos de sucursales
+        sucursales.forEach(sucursal => {
+          const item = document.createElement("div");
+          item.className = "sucursal-item";
+          item.dataset.sucursalId = sucursal.id;
+          item.dataset.sucursalNombre = sucursal.nombre;
+          
+          // Marcar como seleccionado si coincide con la sucursal actual
+          if (sucursalActual && (sucursal.nombre === sucursalActual || sucursal.alias === sucursalActual)) {
+            item.classList.add("selected");
+            sucursalSeleccionada = sucursal;
+            btnConfirmar.disabled = false;
+          }
+          
+          item.innerHTML = `
+            <div class="sucursal-nombre">${sucursal.nombre}</div>
+            ${sucursal.alias ? `<div class="sucursal-alias">Alias: ${sucursal.alias}</div>` : ''}
+            <div class="sucursal-encargado">
+              ${sucursal.encargado ? `Encargado: ${sucursal.encargado}` : 'Sin encargado asignado'}
+              ${sucursal.direccion ? ` • Dirección: ${sucursal.direccion}` : ''}
+              ${sucursal.ruc ? ` • RUC: ${sucursal.ruc}` : ''}
+            </div>
+          `;
+          
+          item.onclick = () => seleccionarSucursal(item, sucursal);
+          lista.appendChild(item);
+        });
       }
 
       // Función para seleccionar una sucursal
@@ -1386,7 +1502,7 @@ Sección 2: CSS  (static/css/glass.css)
           botonSucursal.textContent = "Seleccionar sucursal";
           botonSucursal.dataset.clienteId = data.cliente_id;
           botonSucursal.dataset.sucursalActual = data.sucursal || "";
-          botonSucursal.onclick = () => abrirModalSucursales(data.cliente_id, data.sucursal || "");
+          botonSucursal.onclick = () => abrirModalSucursales(data.cliente_id, data.sucursal || "", data.sucursal || "No se pudo detectar la sucursal");
           
           sucursalElement.innerHTML = "";
           sucursalElement.appendChild(botonSucursal);
@@ -1396,6 +1512,9 @@ Sección 2: CSS  (static/css/glass.css)
         }
         
         $$("#m-fecha").textContent = fmtDate(data.fecha);
+        
+        // Mostrar orden de compra
+        $$("#m-orden-compra").textContent = data.orden_compra || "-";
         
         // Mostrar RUC (sucursal o cliente)
         const ruc = data.sucursal_ruc || data.cliente_ruc || "No asignado";
