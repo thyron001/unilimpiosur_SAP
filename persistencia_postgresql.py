@@ -50,7 +50,6 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
 
 
     sucursal = (pedido.get("sucursal") or "").strip() or None
-    comentario = (pedido.get("comentario") or "").strip() or None
     orden_compra = (pedido.get("orden_compra") or "").strip() or None
 
     # Detectar errores en productos y sucursal
@@ -93,43 +92,15 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
             cur.execute(
                 """
                 INSERT INTO pedidos
-                  (fecha, sucursal, estado, cliente_id, sucursal_id, numero_pedido, comentario, orden_compra)
+                  (fecha, sucursal, estado, cliente_id, sucursal_id, numero_pedido, orden_compra)
                 VALUES
-                  (%s,    %s,       %s,     %s,         %s,          %s,           %s,         %s)
+                  (%s,    %s,       %s,     %s,         %s,          %s,           %s)
                 RETURNING id;
                 """,
-                (fecha, sucursal, estado, cliente_id, sucursal_id, siguiente_numero, comentario, orden_compra)
+                (fecha, sucursal, estado, cliente_id, sucursal_id, siguiente_numero, orden_compra)
             )
             pedido_id = cur.fetchone()[0]
             numero_pedido = siguiente_numero
-            
-            # Actualizar comentario con el número de pedido real y el encargado de la sucursal
-            if comentario and "[NUMERO_PEDIDO]" in comentario:
-                comentario_actualizado = comentario.replace("[NUMERO_PEDIDO]", str(numero_pedido))
-                
-                # Si hay sucursal_id, obtener el encargado de la sucursal
-                if sucursal_id and "[ENCARGADO_SUCURSAL]" in comentario_actualizado:
-                    cur.execute(
-                        """
-                        SELECT encargado FROM sucursales WHERE id = %s
-                        """,
-                        (sucursal_id,)
-                    )
-                    encargado_result = cur.fetchone()
-                    encargado = encargado_result[0] if encargado_result and encargado_result[0] else "Sin encargado"
-                    comentario_actualizado = comentario_actualizado.replace("[ENCARGADO_SUCURSAL]", encargado)
-                elif "[ENCARGADO_SUCURSAL]" in comentario_actualizado:
-                    # Si no hay sucursal_id, usar "Sin sucursal"
-                    comentario_actualizado = comentario_actualizado.replace("[ENCARGADO_SUCURSAL]", "Sin sucursal")
-                
-                cur.execute(
-                    """
-                    UPDATE pedidos 
-                    SET comentario = %s 
-                    WHERE id = %s
-                    """,
-                    (comentario_actualizado, pedido_id)
-                )
 
             # Insert ítems
             for f in items:

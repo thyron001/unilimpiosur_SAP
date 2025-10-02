@@ -780,7 +780,6 @@ def api_detalle_pedido(pedido_id: int):
                 p.sucursal, 
                 p.cliente_id, 
                 p.sucursal_id,
-                p.comentario,
                 p.orden_compra,
                 c.nombre as cliente_nombre,
                 c.ruc as cliente_ruc,
@@ -797,7 +796,7 @@ def api_detalle_pedido(pedido_id: int):
         if not row:
             return abort(404)
 
-        (numero_pedido, fecha, sucursal, cliente_id, sucursal_id, comentario, orden_compra,
+        (numero_pedido, fecha, sucursal, cliente_id, sucursal_id, orden_compra,
          cliente_nombre, cliente_ruc, sucursal_nombre, encargado, bodega, sucursal_ruc) = row
 
         cur.execute("""
@@ -830,7 +829,6 @@ def api_detalle_pedido(pedido_id: int):
         "cliente_id": cliente_id,
         "cliente_nombre": cliente_nombre,
         "sucursal_id": sucursal_id,
-        "comentario": comentario,
         "orden_compra": orden_compra,
         "cliente_ruc": cliente_ruc,
         "sucursal_ruc": sucursal_ruc,
@@ -901,29 +899,6 @@ def api_verificar_pedido(pedido_id: int):
                     SET sucursal = %s, sucursal_id = %s
                     WHERE id = %s;
                 """, (nombre_sucursal, sucursal_id_actualizado, pedido_id))
-                
-                # Actualizar el comentario del pedido con los datos completos de la sucursal
-                cur.execute("""
-                    SELECT comentario FROM pedidos WHERE id = %s;
-                """, (pedido_id,))
-                comentario_actual = cur.fetchone()[0] or ""
-                
-                # Si el comentario tiene placeholders, actualizarlos
-                if "[ENCARGADO_SUCURSAL]" in comentario_actual:
-                    comentario_actualizado = comentario_actual.replace("[ENCARGADO_SUCURSAL]", encargado or "Sin encargado")
-                    cur.execute("""
-                        UPDATE pedidos 
-                        SET comentario = %s 
-                        WHERE id = %s;
-                    """, (comentario_actualizado, pedido_id))
-                elif "Sin sucursal" in comentario_actual:
-                    # También actualizar si el comentario dice "Sin sucursal"
-                    comentario_actualizado = comentario_actual.replace("Sin sucursal", encargado or "Sin encargado")
-                    cur.execute("""
-                        UPDATE pedidos 
-                        SET comentario = %s 
-                        WHERE id = %s;
-                    """, (comentario_actualizado, pedido_id))
                 
                 print(f"✅ Pedido {pedido_id} actualizado con sucursal: {nombre_sucursal} (ID: {sucursal_id_actualizado})")
                 print(f"   Encargado: {encargado}, Bodega: {bodega}, RUC: {ruc}")

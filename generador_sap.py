@@ -33,7 +33,6 @@ def obtener_pedidos_por_procesar() -> List[Dict[str, Any]]:
                 p.sucursal,
                 p.cliente_id,
                 p.sucursal_id,
-                p.comentario,
                 c.ruc as cliente_ruc,
                 c.ruc_por_sucursal,
                 c.nombre as cliente_nombre,
@@ -59,16 +58,15 @@ def obtener_pedidos_por_procesar() -> List[Dict[str, Any]]:
                 "sucursal": row[3],
                 "cliente_id": row[4],
                 "sucursal_id": row[5],
-                "comentario": row[6],
-                "cliente_ruc": row[7],
-                "ruc_por_sucursal": bool(row[8]),
-                "cliente_nombre": row[9],
-                "sucursal_nombre": row[10],
-                "direccion": row[11],
-                "telefono": row[12],
-                "almacen": row[13],
-                "sucursal_ruc": row[14],
-                "sucursal_bodega": row[15]
+                "cliente_ruc": row[6],
+                "ruc_por_sucursal": bool(row[7]),
+                "cliente_nombre": row[8],
+                "sucursal_nombre": row[9],
+                "direccion": row[10],
+                "telefono": row[11],
+                "almacen": row[12],
+                "sucursal_ruc": row[13],
+                "sucursal_bodega": row[14]
             })
         
         return pedidos
@@ -141,15 +139,8 @@ def generar_archivo_odrf(pedidos: List[Dict[str, Any]], ruta_salida: str | Path)
             # Almacén (U_EXX_ALMACEN) - usar bodega de sucursal si está disponible
             almacen = pedido.get("sucursal_bodega") or pedido.get("almacen") or "5"  # Default almacén 5
             
-            # Comments: usar comentario del pedido si está disponible, sino dirección y teléfono
-            comentario = pedido.get("comentario") or ""
-            if comentario:
-                # Reemplazar placeholder del número de pedido si existe
-                comments = comentario.replace("[NUMERO_PEDIDO]", str(pedido['numero_pedido']))
-            else:
-                direccion = pedido.get("direccion") or ""
-                telefono = pedido.get("telefono") or ""
-                comments = f"{direccion} {telefono}".strip()
+            # Comments: dejar vacío
+            comments = ""
             
             # Escribir línea (sin UseShpdGd ya que no está en los encabezados)
             f.write(f"{pedido['numero_pedido']}\t")  # DocEntry
@@ -223,7 +214,6 @@ def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
                 p.sucursal,
                 p.cliente_id,
                 p.sucursal_id,
-                p.comentario,
                 c.ruc as cliente_ruc,
                 c.ruc_por_sucursal,
                 c.nombre as cliente_nombre,
@@ -249,16 +239,15 @@ def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
                 "sucursal": row[3],
                 "cliente_id": row[4],
                 "sucursal_id": row[5],
-                "comentario": row[6],
-                "cliente_ruc": row[7],
-                "ruc_por_sucursal": bool(row[8]),
-                "cliente_nombre": row[9],
-                "sucursal_nombre": row[10],
-                "direccion": row[11],
-                "telefono": row[12],
-                "almacen": row[13],
-                "sucursal_ruc": row[14],
-                "sucursal_bodega": row[15]
+                "cliente_ruc": row[6],
+                "ruc_por_sucursal": bool(row[7]),
+                "cliente_nombre": row[8],
+                "sucursal_nombre": row[9],
+                "direccion": row[10],
+                "telefono": row[11],
+                "almacen": row[12],
+                "sucursal_ruc": row[13],
+                "sucursal_bodega": row[14]
             })
         
         return pedidos

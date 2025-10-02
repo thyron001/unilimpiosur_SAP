@@ -297,26 +297,12 @@ def main():
         # Si encontramos la sucursal en BD, usamos su NOMBRE de sistema; si no, el texto del PDF
         sucursal_txt = suc.get("nombre") if suc else "SUCURSAL DESCONOCIDA"
 
-    # Generar comentario con información del pedido
-    comentario_parts = []
-    
-    # Agregar número de pedido (se asignará después de guardar)
-    comentario_parts.append(f"Pedido: [NUMERO_PEDIDO]")
-    
-    # Agregar orden de compra si está disponible
+    # Extraer orden de compra si está disponible
     orden_compra = resumen.get("orden_compra")
-    if orden_compra:
-        comentario_parts.append(f"OC: {orden_compra}")
-    
-    # Agregar placeholder para el encargado de la sucursal (se completará después)
-    comentario_parts.append(f"Encargado: [ENCARGADO_SUCURSAL]")
-    
-    comentario = " | ".join(comentario_parts)
 
     pedido = {
         "fecha": fecha_obj,
         "sucursal": sucursal_txt,
-        "comentario": comentario,
         "orden_compra": orden_compra,  # número de orden de compra del PDF
     }
 

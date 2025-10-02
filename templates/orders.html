@@ -210,7 +210,6 @@ Sección 2: CSS  (static/css/glass.css)
           <div><strong>RUC:</strong> <span id="m-ruc">-</span></div>
           <div><strong>Encargado:</strong> <span id="m-encargado">-</span></div>
           <div><strong>Bodega:</strong> <span id="m-bodega">-</span></div>
-          <div><strong>Comentarios:</strong> <span id="m-comentarios">-</span></div>
         </div>
 
         <div class="glass-modal-body">
@@ -1466,18 +1465,6 @@ Sección 2: CSS  (static/css/glass.css)
         const bodega = sucursal.bodega || "No asignado";
         $$("#m-bodega").textContent = bodega;
         
-        // Actualizar comentario (reemplazar placeholder del encargado si existe)
-        const comentarioActual = $$("#m-comentarios").textContent;
-        let comentarioActualizado = comentarioActual;
-        
-        if (comentarioActual.includes("[ENCARGADO_SUCURSAL]")) {
-          comentarioActualizado = comentarioActual.replace("[ENCARGADO_SUCURSAL]", encargado);
-        } else if (comentarioActual.includes("Sin sucursal")) {
-          comentarioActualizado = comentarioActual.replace("Sin sucursal", encargado);
-        }
-        
-        $$("#m-comentarios").textContent = comentarioActualizado;
-        
         // Actualizar el nombre de la sucursal en el popup
         $$("#m-sucursal").textContent = sucursal.nombre;
         
@@ -1527,10 +1514,6 @@ Sección 2: CSS  (static/css/glass.css)
         // Mostrar bodega
         const bodega = data.bodega || "No asignado";
         $$("#m-bodega").textContent = bodega;
-        
-        // Mostrar comentarios
-        const comentarios = data.comentario || "Sin comentarios";
-        $$("#m-comentarios").textContent = comentarios;
 
         const tb = $$("#m-items");
         tb.innerHTML = "";
