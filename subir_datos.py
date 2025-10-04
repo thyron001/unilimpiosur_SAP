@@ -281,7 +281,7 @@ def cargar_y_aplicar_mapeos_productos(archivo_bytes: bytes, nombre_archivo: str,
 def _estandarizar_columnas_sucursales(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Acepta headers en cualquier combinación de mayúsculas/minúsculas/espacios:
-    SAP / sap, Alias / alias, Encargado / encargado, Direccion / direccion, Telefono / telefono, RUC / ruc
+    SAP / sap, Alias / alias, Encargado / encargado, Direccion / direccion, Telefono / telefono, RUC / ruc, Ciudad / ciudad
     """
     salida: List[Dict[str, Any]] = []
     def keymap(k: str) -> str:
@@ -300,6 +300,8 @@ def _estandarizar_columnas_sucursales(rows: List[Dict[str, Any]]) -> List[Dict[s
             return "ruc"
         if k2 in ("bodega", "bodega_sucursal", "warehouse_code"):
             return "bodega"
+        if k2 in ("ciudad", "city", "localidad"):
+            return "ciudad"
         return k2  # se ignora lo demás
     for r in rows:
         nr = { keymap(k): (r.get(k)) for k in r.keys() }
@@ -311,6 +313,7 @@ def _estandarizar_columnas_sucursales(rows: List[Dict[str, Any]]) -> List[Dict[s
         nr["telefono"] = _norm(nr.get("telefono"))
         nr["ruc"] = _norm(nr.get("ruc"))
         nr["bodega"] = _norm(nr.get("bodega"))
+        nr["ciudad"] = _norm(nr.get("ciudad"))
         salida.append(nr)
     return salida
 
@@ -319,9 +322,9 @@ def _upsert_sucursal(conn, cliente_id: int, filas: Iterable[Dict[str,str]]) -> T
     errores: List[str] = []
     with conn.cursor() as cur:
         for i, r in enumerate(filas, start=2):  # +2 por encabezado
-            sap, alias, encargado, direccion, telefono, ruc, bodega = (
+            sap, alias, encargado, direccion, telefono, ruc, bodega, ciudad = (
                 r.get("sap",""), r.get("alias",""), r.get("encargado",""), 
-                r.get("direccion",""), r.get("telefono",""), r.get("ruc",""), r.get("bodega","")
+                r.get("direccion",""), r.get("telefono",""), r.get("ruc",""), r.get("bodega",""), r.get("ciudad","")
             )
             if not sap:
                 errores.append(f"Fila {i}: SAP vacío.")
@@ -335,9 +338,9 @@ def _upsert_sucursal(conn, cliente_id: int, filas: Iterable[Dict[str,str]]) -> T
             
             # Siempre insertar nueva sucursal (permitir todos los duplicados)
             cur.execute("""
-                INSERT INTO sucursales (cliente_id, almacen, alias, nombre, encargado, direccion, telefono, ruc, bodega)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
-            """, (cliente_id, sap_almacen, alias, nombre_sucursal, encargado, direccion, telefono, ruc, bodega))
+                INSERT INTO sucursales (cliente_id, almacen, alias, nombre, encargado, direccion, telefono, ruc, bodega, ciudad)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+            """, (cliente_id, sap_almacen, alias, nombre_sucursal, encargado, direccion, telefono, ruc, bodega, ciudad))
             ins += 1
     
     return ins, act, om, errores

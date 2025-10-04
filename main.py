@@ -219,16 +219,16 @@ def api_clientes_con_sucursales():
 
         if clientes:
             cur.execute("""
-                SELECT s.id, s.cliente_id, s.alias, s.nombre, s.encargado, s.direccion, s.telefono, s.activo, s.ruc, s.bodega
+                SELECT s.id, s.cliente_id, s.alias, s.nombre, s.encargado, s.direccion, s.telefono, s.activo, s.ruc, s.bodega, s.ciudad
                 FROM sucursales s
                 WHERE s.activo = TRUE
                 ORDER BY upper(s.nombre);
             """)
-            for (sid, cliente_id, alias, nombre, encargado, direccion, telefono, activo, ruc, bodega) in cur.fetchall():
+            for (sid, cliente_id, alias, nombre, encargado, direccion, telefono, activo, ruc, bodega, ciudad) in cur.fetchall():
                 if cliente_id in idx:
                     idx[cliente_id]["sucursales"].append({
                         "id": sid, "alias": alias, "nombre": nombre,
-                        "encargado": encargado, "direccion": direccion, "telefono": telefono, "ruc": ruc, "bodega": bodega
+                        "encargado": encargado, "direccion": direccion, "telefono": telefono, "ruc": ruc, "bodega": bodega, "ciudad": ciudad
                     })
 
     return jsonify(list(idx.values()))
@@ -316,6 +316,7 @@ def api_sucursales_bulk():
             telefono    = (c.get("telefono") or "").strip() or None
             ruc         = (c.get("ruc") or "").strip() or None
             bodega      = (c.get("bodega") or "").strip() or None
+            ciudad      = (c.get("ciudad") or "").strip() or None
             borrar      = bool(c.get("borrar"))
 
             if borrar and sucursal_id:
@@ -330,16 +331,16 @@ def api_sucursales_bulk():
             if sucursal_id:
                 cur.execute("""
                     UPDATE sucursales
-                       SET nombre = %s, alias = %s, encargado = %s, direccion = %s, telefono = %s, ruc = %s, bodega = %s
+                       SET nombre = %s, alias = %s, encargado = %s, direccion = %s, telefono = %s, ruc = %s, bodega = %s, ciudad = %s
                      WHERE id = %s;
-                """, (nombre, alias, encargado, direccion, telefono, ruc, bodega, sucursal_id))
+                """, (nombre, alias, encargado, direccion, telefono, ruc, bodega, ciudad, sucursal_id))
                 resultados["actualizados"] += (cur.rowcount or 0)
             else:
                 cur.execute("""
-                    INSERT INTO sucursales (cliente_id, nombre, alias, encargado, direccion, telefono, ruc, bodega, activo)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+                    INSERT INTO sucursales (cliente_id, nombre, alias, encargado, direccion, telefono, ruc, bodega, ciudad, activo)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
                     RETURNING id;
-                """, (cliente_id, nombre, alias, encargado, direccion, telefono, ruc, bodega))
+                """, (cliente_id, nombre, alias, encargado, direccion, telefono, ruc, bodega, ciudad))
                 nuevo_id = cur.fetchone()[0]
                 resultados["insertados"] += 1
 
@@ -1172,7 +1173,7 @@ def api_sucursales_cliente(cliente_id: int):
     try:
         with db.obtener_conexion() as conn, conn.cursor() as cur:
             cur.execute("""
-                SELECT s.id, s.nombre, s.alias, s.encargado, s.direccion, s.telefono, s.ruc, s.bodega
+                SELECT s.id, s.nombre, s.alias, s.encargado, s.direccion, s.telefono, s.ruc, s.bodega, s.ciudad
                 FROM sucursales s
                 WHERE s.cliente_id = %s AND s.activo = TRUE
                 ORDER BY upper(s.nombre);
@@ -1188,7 +1189,8 @@ def api_sucursales_cliente(cliente_id: int):
                     "direccion": row[4],
                     "telefono": row[5],
                     "ruc": row[6],
-                    "bodega": row[7]
+                    "bodega": row[7],
+                    "ciudad": row[8]
                 })
             
             return jsonify({"sucursales": sucursales})

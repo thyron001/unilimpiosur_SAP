@@ -41,7 +41,10 @@ def obtener_pedidos_por_procesar() -> List[Dict[str, Any]]:
                 s.telefono,
                 s.almacen,
                 s.ruc as sucursal_ruc,
-                s.bodega as sucursal_bodega
+                s.bodega as sucursal_bodega,
+                s.ciudad,
+                p.orden_compra,
+                s.encargado
             FROM pedidos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
             LEFT JOIN sucursales s ON s.id = p.sucursal_id
@@ -66,7 +69,10 @@ def obtener_pedidos_por_procesar() -> List[Dict[str, Any]]:
                 "telefono": row[11],
                 "almacen": row[12],
                 "sucursal_ruc": row[13],
-                "sucursal_bodega": row[14]
+                "sucursal_bodega": row[14],
+                "ciudad": row[15],
+                "orden_compra": row[16],
+                "encargado": row[17]
             })
         
         return pedidos
@@ -139,8 +145,29 @@ def generar_archivo_odrf(pedidos: List[Dict[str, Any]], ruta_salida: str | Path)
             # Almacén (U_EXX_ALMACEN) - usar bodega de sucursal si está disponible
             almacen = pedido.get("sucursal_bodega") or pedido.get("almacen") or "5"  # Default almacén 5
             
-            # Comments: dejar vacío
-            comments = ""
+            # Comments: formato -> Código SAP | URBANO | Orden de compra: XXX | Encargado: XXX
+            comentarios_partes = []
+            
+            # 1. Código SAP (almacén)
+            comentarios_partes.append(str(almacen))
+            
+            # 2. "URBANO" si la ciudad NO es Cuenca
+            ciudad = (pedido.get("ciudad") or "").strip()
+            if ciudad and ciudad.upper() != "CUENCA":
+                comentarios_partes.append("URBANO")
+            
+            # 3. Número de orden de compra con etiqueta
+            orden_compra = (pedido.get("orden_compra") or "").strip()
+            if orden_compra:
+                comentarios_partes.append(f"Orden de compra: {orden_compra}")
+            
+            # 4. Nombre del encargado con etiqueta
+            encargado = (pedido.get("encargado") or "").strip()
+            if encargado:
+                comentarios_partes.append(f"Encargado: {encargado}")
+            
+            # Unir todas las partes con pipe separado por espacios
+            comments = " | ".join(comentarios_partes)
             
             # Escribir línea (sin UseShpdGd ya que no está en los encabezados)
             f.write(f"{pedido['numero_pedido']}\t")  # DocEntry
@@ -222,7 +249,10 @@ def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
                 s.telefono,
                 s.almacen,
                 s.ruc as sucursal_ruc,
-                s.bodega as sucursal_bodega
+                s.bodega as sucursal_bodega,
+                s.ciudad,
+                p.orden_compra,
+                s.encargado
             FROM pedidos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
             LEFT JOIN sucursales s ON s.id = p.sucursal_id
@@ -247,7 +277,10 @@ def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
                 "telefono": row[11],
                 "almacen": row[12],
                 "sucursal_ruc": row[13],
-                "sucursal_bodega": row[14]
+                "sucursal_bodega": row[14],
+                "ciudad": row[15],
+                "orden_compra": row[16],
+                "encargado": row[17]
             })
         
         return pedidos
