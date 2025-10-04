@@ -294,12 +294,8 @@ def _estandarizar_columnas_sucursales(rows: List[Dict[str, Any]]) -> List[Dict[s
             return "encargado"
         if k2 in ("direccion", "dirección", "address", "ubicacion", "ubicación"):
             return "direccion"
-        if k2 in ("telefono", "teléfono", "phone", "contact"):
-            return "telefono"
         if k2 in ("ruc", "tax_id", "nit"):
             return "ruc"
-        if k2 in ("bodega", "bodega_sucursal", "warehouse_code"):
-            return "bodega"
         if k2 in ("ciudad", "city", "localidad"):
             return "ciudad"
         return k2  # se ignora lo demás
@@ -310,9 +306,7 @@ def _estandarizar_columnas_sucursales(rows: List[Dict[str, Any]]) -> List[Dict[s
         nr["alias"] = _norm(nr.get("alias"))
         nr["encargado"] = _norm(nr.get("encargado"))
         nr["direccion"] = _norm(nr.get("direccion"))
-        nr["telefono"] = _norm(nr.get("telefono"))
         nr["ruc"] = _norm(nr.get("ruc"))
-        nr["bodega"] = _norm(nr.get("bodega"))
         nr["ciudad"] = _norm(nr.get("ciudad"))
         salida.append(nr)
     return salida
@@ -322,9 +316,9 @@ def _upsert_sucursal(conn, cliente_id: int, filas: Iterable[Dict[str,str]]) -> T
     errores: List[str] = []
     with conn.cursor() as cur:
         for i, r in enumerate(filas, start=2):  # +2 por encabezado
-            sap, alias, encargado, direccion, telefono, ruc, bodega, ciudad = (
+            sap, alias, encargado, direccion, ruc, ciudad = (
                 r.get("sap",""), r.get("alias",""), r.get("encargado",""), 
-                r.get("direccion",""), r.get("telefono",""), r.get("ruc",""), r.get("bodega",""), r.get("ciudad","")
+                r.get("direccion",""), r.get("ruc",""), r.get("ciudad","")
             )
             if not sap:
                 errores.append(f"Fila {i}: SAP vacío.")
@@ -333,14 +327,14 @@ def _upsert_sucursal(conn, cliente_id: int, filas: Iterable[Dict[str,str]]) -> T
             # Limitar SAP a 10 caracteres para el campo almacen
             sap_almacen = sap[:10] if len(sap) > 10 else sap
             
-            # Determinar el nombre de la sucursal
-            nombre_sucursal = alias or sap
+            # El nombre de la sucursal siempre es el valor completo del campo SAP
+            nombre_sucursal = sap
             
             # Siempre insertar nueva sucursal (permitir todos los duplicados)
             cur.execute("""
-                INSERT INTO sucursales (cliente_id, almacen, alias, nombre, encargado, direccion, telefono, ruc, bodega, ciudad)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
-            """, (cliente_id, sap_almacen, alias, nombre_sucursal, encargado, direccion, telefono, ruc, bodega, ciudad))
+                INSERT INTO sucursales (cliente_id, almacen, alias, nombre, encargado, direccion, ruc, ciudad)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+            """, (cliente_id, sap_almacen, alias, nombre_sucursal, encargado, direccion, ruc, ciudad))
             ins += 1
     
     return ins, act, om, errores

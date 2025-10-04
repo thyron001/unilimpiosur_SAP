@@ -38,10 +38,8 @@ def obtener_pedidos_por_procesar() -> List[Dict[str, Any]]:
                 c.nombre as cliente_nombre,
                 s.nombre as sucursal_nombre,
                 s.direccion,
-                s.telefono,
                 s.almacen,
                 s.ruc as sucursal_ruc,
-                s.bodega as sucursal_bodega,
                 s.ciudad,
                 p.orden_compra,
                 s.encargado
@@ -66,13 +64,11 @@ def obtener_pedidos_por_procesar() -> List[Dict[str, Any]]:
                 "cliente_nombre": row[8],
                 "sucursal_nombre": row[9],
                 "direccion": row[10],
-                "telefono": row[11],
-                "almacen": row[12],
-                "sucursal_ruc": row[13],
-                "sucursal_bodega": row[14],
-                "ciudad": row[15],
-                "orden_compra": row[16],
-                "encargado": row[17]
+                "almacen": row[11],
+                "sucursal_ruc": row[12],
+                "ciudad": row[13],
+                "orden_compra": row[14],
+                "encargado": row[15]
             })
         
         return pedidos
@@ -113,8 +109,8 @@ def generar_archivo_odrf(pedidos: List[Dict[str, Any]], ruta_salida: str | Path)
     
     with open(ruta_salida, 'w', encoding='utf-8') as f:
         # Escribir ambos encabezados como en ODRF FINAL.txt
-        f.write("DocEntry\tDocNum\tDocType\tPrinted\tDocDate\tDocDueDate\tCardCode\tDocObjectCode\tSeries\tShipToCode\tU_EXX_ALMACEN\tComments\n")
-        f.write("DocEntry\tDocNum\tDocType\tPrinted\tDocDate\tDocDueDate\tCardCode\tObjType\tSeries\tShipToCode\tU_EXX_ALMACEN\tComments\n")
+        f.write("DocEntry\tDocNum\tDocType\tPrinted\tDocDate\tDocDueDate\tCardCode\tDocObjectCode\tSeries\tShipToCode\tComments\n")
+        f.write("DocEntry\tDocNum\tDocType\tPrinted\tDocDate\tDocDueDate\tCardCode\tObjType\tSeries\tShipToCode\tComments\n")
         
         # Escribir datos de cada pedido
         for pedido in pedidos:
@@ -139,29 +135,30 @@ def generar_archivo_odrf(pedidos: List[Dict[str, Any]], ruta_salida: str | Path)
             # Fecha en formato YYYYMMDD
             fecha_str = formatear_fecha_yyyymmdd(pedido.get("fecha"))
             
-            # Sucursal (ShipToCode)
+            # Sucursal (ShipToCode) - nombre completo
             ship_to_code = pedido.get("sucursal_nombre") or pedido.get("sucursal") or ""
             
-            # Almacén (U_EXX_ALMACEN) - usar bodega de sucursal si está disponible
-            almacen = pedido.get("sucursal_bodega") or pedido.get("almacen") or "5"  # Default almacén 5
+            # Almacén - tomar el almacen (código SAP) directamente de la sucursal
+            almacen = pedido.get("almacen") or "5"  # Default almacén 5
             
-            # Comments: formato -> Código SAP | URBANO | Orden de compra: XXX | Encargado: XXX
+            # Comments: formato -> Código SAP (nombre completo sucursal) | URBANO | Orden de compra: XXX | Encargado: XXX
             comentarios_partes = []
             
-            # 1. Código SAP (almacén)
-            comentarios_partes.append(str(almacen))
+            # 1. Código SAP = Nombre completo de la sucursal (son lo mismo)
+            if ship_to_code:
+                comentarios_partes.append(ship_to_code)
             
-            # 2. "URBANO" si la ciudad NO es Cuenca
+            # 3. "URBANO" si la ciudad NO es Cuenca
             ciudad = (pedido.get("ciudad") or "").strip()
             if ciudad and ciudad.upper() != "CUENCA":
                 comentarios_partes.append("URBANO")
             
-            # 3. Número de orden de compra con etiqueta
+            # 4. Número de orden de compra con etiqueta
             orden_compra = (pedido.get("orden_compra") or "").strip()
             if orden_compra:
                 comentarios_partes.append(f"Orden de compra: {orden_compra}")
             
-            # 4. Nombre del encargado con etiqueta
+            # 5. Nombre del encargado con etiqueta
             encargado = (pedido.get("encargado") or "").strip()
             if encargado:
                 comentarios_partes.append(f"Encargado: {encargado}")
@@ -180,7 +177,6 @@ def generar_archivo_odrf(pedidos: List[Dict[str, Any]], ruta_salida: str | Path)
             f.write("17\t")                          # ObjType
             f.write("13\t")                          # Series
             f.write(f"{ship_to_code}\t")             # ShipToCode
-            f.write(f"{almacen}\t")                  # U_EXX_ALMACEN
             f.write(f"{comments}\n")                 # Comments
 
 def generar_archivo_drf1(pedidos: List[Dict[str, Any]], ruta_salida: str | Path) -> None:
@@ -246,10 +242,8 @@ def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
                 c.nombre as cliente_nombre,
                 s.nombre as sucursal_nombre,
                 s.direccion,
-                s.telefono,
                 s.almacen,
                 s.ruc as sucursal_ruc,
-                s.bodega as sucursal_bodega,
                 s.ciudad,
                 p.orden_compra,
                 s.encargado
@@ -274,13 +268,11 @@ def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
                 "cliente_nombre": row[8],
                 "sucursal_nombre": row[9],
                 "direccion": row[10],
-                "telefono": row[11],
-                "almacen": row[12],
-                "sucursal_ruc": row[13],
-                "sucursal_bodega": row[14],
-                "ciudad": row[15],
-                "orden_compra": row[16],
-                "encargado": row[17]
+                "almacen": row[11],
+                "sucursal_ruc": row[12],
+                "ciudad": row[13],
+                "orden_compra": row[14],
+                "encargado": row[15]
             })
         
         return pedidos

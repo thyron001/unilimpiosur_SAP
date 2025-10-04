@@ -180,7 +180,7 @@
                     <div class="campo">
                         <label for="inputArchivoSucursales"><b>Archivo</b></label>
                         <input id="inputArchivoSucursales" type="file" accept=".csv,.xlsx" class="glass-input" />
-                        <small id="mensajeColumnasSucursales" class="ayuda">Recuerde poner el nombre de las columnas de las siguientes maneras: SAP, Alias, Encargado, Direccion, Telefono, Bodega, RUC, Ciudad</small>
+                        <small id="mensajeColumnasSucursales" class="ayuda">Recuerde poner el nombre de las columnas de las siguientes maneras: SAP, Alias, Encargado, Direccion, RUC, Ciudad</small>
                         <small>Usa .csv (UTF-8) o .xlsx. La columna SAP es obligatoria.</small>
                     </div>
                 </div>
@@ -239,9 +239,7 @@
           ${celdaAlias}
           <td data-label="Encargado"></td>
           <td data-label="Dirección"></td>
-          <td data-label="Teléfono"></td>
           ${celdaRuc}
-          <td data-label="Bodega"></td>
           <td data-label="Ciudad"></td>
           <td class="col-editar">
             <button class="btn-editar" data-accion="agregar" title="Agregar sucursal">＋</button>
@@ -250,24 +248,24 @@
         tbody.insertBefore(tr, tbody.firstChild);
 
         // Hacer celdas editables - ajustar según si hay columna de alias y RUC
-        const celdasEditables = (mostrarAlias ? 1 : 0) + (mostrarRuc ? 1 : 0) + 6; // nombre, encargado, direccion, telefono, bodega, ciudad + alias + ruc
+        const celdasEditables = (mostrarAlias ? 1 : 0) + (mostrarRuc ? 1 : 0) + 4; // nombre, encargado, direccion, ciudad + alias + ruc
         $$$("td", tr).slice(0, celdasEditables).forEach(td=>configurarCeldaEditable(td, true));
 
         // Acción guardar nueva fila a la tabla (no envía todavía al backend)
         tr.querySelector(".btn-editar[data-accion='agregar']").addEventListener("click", ()=>{
           const celdas = $$$("td", tr).slice(0, celdasEditables);
-          let nombre, alias, encargado, direccion, telefono, ruc, bodega, ciudad;
+          let nombre, alias, encargado, direccion, ruc, ciudad;
           
           if (mostrarAlias && mostrarRuc) {
-            [nombre, alias, encargado, direccion, telefono, ruc, bodega, ciudad] = celdas.map(td=>td.textContent.trim());
+            [nombre, alias, encargado, direccion, ruc, ciudad] = celdas.map(td=>td.textContent.trim());
           } else if (mostrarAlias) {
-            [nombre, alias, encargado, direccion, telefono, bodega, ciudad] = celdas.map(td=>td.textContent.trim());
+            [nombre, alias, encargado, direccion, ciudad] = celdas.map(td=>td.textContent.trim());
             ruc = "";
           } else if (mostrarRuc) {
-            [nombre, encargado, direccion, telefono, ruc, bodega, ciudad] = celdas.map(td=>td.textContent.trim());
+            [nombre, encargado, direccion, ruc, ciudad] = celdas.map(td=>td.textContent.trim());
             alias = "";
           } else {
-            [nombre, encargado, direccion, telefono, bodega, ciudad] = celdas.map(td=>td.textContent.trim());
+            [nombre, encargado, direccion, ciudad] = celdas.map(td=>td.textContent.trim());
             alias = "";
             ruc = "";
           }
@@ -278,7 +276,7 @@
           }
           const nueva = construirFilaSucursal({
             id: null, // se creará en backend
-            nombre, alias, encargado, direccion, telefono, ruc, bodega, ciudad
+            nombre, alias, encargado, direccion, ruc, ciudad
           }, /*editable=*/true, mostrarAlias, mostrarRuc);
           tr.before(nueva);
           // limpiar la fila vacía
@@ -299,9 +297,7 @@
           ${celdaAlias}
           <td data-label="Encargado">${esc(suc.encargado || "")}</td>
           <td data-label="Dirección">${esc(suc.direccion || "")}</td>
-          <td data-label="Teléfono">${esc(suc.telefono || "")}</td>
           ${celdaRuc}
-          <td data-label="Bodega">${esc(suc.bodega || "")}</td>
           <td data-label="Ciudad">${esc(suc.ciudad || "")}</td>
           <td class="col-editar">
             <button class="btn-editar" data-accion="borrar" title="Marcar para borrar">🗑️</button>
@@ -309,7 +305,7 @@
         `;
         
         // editable ON/OFF - ajustar según si hay columna de alias y RUC
-        const celdasEditables = (mostrarAlias ? 1 : 0) + (mostrarRuc ? 1 : 0) + 6; // nombre, encargado, direccion, telefono, bodega, ciudad + alias + ruc
+        const celdasEditables = (mostrarAlias ? 1 : 0) + (mostrarRuc ? 1 : 0) + 4; // nombre, encargado, direccion, ciudad + alias + ruc
         $$$("td", tr).slice(0, celdasEditables).forEach(td=>configurarCeldaEditable(td, editable));
         
         // borrar (solo marca; se eliminará al guardar)
@@ -361,9 +357,7 @@
                 ${headerAlias}
                 <th>Encargado</th>
                 <th>Dirección</th>
-                <th>Teléfono</th>
                 ${headerRuc}
-                <th>Bodega</th>
                 <th>Ciudad</th>
                 <th class="col-editar">Editar</th>
               </tr>
@@ -497,7 +491,7 @@
           const tbody = table.tBodies[0];
           const mostrarAlias = table.dataset.mostrarAlias === 'true';
           const mostrarRuc = table.dataset.mostrarRuc === 'true';
-          const celdasEditables = (mostrarAlias ? 1 : 0) + (mostrarRuc ? 1 : 0) + 6; // nombre, encargado, direccion, telefono, bodega, ciudad + alias + ruc
+          const celdasEditables = (mostrarAlias ? 1 : 0) + (mostrarRuc ? 1 : 0) + 4; // nombre, encargado, direccion, ciudad + alias + ruc
           
           // celdas editables
           $$$("tr", tbody).forEach(tr=>{
@@ -534,10 +528,8 @@
                 alias:    celdas[1].textContent.trim(),
                 encargado: celdas[2].textContent.trim(),
                 direccion:celdas[3].textContent.trim(),
-                telefono: celdas[4].textContent.trim(),
-                ruc:      celdas[5].textContent.trim(),
-                bodega:   celdas[6].textContent.trim(),
-                ciudad:   celdas[7].textContent.trim(),
+                ruc:      celdas[4].textContent.trim(),
+                ciudad:   celdas[5].textContent.trim(),
                 borrar:   tr.classList.contains("marcada-borrado")
               };
             } else if (mostrarAlias) {
@@ -548,10 +540,8 @@
                 alias:    celdas[1].textContent.trim(),
                 encargado: celdas[2].textContent.trim(),
                 direccion:celdas[3].textContent.trim(),
-                telefono: celdas[4].textContent.trim(),
                 ruc:      "",
-                bodega:   celdas[5].textContent.trim(),
-                ciudad:   celdas[6].textContent.trim(),
+                ciudad:   celdas[4].textContent.trim(),
                 borrar:   tr.classList.contains("marcada-borrado")
               };
             } else if (mostrarRuc) {
@@ -562,10 +552,8 @@
                 alias:    "",
                 encargado: celdas[1].textContent.trim(),
                 direccion:celdas[2].textContent.trim(),
-                telefono: celdas[3].textContent.trim(),
-                ruc:      celdas[4].textContent.trim(),
-                bodega:   celdas[5].textContent.trim(),
-                ciudad:   celdas[6].textContent.trim(),
+                ruc:      celdas[3].textContent.trim(),
+                ciudad:   celdas[4].textContent.trim(),
                 borrar:   tr.classList.contains("marcada-borrado")
               };
             } else {
@@ -576,16 +564,14 @@
                 alias:    "", // No hay columna de alias
                 encargado: celdas[1].textContent.trim(),
                 direccion:celdas[2].textContent.trim(),
-                telefono: celdas[3].textContent.trim(),
                 ruc:      "",
-                bodega:   celdas[4].textContent.trim(),
-                ciudad:   celdas[5].textContent.trim(),
+                ciudad:   celdas[3].textContent.trim(),
                 borrar:   tr.classList.contains("marcada-borrado")
               };
             }
             
             // ignorar filas completamente vacías
-            const tieneAlgo = obj.nombre || obj.alias || obj.encargado || obj.direccion || obj.telefono || obj.ruc || obj.ciudad || obj.sucursal_id || obj.borrar;
+            const tieneAlgo = obj.nombre || obj.alias || obj.encargado || obj.direccion || obj.ruc || obj.ciudad || obj.sucursal_id || obj.borrar;
             if(tieneAlgo) payload.push(obj);
           }
         }
@@ -710,9 +696,8 @@
           ${headerAlias}
           <th>Encargado</th>
           <th>Dirección</th>
-          <th>Teléfono</th>
           ${headerRuc}
-          <th>Bodega</th>
+          <th>Ciudad</th>
           <th class="col-editar">Editar</th>
         `;
         
@@ -728,36 +713,31 @@
               nombre: celdas[0].textContent.trim(),
               encargado: '',
               direccion: '',
-              telefono: '',
               alias: '',
               ruc: '',
-              bodega: ''
+              ciudad: ''
             };
             
             if (mostrarAlias && mostrarRuc) {
               sucursal.alias = celdas[1].textContent.trim();
               sucursal.encargado = celdas[2].textContent.trim();
               sucursal.direccion = celdas[3].textContent.trim();
-              sucursal.telefono = celdas[4].textContent.trim();
-              sucursal.ruc = celdas[5].textContent.trim();
-              sucursal.bodega = celdas[6].textContent.trim();
+              sucursal.ruc = celdas[4].textContent.trim();
+              sucursal.ciudad = celdas[5].textContent.trim();
             } else if (mostrarAlias) {
               sucursal.alias = celdas[1].textContent.trim();
               sucursal.encargado = celdas[2].textContent.trim();
               sucursal.direccion = celdas[3].textContent.trim();
-              sucursal.telefono = celdas[4].textContent.trim();
-              sucursal.bodega = celdas[5].textContent.trim();
+              sucursal.ciudad = celdas[4].textContent.trim();
             } else if (mostrarRuc) {
               sucursal.encargado = celdas[1].textContent.trim();
               sucursal.direccion = celdas[2].textContent.trim();
-              sucursal.telefono = celdas[3].textContent.trim();
-              sucursal.ruc = celdas[4].textContent.trim();
-              sucursal.bodega = celdas[5].textContent.trim();
+              sucursal.ruc = celdas[3].textContent.trim();
+              sucursal.ciudad = celdas[4].textContent.trim();
             } else {
               sucursal.encargado = celdas[1].textContent.trim();
               sucursal.direccion = celdas[2].textContent.trim();
-              sucursal.telefono = celdas[3].textContent.trim();
-              sucursal.bodega = celdas[4].textContent.trim();
+              sucursal.ciudad = celdas[3].textContent.trim();
             }
             
             // Reemplazar la fila con la nueva estructura
@@ -979,7 +959,7 @@
         const cli = mapaClientesModal[id];
         if (!cli) return;
 
-        let columnas = ["SAP", "Alias", "Encargado", "Direccion", "Telefono", "Bodega"];
+        let columnas = ["SAP", "Alias", "Encargado", "Direccion", "Ciudad"];
         
         // Si el cliente tiene RUC por sucursal activado, agregar RUC
         if (cli.ruc_por_sucursal) {
