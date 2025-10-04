@@ -264,7 +264,8 @@ def main():
         filas,
         cliente_nombre=args.cliente,
         sucursal_alias=resumen.get("sucursal"),
-        sucursal_ruc=resumen.get("ruc")
+        sucursal_ruc=resumen.get("ruc"),
+        sucursal_encargado=resumen.get("encargado")
     )
     imprimir_filas_emparejadas(filas_enriquecidas)
 

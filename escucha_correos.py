@@ -233,7 +233,9 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
     filas_enriquecidas, suc, cliente_id = emparejar_filas_con_bd(
         filas,
         cliente_nombre=DEFAULT_CLIENTE,
-        sucursal_alias=resumen.get("sucursal")
+        sucursal_alias=resumen.get("sucursal"),
+        sucursal_ruc=resumen.get("ruc"),
+        sucursal_encargado=resumen.get("encargado")
     )
     imprimir_filas_emparejadas(filas_enriquecidas)
 

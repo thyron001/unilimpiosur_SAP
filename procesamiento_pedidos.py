@@ -202,22 +202,47 @@ def extraer_sucursal(pdf_en_bytes: bytes) -> Dict[str, Any]:
     """
     Devuelve:
       {
-        "sucursal": "texto que viene en PDF (Solicita: …) sin fechas",
+        "sucursal": "texto antes del paréntesis (ej: MATRIZ CUENCA)",
         "ruc": "RUC extraído del PDF si se encuentra",
         "orden_compra": "número de orden de compra del título del PDF",
-        "responsable": "nombre del responsable extraído del PDF"
+        "responsable": "nombre del responsable extraído del PDF",
+        "encargado": "nombre del encargado extraído de 'Recibe:' (valor entre paréntesis)"
       }
     """
     texto = _texto_completo(pdf_en_bytes)
+    lineas = texto.splitlines()
 
-    # Sucursal (línea que inicia por 'Solicita:')
+    # Sucursal (línea que inicia por 'Solicita:') - solo texto antes de paréntesis
     sucursal = None
-    for line in texto.splitlines():
+    indice_solicita = -1
+    for idx, line in enumerate(lineas):
         if re.search(r"^\s*Solicita\s*:", line, flags=re.IGNORECASE):
-            sucursal = re.sub(r"^\s*Solicita\s*:\s*", "", line, flags=re.IGNORECASE).strip()
+            texto_sucursal = re.sub(r"^\s*Solicita\s*:\s*", "", line, flags=re.IGNORECASE).strip()
             # Limpiar fechas al final del nombre de sucursal
-            sucursal = _limpiar_fecha_sucursal(sucursal)
+            texto_sucursal = _limpiar_fecha_sucursal(texto_sucursal)
+            # Extraer solo el texto antes del paréntesis
+            match_parentesis = re.match(r'^([^(]+)', texto_sucursal)
+            if match_parentesis:
+                sucursal = match_parentesis.group(1).strip()
+            else:
+                sucursal = texto_sucursal
+            indice_solicita = idx
             break
+
+    # Encargado (línea "Recibe:" - dos líneas después de "Solicita:")
+    # Formato: "Recibe: aparra (Gabriel Parra)" - extraer el valor entre paréntesis
+    encargado = None
+    if indice_solicita >= 0:
+        # Buscar la línea "Recibe:" cerca de "Solicita:" (típicamente 2 líneas después)
+        for offset in range(1, 5):  # Buscar en las siguientes 4 líneas
+            if indice_solicita + offset < len(lineas):
+                linea_recibe = lineas[indice_solicita + offset]
+                if re.search(r'Recibe\s*:', linea_recibe, flags=re.IGNORECASE):
+                    # Extraer el valor entre paréntesis
+                    match_encargado = re.search(r'\(([^)]+)\)', linea_recibe)
+                    if match_encargado:
+                        encargado = match_encargado.group(1).strip()
+                    break
 
     # Buscar RUC en el texto del PDF
     ruc = None
@@ -280,6 +305,7 @@ def extraer_sucursal(pdf_en_bytes: bytes) -> Dict[str, Any]:
         "ruc": ruc,
         "orden_compra": orden_compra,
         "responsable": responsable,
+        "encargado": encargado,
     }
 
 def imprimir_resumen_pedido(res: Dict[str, Any]) -> None:
@@ -287,6 +313,7 @@ def imprimir_resumen_pedido(res: Dict[str, Any]) -> None:
     print("\nResumen del pedido (extraído del PDF):")
     print(f"  Sucursal:        {res.get('sucursal') or '-'}")
     print(f"  RUC:             {res.get('ruc') or '-'}")
+    print(f"  Encargado:       {res.get('encargado') or '-'}")
     print(f"  Orden de Compra: {res.get('orden_compra') or '-'}")
     print(f"  Responsable:     {res.get('responsable') or '-'}")
     print()
@@ -319,10 +346,10 @@ def _buscar_cliente_por_nombre(nombre: str) -> Tuple[int, bool]:
             raise RuntimeError(f"Cliente '{nombre}' no encontrado.")
         return int(row[0]), bool(row[1])
 
-def _resolver_sucursal_por_alias_y_ruc(cliente_id: int, alias_pdf: str | None, ruc_pdf: str | None) -> Dict[str, Any]:
+def _resolver_sucursal_por_alias_y_ruc(cliente_id: int, alias_pdf: str | None, ruc_pdf: str | None, encargado_pdf: str | None = None) -> Dict[str, Any]:
     """
-    Busca sucursal del cliente por alias y RUC.
-    Lógica: 1) Buscar por alias, 2) Si hay múltiples con mismo alias, filtrar por RUC
+    Busca sucursal del cliente por alias, RUC y encargado.
+    Lógica: 1) Buscar por alias, 2) Si hay múltiples, filtrar por RUC, 3) Si todavía hay múltiples, filtrar por encargado
     Devuelve dict {id, nombre} si encuentra coincidencia, o {} si no encontró.
     """
     if not alias_pdf and not ruc_pdf:
@@ -330,10 +357,11 @@ def _resolver_sucursal_por_alias_y_ruc(cliente_id: int, alias_pdf: str | None, r
     
     target_alias = normalizar_texto(alias_pdf) if alias_pdf else None
     target_ruc = ruc_pdf.strip() if ruc_pdf else None
+    target_encargado = normalizar_texto(encargado_pdf) if encargado_pdf else None
     
     with _pg.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT id, nombre, COALESCE(alias, ''), COALESCE(ruc, '')
+            SELECT id, nombre, COALESCE(alias, ''), COALESCE(ruc, ''), COALESCE(encargado, '')
             FROM sucursales
             WHERE cliente_id = %s AND activo = TRUE;
         """, (cliente_id,))
@@ -342,10 +370,10 @@ def _resolver_sucursal_por_alias_y_ruc(cliente_id: int, alias_pdf: str | None, r
     # Paso 1: Buscar por alias exacto
     if target_alias:
         candidatos_alias = []
-        for (sid, nombre, alias, ruc) in filas:
+        for (sid, nombre, alias, ruc, encargado) in filas:
             alias_norm = normalizar_texto(alias)
             if alias_norm == target_alias:
-                candidatos_alias.append((sid, nombre, ruc))
+                candidatos_alias.append((sid, nombre, ruc, encargado))
         
         if candidatos_alias:
             print(f"✅ Encontradas {len(candidatos_alias)} sucursal(es) con alias exacto: {alias_pdf}")
@@ -353,16 +381,38 @@ def _resolver_sucursal_por_alias_y_ruc(cliente_id: int, alias_pdf: str | None, r
             # Paso 2: Si hay múltiples candidatos con el mismo alias, filtrar por RUC
             if len(candidatos_alias) > 1 and target_ruc:
                 print(f"🔍 Múltiples sucursales con mismo alias, filtrando por RUC: {target_ruc}")
-                for (sid, nombre, ruc) in candidatos_alias:
+                candidatos_ruc = []
+                for (sid, nombre, ruc, encargado) in candidatos_alias:
                     if ruc and ruc.strip() == target_ruc:
+                        candidatos_ruc.append((sid, nombre, ruc, encargado))
+                
+                if candidatos_ruc:
+                    # Paso 3: Si hay múltiples con mismo alias y RUC, filtrar por encargado
+                    if len(candidatos_ruc) > 1 and target_encargado:
+                        print(f"🔍 Múltiples sucursales con mismo alias y RUC, filtrando por encargado: {encargado_pdf}")
+                        for (sid, nombre, ruc, encargado) in candidatos_ruc:
+                            encargado_norm = normalizar_texto(encargado)
+                            if encargado_norm == target_encargado:
+                                print(f"✅ Sucursal encontrada por alias + RUC + encargado: {alias_pdf} + {target_ruc} + {encargado_pdf} -> {nombre}")
+                                return {"id": int(sid), "nombre": nombre}
+                        
+                        print(f"⚠️ No se encontró sucursal con alias '{alias_pdf}', RUC '{target_ruc}' y encargado '{encargado_pdf}'")
+                        return {}
+                    elif len(candidatos_ruc) == 1:
+                        # Solo una sucursal con ese alias y RUC
+                        sid, nombre, ruc, encargado = candidatos_ruc[0]
                         print(f"✅ Sucursal encontrada por alias + RUC: {alias_pdf} + {target_ruc} -> {nombre}")
                         return {"id": int(sid), "nombre": nombre}
-                
-                print(f"⚠️ No se encontró sucursal con alias '{alias_pdf}' y RUC '{target_ruc}'")
-                return {}
+                    else:
+                        # Múltiples candidatos con mismo alias y RUC pero no se proporcionó encargado
+                        print(f"⚠️ Múltiples sucursales con alias '{alias_pdf}' y RUC '{target_ruc}' pero no se proporcionó encargado para filtrar")
+                        return {}
+                else:
+                    print(f"⚠️ No se encontró sucursal con alias '{alias_pdf}' y RUC '{target_ruc}'")
+                    return {}
             elif len(candidatos_alias) == 1:
                 # Solo una sucursal con ese alias
-                sid, nombre, ruc = candidatos_alias[0]
+                sid, nombre, ruc, encargado = candidatos_alias[0]
                 print(f"✅ Sucursal encontrada por alias: {alias_pdf} -> {nombre}")
                 return {"id": int(sid), "nombre": nombre}
             else:
@@ -370,25 +420,25 @@ def _resolver_sucursal_por_alias_y_ruc(cliente_id: int, alias_pdf: str | None, r
                 print(f"⚠️ Múltiples sucursales con alias '{alias_pdf}' pero no se proporcionó RUC para filtrar")
                 return {}
     
-    # Paso 3: Si no se encontró por alias exacto, buscar por similitud
+    # Paso 4: Si no se encontró por alias exacto, buscar por similitud
     if target_alias:
         mejor_match = None
         mejor_puntaje = 0.0
         
-        for (sid, nombre, alias, ruc) in filas:
+        for (sid, nombre, alias, ruc, encargado) in filas:
             alias_norm = normalizar_texto(alias)
             if alias_norm:
                 puntaje = solapamiento_tokens(target_alias, alias_norm)
                 if puntaje > mejor_puntaje and puntaje > 0.6:  # Umbral de similitud
-                    mejor_match = (sid, nombre, ruc)
+                    mejor_match = (sid, nombre, ruc, encargado)
                     mejor_puntaje = puntaje
         
         if mejor_match:
-            sid, nombre, ruc = mejor_match
+            sid, nombre, ruc, encargado = mejor_match
             print(f"✅ Sucursal encontrada por similitud de alias: {alias_pdf} -> {nombre} (puntaje: {mejor_puntaje:.2f})")
             return {"id": int(sid), "nombre": nombre}
     
-    print(f"❌ No se encontró sucursal para alias: '{alias_pdf}' o RUC: '{ruc_pdf}'")
+    print(f"❌ No se encontró sucursal para alias: '{alias_pdf}', RUC: '{ruc_pdf}' o encargado: '{encargado_pdf}'")
     return {}
 
 # ---------- Catálogo global y similitud de nombres ----------
@@ -584,7 +634,8 @@ def emparejar_filas_con_bd(
     filas: List[Dict[str, Any]],
     cliente_nombre: str = "Roldan",
     sucursal_alias: str | None = None,
-    sucursal_ruc: str | None = None
+    sucursal_ruc: str | None = None,
+    sucursal_encargado: str | None = None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any], int]:
     """
     Enriquecer filas contra la BD:
@@ -593,12 +644,12 @@ def emparejar_filas_con_bd(
       - Si no encuentra match, busca por ALIAS de productos
       - Si no encuentra por alias, intenta con unidad + descripción combinados
       - Toma bodega desde tablas de bodega (por cliente o por sucursal)
-      - Resuelve sucursal del pedido desde alias y/o RUC del PDF -> nombre del sistema
+      - Resuelve sucursal del pedido desde alias, RUC y encargado del PDF -> nombre del sistema
 
     Devuelve (filas_enriquecidas, sucursal_dict, cliente_id)
     """
     cliente_id, usa_por_sucursal = _buscar_cliente_por_nombre(cliente_nombre)
-    suc = _resolver_sucursal_por_alias_y_ruc(cliente_id, sucursal_alias, sucursal_ruc)
+    suc = _resolver_sucursal_por_alias_y_ruc(cliente_id, sucursal_alias, sucursal_ruc, sucursal_encargado)
 
     # Catálogo global (nombres de productos)
     catalogo = _cargar_catalogo_productos()

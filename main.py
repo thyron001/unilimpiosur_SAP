@@ -83,11 +83,13 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     # 2) Sucursal (del PDF)
     resumen = proc.extraer_sucursal(pdf_en_bytes)
 
-    # 3) Emparejar contra BD (cliente fijo: Roldan), usando el alias de sucursal del PDF
+    # 3) Emparejar contra BD (cliente fijo: Roldan), usando el alias, RUC y encargado de sucursal del PDF
     filas_enriquecidas, suc, cliente_id = proc.emparejar_filas_con_bd(
         filas,
         cliente_nombre="Roldan",
-        sucursal_alias=resumen.get("sucursal")
+        sucursal_alias=resumen.get("sucursal"),
+        sucursal_ruc=resumen.get("ruc"),
+        sucursal_encargado=resumen.get("encargado")
     )
 
     # 4) Verificar si se encontró la sucursal por alias
