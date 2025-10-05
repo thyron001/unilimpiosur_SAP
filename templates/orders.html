@@ -1440,6 +1440,7 @@ Sección 2: CSS  (static/css/glass.css)
           botonSucursal.dataset.sucursalSeleccionada = sucursalSeleccionada.nombre;
           botonSucursal.dataset.sucursalId = sucursalSeleccionada.id;
           botonSucursal.classList.remove("error");
+          botonSucursal.classList.add("btn-seleccionar-sucursal"); // Asegurar que mantenga la clase
           botonSucursal.style.background = "linear-gradient(135deg, #10b981 0%, #059669 100%)";
         }
         
@@ -1465,8 +1466,15 @@ Sección 2: CSS  (static/css/glass.css)
         const bodega = sucursal.bodega || "No asignado";
         $$("#m-bodega").textContent = bodega;
         
-        // Actualizar el nombre de la sucursal en el popup
-        $$("#m-sucursal").textContent = sucursal.nombre;
+        // Actualizar el nombre de la sucursal en el popup (mantener el botón)
+        const sucursalElement = $$("#m-sucursal");
+        const botonSucursal = sucursalElement.querySelector(".btn-seleccionar-sucursal");
+        if (botonSucursal) {
+          botonSucursal.textContent = sucursal.nombre;
+        } else {
+          // Si no hay botón, crear uno nuevo
+          sucursalElement.innerHTML = `<button class="btn-seleccionar-sucursal" data-sucursal-seleccionada="${sucursal.nombre}" data-sucursal-id="${sucursal.id}" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">${sucursal.nombre}</button>`;
+        }
         
         console.log("✅ Datos del popup actualizados con la sucursal seleccionada");
       }
@@ -1616,9 +1624,14 @@ Sección 2: CSS  (static/css/glass.css)
           const sucursalSeleccionada = botonSucursal.dataset.sucursalSeleccionada;
           const sucursalId = botonSucursal.dataset.sucursalId;
           
+          console.log("DEBUG: Botón sucursal encontrado:", botonSucursal);
+          console.log("DEBUG: Sucursal seleccionada:", sucursalSeleccionada);
+          console.log("DEBUG: Sucursal ID:", sucursalId);
+          
           if (sucursalSeleccionada && sucursalId) {
             datosActualizados.sucursal = sucursalSeleccionada;
             datosActualizados.sucursal_id = parseInt(sucursalId);
+            console.log("DEBUG: Datos actualizados con ID:", datosActualizados);
           } else {
             alert("Por favor selecciona una sucursal antes de verificar el pedido");
             return;
@@ -1628,6 +1641,14 @@ Sección 2: CSS  (static/css/glass.css)
           const sucursalElement = document.querySelector("#m-sucursal");
           if (sucursalElement) {
             datosActualizados.sucursal = sucursalElement.textContent.trim();
+            
+            // Intentar obtener el ID de la sucursal de los datos del pedido original
+            if (window.pedidoActualData && window.pedidoActualData.sucursal_id) {
+              datosActualizados.sucursal_id = parseInt(window.pedidoActualData.sucursal_id);
+              console.log("DEBUG: ID de sucursal obtenido de datos del pedido:", datosActualizados.sucursal_id);
+            } else {
+              console.log("DEBUG: No se encontró ID de sucursal en los datos del pedido");
+            }
           }
         }
 
@@ -1678,6 +1699,10 @@ Sección 2: CSS  (static/css/glass.css)
         btnVerificar.innerHTML = '<i class="icon">⏳</i> Verificando...';
         btnVerificar.disabled = true;
 
+        // DEBUG: Mostrar datos que se envían
+        console.log("DEBUG: Datos del pedido actual:", window.pedidoActualData);
+        console.log("DEBUG: Datos que se envían al backend:", datosActualizados);
+        
         try {
           // Enviar datos al servidor
           const response = await fetch(`/api/pedidos/${pedidoId}/verificar`, {

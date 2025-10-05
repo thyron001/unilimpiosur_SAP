@@ -63,7 +63,7 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
                 pedidos_recientes = cur.fetchall()
                 
                 if pedidos_recientes:
-                    print(f"⚠️  Detectado posible duplicado para UID {uid_correo}. Verificando...")
+                    print(f"[WARNING] Detectado posible duplicado para UID {uid_correo}. Verificando...")
                     # Si hay pedidos muy recientes (últimos 5 minutos), saltar procesamiento
                     cur.execute("""
                         SELECT COUNT(*) FROM pedidos 
@@ -71,13 +71,13 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
                     """)
                     pedidos_muy_recientes = cur.fetchone()[0]
                     if pedidos_muy_recientes > 0:
-                        print(f"🚫 Saltando procesamiento: hay {pedidos_muy_recientes} pedido(s) procesado(s) en los últimos 5 minutos")
+                        print(f"[SKIP] Saltando procesamiento: hay {pedidos_muy_recientes} pedido(s) procesado(s) en los últimos 5 minutos")
                         return
 
     # 1) Filas de la tabla
     filas = proc.extraer_filas_pdf(pdf_en_bytes)
     if not filas:
-        print("⚠️ No se detectaron filas en el PDF.")
+        print("[WARNING] No se detectaron filas en el PDF.")
         return
 
     # 2) Sucursal (del PDF)
@@ -96,7 +96,7 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     sucursal_alias_pdf = resumen.get("sucursal")
     if sucursal_alias_pdf and not suc:
         # No se encontró coincidencia en el alias - marcar como error
-        print(f"❌ ERROR: No se encontró sucursal con alias '{sucursal_alias_pdf}' en la base de datos")
+        print(f"[ERROR] No se encontró sucursal con alias '{sucursal_alias_pdf}' en la base de datos")
         pedido = {
             "fecha": meta.get("fecha"),
             "sucursal": f"ERROR: Alias '{sucursal_alias_pdf}' no encontrado",
@@ -104,9 +104,9 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
         }
         try:
             pedido_id, numero_pedido, estado = db.guardar_pedido(pedido, filas_enriquecidas, cliente_id, None)
-            print(f"⚠️  Pedido guardado con ERROR: ID={pedido_id}, N°={numero_pedido}, Estado={estado}")
+            print(f"[WARNING] Pedido guardado con ERROR: ID={pedido_id}, N°={numero_pedido}, Estado={estado}")
         except Exception as e:
-            print(f"❌ No se guardó el pedido con error: {e}")
+            print(f"[ERROR] No se guardó el pedido con error: {e}")
         return
 
     # 5) Armar dict 'pedido' para persistencia_postgresql.guardar_pedido()
@@ -120,9 +120,9 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     try:
         sucursal_id = suc.get("id") if suc else None
         pedido_id, numero_pedido, estado = db.guardar_pedido(pedido, filas_enriquecidas, cliente_id, sucursal_id)
-        print(f"✅ Pedido guardado: ID={pedido_id}, N°={numero_pedido}, Estado={estado}")
+        print(f"[OK] Pedido guardado: ID={pedido_id}, N°={numero_pedido}, Estado={estado}")
     except Exception as e:
-        print(f"❌ No se guardó el pedido: {e}")
+        print(f"[ERROR] No se guardó el pedido: {e}")
         return
 
     # (opcional) logs en terminal
@@ -843,6 +843,7 @@ def api_verificar_pedido(pedido_id: int):
     try:
         data = request.get_json()
         sucursal = data.get("sucursal", "").strip()
+        sucursal_id_enviado = data.get("sucursal_id")  # ID de sucursal enviado desde el frontend
         items_actualizados = data.get("items", [])
         
         with db.obtener_conexion() as conn, conn.cursor() as cur:
@@ -874,33 +875,62 @@ def api_verificar_pedido(pedido_id: int):
             # Validar y actualizar sucursal solo si hay error de sucursal
             sucursal_id_actualizado = None
             if tiene_error_sucursal:
-                if not sucursal:
-                    return jsonify({"exito": False, "error": "La sucursal es requerida"}), 400
-                
-                # Buscar la sucursal por nombre en las sucursales del cliente
-                cur.execute("""
-                    SELECT id, nombre, encargado, direccion, ruc
-                    FROM sucursales 
-                    WHERE cliente_id = %s AND activo = TRUE 
-                    AND (nombre = %s OR alias = %s)
-                    LIMIT 1;
-                """, (cliente_id, sucursal, sucursal))
-                
-                sucursal_data = cur.fetchone()
-                if not sucursal_data:
-                    return jsonify({"exito": False, "error": f"No se encontró la sucursal '{sucursal}' para este cliente"}), 400
-                
-                sucursal_id_actualizado, nombre_sucursal, encargado, direccion, ruc = sucursal_data
-                
-                # Actualizar pedido con todos los datos de la sucursal
-                cur.execute("""
-                    UPDATE pedidos 
-                    SET sucursal = %s, sucursal_id = %s
-                    WHERE id = %s;
-                """, (nombre_sucursal, sucursal_id_actualizado, pedido_id))
-                
-                print(f"✅ Pedido {pedido_id} actualizado con sucursal: {nombre_sucursal} (ID: {sucursal_id_actualizado})")
-                print(f"   Encargado: {encargado}, RUC: {ruc}")
+                if sucursal_id_enviado:
+                    # Si se envió un ID de sucursal, usarlo directamente
+                    sucursal_id_enviado = int(sucursal_id_enviado)
+                    
+                    # Verificar que la sucursal existe y pertenece al cliente
+                    cur.execute("""
+                        SELECT id, nombre, encargado, direccion, ruc
+                        FROM sucursales 
+                        WHERE id = %s AND cliente_id = %s AND activo = TRUE;
+                    """, (sucursal_id_enviado, cliente_id))
+                    
+                    sucursal_data = cur.fetchone()
+                    if not sucursal_data:
+                        return jsonify({"exito": False, "error": f"No se encontró la sucursal con ID {sucursal_id_enviado} para este cliente"}), 400
+                    
+                    sucursal_id_actualizado, nombre_sucursal, encargado, direccion, ruc = sucursal_data
+                    
+                    # Actualizar pedido con todos los datos de la sucursal
+                    cur.execute("""
+                        UPDATE pedidos 
+                        SET sucursal = %s, sucursal_id = %s
+                        WHERE id = %s;
+                    """, (nombre_sucursal, sucursal_id_actualizado, pedido_id))
+                    
+                    print(f"[OK] Pedido {pedido_id} actualizado con sucursal por ID: {nombre_sucursal} (ID: {sucursal_id_actualizado})")
+                    print(f"   Encargado: {encargado}, RUC: {ruc}")
+                    
+                else:
+                    # Método anterior: buscar por nombre (para compatibilidad)
+                    if not sucursal:
+                        return jsonify({"exito": False, "error": "La sucursal es requerida"}), 400
+                    
+                    # Buscar la sucursal por nombre en las sucursales del cliente
+                    cur.execute("""
+                        SELECT id, nombre, encargado, direccion, ruc
+                        FROM sucursales 
+                        WHERE cliente_id = %s AND activo = TRUE 
+                        AND (nombre = %s OR alias = %s)
+                        LIMIT 1;
+                    """, (cliente_id, sucursal, sucursal))
+                    
+                    sucursal_data = cur.fetchone()
+                    if not sucursal_data:
+                        return jsonify({"exito": False, "error": f"No se encontró la sucursal '{sucursal}' para este cliente"}), 400
+                    
+                    sucursal_id_actualizado, nombre_sucursal, encargado, direccion, ruc = sucursal_data
+                    
+                    # Actualizar pedido con todos los datos de la sucursal
+                    cur.execute("""
+                        UPDATE pedidos 
+                        SET sucursal = %s, sucursal_id = %s
+                        WHERE id = %s;
+                    """, (nombre_sucursal, sucursal_id_actualizado, pedido_id))
+                    
+                    print(f"[OK] Pedido {pedido_id} actualizado con sucursal por nombre: {nombre_sucursal} (ID: {sucursal_id_actualizado})")
+                    print(f"   Encargado: {encargado}, RUC: {ruc}")
                 
             else:
                 # Si no hay error de sucursal, usar la sucursal actual
@@ -928,7 +958,7 @@ def api_verificar_pedido(pedido_id: int):
                             SET sucursal_id = %s
                             WHERE id = %s;
                         """, (sucursal_id_actualizado, pedido_id))
-                        print(f"✅ Sucursal_id asignado: {sucursal_id_actualizado} para pedido {pedido_id}")
+                        print(f"[OK] Sucursal_id asignado: {sucursal_id_actualizado} para pedido {pedido_id}")
             
             # Actualizar items si se proporcionaron
             if items_actualizados:
@@ -1230,6 +1260,6 @@ if __name__ == "__main__":
             daemon=True
         )
         hilo_imap.start()
-        print("🧵 Hilo IMAP iniciado.")
+        print("Hilo IMAP iniciado.")
 
     app.run(host="0.0.0.0", port=5000, debug=True)
