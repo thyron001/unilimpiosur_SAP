@@ -858,6 +858,12 @@ def api_verificar_pedido(pedido_id: int):
             if estado_actual != "con_errores":
                 return jsonify({"exito": False, "error": "El pedido no está en estado con_errores"}), 400
             
+            # Obtener el cliente_id del pedido (necesario para buscar bodegas)
+            cur.execute("""
+                SELECT cliente_id FROM pedidos WHERE id = %s;
+            """, (pedido_id,))
+            cliente_id = cur.fetchone()[0]
+            
             # Verificar si hay error de sucursal (sucursal actual es null, vacía, o contiene mensaje de error)
             cur.execute("""
                 SELECT sucursal FROM pedidos WHERE id = %s;
@@ -870,12 +876,6 @@ def api_verificar_pedido(pedido_id: int):
             if tiene_error_sucursal:
                 if not sucursal:
                     return jsonify({"exito": False, "error": "La sucursal es requerida"}), 400
-                
-                # Obtener el cliente_id del pedido para buscar la sucursal correcta
-                cur.execute("""
-                    SELECT cliente_id FROM pedidos WHERE id = %s;
-                """, (pedido_id,))
-                cliente_id = cur.fetchone()[0]
                 
                 # Buscar la sucursal por nombre en las sucursales del cliente
                 cur.execute("""
@@ -910,6 +910,25 @@ def api_verificar_pedido(pedido_id: int):
                     SELECT sucursal_id FROM pedidos WHERE id = %s;
                 """, (pedido_id,))
                 sucursal_id_actualizado = cur.fetchone()[0]
+                
+                # Si el sucursal_id es None, pero tenemos un nombre de sucursal válido, buscar el ID
+                if not sucursal_id_actualizado and sucursal and not sucursal.startswith("ERROR:"):
+                    cur.execute("""
+                        SELECT id FROM sucursales 
+                        WHERE cliente_id = %s AND activo = TRUE 
+                        AND (nombre = %s OR alias = %s)
+                        LIMIT 1;
+                    """, (cliente_id, sucursal, sucursal))
+                    resultado_suc = cur.fetchone()
+                    if resultado_suc:
+                        sucursal_id_actualizado = resultado_suc[0]
+                        # Actualizar el pedido con el sucursal_id correcto
+                        cur.execute("""
+                            UPDATE pedidos 
+                            SET sucursal_id = %s
+                            WHERE id = %s;
+                        """, (sucursal_id_actualizado, pedido_id))
+                        print(f"✅ Sucursal_id asignado: {sucursal_id_actualizado} para pedido {pedido_id}")
             
             # Actualizar items si se proporcionaron
             if items_actualizados:
@@ -939,6 +958,16 @@ def api_verificar_pedido(pedido_id: int):
                     if index >= len(item_ids):
                         return jsonify({"exito": False, "error": f"Índice de producto inválido: {index}"}), 400
                     
+                    # Verificar que el producto existe en la base de datos
+                    cur.execute("""
+                        SELECT id, nombre FROM productos WHERE sku = %s;
+                    """, (sku,))
+                    producto = cur.fetchone()
+                    if not producto:
+                        return jsonify({"exito": False, "error": f"El SKU '{sku}' no existe en el catálogo de productos. Por favor, créalo primero."}), 400
+                    
+                    producto_id = producto[0]
+                    
                     # Actualizar el item específico por ID
                     item_id = item_ids[index]
                     
@@ -948,12 +977,10 @@ def api_verificar_pedido(pedido_id: int):
                     # Primero intentar por sucursal (si el cliente usa bodega por sucursal)
                     if sucursal_id:
                         cur.execute("""
-                            SELECT bps.bodega 
-                            FROM bodegas_producto_por_sucursal bps
-                            WHERE bps.sucursal_id = %s AND bps.producto_id = (
-                                SELECT id FROM productos WHERE sku = %s
-                            )
-                        """, (sucursal_id, sku))
+                            SELECT bodega 
+                            FROM bodegas_producto_por_sucursal
+                            WHERE sucursal_id = %s AND producto_id = %s;
+                        """, (sucursal_id, producto_id))
                         resultado = cur.fetchone()
                         if resultado:
                             bodega_asignada = resultado[0]
@@ -961,12 +988,10 @@ def api_verificar_pedido(pedido_id: int):
                     # Si no se encontró por sucursal, intentar por cliente
                     if not bodega_asignada and cliente_id:
                         cur.execute("""
-                            SELECT bpc.bodega 
-                            FROM bodegas_producto_por_cliente bpc
-                            WHERE bpc.cliente_id = %s AND bpc.producto_id = (
-                                SELECT id FROM productos WHERE sku = %s
-                            )
-                        """, (cliente_id, sku))
+                            SELECT bodega 
+                            FROM bodegas_producto_por_cliente
+                            WHERE cliente_id = %s AND producto_id = %s;
+                        """, (cliente_id, producto_id))
                         resultado = cur.fetchone()
                         if resultado:
                             bodega_asignada = resultado[0]
