@@ -77,14 +77,19 @@ def obtener_items_pedido(pedido_id: int) -> List[Dict[str, Any]]:
     """Obtiene los items de un pedido específico con información de bodega"""
     with obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT 
+            SELECT DISTINCT
+                pi.id,
                 pi.sku,
                 pi.cantidad,
                 pi.bodega,
                 p.nombre as producto_nombre,
                 s.nombre as sucursal_nombre
             FROM pedido_items pi
-            LEFT JOIN productos p ON p.sku = pi.sku
+            LEFT JOIN (
+                SELECT DISTINCT sku, nombre 
+                FROM productos 
+                WHERE sku IS NOT NULL
+            ) p ON p.sku = pi.sku
             LEFT JOIN pedidos ped ON ped.id = pi.pedido_id
             LEFT JOIN sucursales s ON s.id = ped.sucursal_id
             WHERE pi.pedido_id = %s
@@ -94,11 +99,11 @@ def obtener_items_pedido(pedido_id: int) -> List[Dict[str, Any]]:
         items = []
         for row in cur.fetchall():
             items.append({
-                "sku": row[0],
-                "cantidad": row[1],
-                "bodega": row[2],
-                "producto_nombre": row[3],
-                "sucursal_nombre": row[4]
+                "sku": row[1],
+                "cantidad": row[2],
+                "bodega": row[3],
+                "producto_nombre": row[4],
+                "sucursal_nombre": row[5]
             })
         
         return items
