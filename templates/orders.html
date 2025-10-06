@@ -216,7 +216,6 @@ Sección 2: CSS  (static/css/glass.css)
           <div><strong>Orden de Compra:</strong> <span id="m-orden-compra">-</span></div>
           <div><strong>RUC:</strong> <span id="m-ruc">-</span></div>
           <div><strong>Encargado:</strong> <span id="m-encargado">-</span></div>
-          <div><strong>Bodega:</strong> <span id="m-bodega">-</span></div>
         </div>
 
         <div class="glass-modal-body">
@@ -226,7 +225,8 @@ Sección 2: CSS  (static/css/glass.css)
                 <tr>
                   <th>SKU</th>
                   <th>Descripción</th>
-                  <th class="num">Cant.</th>
+                  <th class="num" style="text-align: center;">Cant.</th>
+                  <th style="text-align: center;">Bodega</th>
                 </tr>
               </thead>
               <tbody id="m-items"></tbody>
@@ -1251,12 +1251,12 @@ Sección 2: CSS  (static/css/glass.css)
         if(!iso) return "-";
         const d = new Date(iso);
         if(isNaN(d)) return iso;
-        // Formato dd/mm/yyyy HH:MM
-        const day = String(d.getDate()).padStart(2, '0');
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const year = d.getFullYear();
-        const hours = String(d.getHours()).padStart(2, '0');
-        const minutes = String(d.getMinutes()).padStart(2, '0');
+        // Formato dd/mm/yyyy HH:MM usando UTC para evitar problemas de zona horaria
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const year = d.getUTCFullYear();
+        const hours = String(d.getUTCHours()).padStart(2, '0');
+        const minutes = String(d.getUTCMinutes()).padStart(2, '0');
         return `${day}/${month}/${year} ${hours}:${minutes}`;
       };
 
@@ -1518,10 +1518,6 @@ Sección 2: CSS  (static/css/glass.css)
         const encargado = sucursal.encargado || "No asignado";
         $$("#m-encargado").textContent = encargado;
         
-        // Actualizar bodega
-        const bodega = sucursal.bodega || "No asignado";
-        $$("#m-bodega").textContent = bodega;
-        
         // Actualizar el nombre de la sucursal en el popup (mantener el botón)
         const sucursalElement = $$("#m-sucursal");
         const botonSucursal = sucursalElement.querySelector(".btn-seleccionar-sucursal");
@@ -1574,10 +1570,6 @@ Sección 2: CSS  (static/css/glass.css)
         // Mostrar encargado
         const encargado = data.encargado || "No asignado";
         $$("#m-encargado").textContent = encargado;
-        
-        // Mostrar bodega
-        const bodega = data.bodega || "No asignado";
-        $$("#m-bodega").textContent = bodega;
 
         const tb = $$("#m-items");
         tb.innerHTML = "";
@@ -1592,6 +1584,7 @@ Sección 2: CSS  (static/css/glass.css)
           const tdSku = document.createElement("td");
           const tdDesc = document.createElement("td");
           const tdCant = document.createElement("td");
+          const tdBodega = document.createElement("td");
           
           if (it.tiene_error) {
             // SKU editable
@@ -1615,6 +1608,12 @@ Sección 2: CSS  (static/css/glass.css)
             inputCant.placeholder = "Cantidad";
             inputCant.dataset.originalValue = it.cantidad || "";
             tdCant.appendChild(inputCant);
+            tdCant.style.textAlign = "center";
+            
+            // Bodega (solo lectura, se muestra pero no es editable)
+            tdBodega.textContent = it.bodega || "-";
+            tdBodega.className = "mono";
+            tdBodega.style.textAlign = "center";
           } else {
             // Campos normales (solo lectura)
             tdSku.textContent = it.sku || "";
@@ -1622,11 +1621,16 @@ Sección 2: CSS  (static/css/glass.css)
             tdDesc.textContent = (it.descripcion || "").replace(/</g,"&lt;");
             tdCant.textContent = it.cantidad ?? "";
             tdCant.className = "num mono";
+            tdCant.style.textAlign = "center";
+            tdBodega.textContent = it.bodega || "-";
+            tdBodega.className = "mono";
+            tdBodega.style.textAlign = "center";
           }
           
           tr.appendChild(tdSku);
           tr.appendChild(tdDesc);
           tr.appendChild(tdCant);
+          tr.appendChild(tdBodega);
           tb.appendChild(tr);
         }
 
@@ -1848,12 +1852,13 @@ Sección 2: CSS  (static/css/glass.css)
                 <td data-label="Cliente">${pedido.cliente_nombre || 'Roldan'}</td>
               <td data-label="Sucursal">${pedido.sucursal || '-'}</td>
               <td data-label="Fecha">${pedido.fecha ? (() => {
-                const d = new Date(pedido.fecha);
-                const day = String(d.getDate()).padStart(2, '0');
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const year = d.getFullYear();
-                const hours = String(d.getHours()).padStart(2, '0');
-                const minutes = String(d.getMinutes()).padStart(2, '0');
+                // Crear fecha en UTC para evitar problemas de zona horaria
+                const d = new Date(pedido.fecha + (pedido.fecha.includes('T') ? '' : 'T00:00:00'));
+                const day = String(d.getUTCDate()).padStart(2, '0');
+                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+                const year = d.getUTCFullYear();
+                const hours = String(d.getUTCHours()).padStart(2, '0');
+                const minutes = String(d.getUTCMinutes()).padStart(2, '0');
                 return `${day}/${month}/${year} ${hours}:${minutes}`;
               })() : ''}</td>
               <td data-label="Origen">Email</td>

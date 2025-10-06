@@ -225,7 +225,7 @@ def actualizar_estado_pedidos(pedido_ids: List[int], nuevo_estado: str) -> None:
             WHERE id IN ({placeholders})
         """, [nuevo_estado] + pedido_ids)
         
-        print(f"✅ Actualizados {cur.rowcount} pedidos a estado '{nuevo_estado}'")
+        print(f"OK: Actualizados {cur.rowcount} pedidos a estado '{nuevo_estado}'")
 
 def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
     """Obtiene pedidos específicos por sus IDs con sus datos completos, SOLO si están en estado 'por_procesar'"""
@@ -297,10 +297,10 @@ def generar_archivos_sap(carpeta_salida: str | Path = ".") -> Tuple[str, str]:
     pedidos = obtener_pedidos_por_procesar()
     
     if not pedidos:
-        print("⚠️ No hay pedidos en estado 'por_procesar' para generar archivos SAP")
+        print("WARNING: No hay pedidos en estado 'por_procesar' para generar archivos SAP")
         return None, None
     
-    print(f"📋 Generando archivos SAP para {len(pedidos)} pedidos...")
+    print(f"Generando archivos SAP para {len(pedidos)} pedidos...")
     
     # Generar archivos
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -314,10 +314,10 @@ def generar_archivos_sap(carpeta_salida: str | Path = ".") -> Tuple[str, str]:
     pedido_ids = [p["id"] for p in pedidos]
     actualizar_estado_pedidos(pedido_ids, "procesado")
     
-    print(f"✅ Archivos SAP generados:")
-    print(f"   → ODRF: {odrf_path}")
-    print(f"   → DRF1: {drf1_path}")
-    print(f"   → {len(pedidos)} pedidos marcados como 'procesado'")
+    print(f"OK: Archivos SAP generados:")
+    print(f"   -> ODRF: {odrf_path}")
+    print(f"   -> DRF1: {drf1_path}")
+    print(f"   -> {len(pedidos)} pedidos marcados como 'procesado'")
     
     return str(odrf_path), str(drf1_path)
 
@@ -340,7 +340,7 @@ def generar_archivos_sap_por_ids(pedidos_ids: List[int], carpeta_salida: str | P
     pedidos = obtener_pedidos_por_ids(pedidos_ids)
     
     if not pedidos:
-        print("⚠️ No se encontraron pedidos en estado 'por_procesar' con los IDs especificados")
+        print("WARNING: No se encontraron pedidos en estado 'por_procesar' con los IDs especificados")
         # Verificar si hay pedidos con errores en la lista
         with obtener_conexion() as conn, conn.cursor() as cur:
             placeholders = ','.join(['%s'] * len(pedidos_ids))
@@ -351,14 +351,14 @@ def generar_archivos_sap_por_ids(pedidos_ids: List[int], carpeta_salida: str | P
             pedidos_con_errores = cur.fetchall()
             
             if pedidos_con_errores:
-                print(f"⚠️ Se encontraron {len(pedidos_con_errores)} pedidos con errores que no se pueden procesar:")
+                print(f"WARNING: Se encontraron {len(pedidos_con_errores)} pedidos con errores que no se pueden procesar:")
                 for pedido_id, numero_pedido, estado in pedidos_con_errores:
-                    print(f"   → Pedido #{numero_pedido} (ID: {pedido_id}) - Estado: {estado}")
-                print("   → Estos pedidos deben ser corregidos antes de poder generar archivos SAP")
+                    print(f"   -> Pedido #{numero_pedido} (ID: {pedido_id}) - Estado: {estado}")
+                print("   -> Estos pedidos deben ser corregidos antes de poder generar archivos SAP")
         
         return None, None
     
-    print(f"📋 Generando archivos SAP para {len(pedidos)} pedidos seleccionados...")
+    print(f"Generando archivos SAP para {len(pedidos)} pedidos seleccionados...")
     
     # Generar archivos
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -372,10 +372,10 @@ def generar_archivos_sap_por_ids(pedidos_ids: List[int], carpeta_salida: str | P
     pedidos_procesados_ids = [p["id"] for p in pedidos]
     actualizar_estado_pedidos(pedidos_procesados_ids, "procesado")
     
-    print(f"✅ Archivos SAP generados:")
-    print(f"   → ODRF: {odrf_path}")
-    print(f"   → DRF1: {drf1_path}")
-    print(f"   → {len(pedidos)} de {len(pedidos_ids)} pedidos procesados (solo los que estaban en estado 'por_procesar')")
+    print(f"OK: Archivos SAP generados:")
+    print(f"   -> ODRF: {odrf_path}")
+    print(f"   -> DRF1: {drf1_path}")
+    print(f"   -> {len(pedidos)} de {len(pedidos_ids)} pedidos procesados (solo los que estaban en estado 'por_procesar')")
     
     return str(odrf_path), str(drf1_path)
 
@@ -383,6 +383,6 @@ if __name__ == "__main__":
     # Ejecutar generación de archivos
     odrf_path, drf1_path = generar_archivos_sap()
     if odrf_path and drf1_path:
-        print("🎉 Generación completada exitosamente")
+        print("SUCCESS: Generación completada exitosamente")
     else:
-        print("❌ No se generaron archivos")
+        print("ERROR: No se generaron archivos")
