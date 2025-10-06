@@ -246,61 +246,50 @@
         let celdasAlias = '';
         for(let i = 1; i <= cantidadAlias; i++) {
             const aliasValue = row[`alias_${i}`] || '';
-            celdasAlias += `<td data-label="Alias ${i}"><span contenteditable="false" class="alias-${i}">${esc(aliasValue)}</span></td>`;
+            celdasAlias += `<td data-label="Alias ${i}"><span contenteditable="${editable ? 'true' : 'false'}" class="alias-${i} ${editable ? 'celda-editable' : ''}">${esc(aliasValue)}</span></td>`;
         }
         
         tr.innerHTML = `
-            <td data-label="SKU"><span contenteditable="false" class="sku">${esc(row.sku||"")}</span></td>
-            <td data-label="Nombre del Producto"><span contenteditable="false" class="nombre">${esc(row.nombre_producto||"")}</span></td>
+            <td data-label="SKU"><span contenteditable="${editable ? 'true' : 'false'}" class="sku ${editable ? 'celda-editable' : ''}" ${editable ? 'list="dlSkus"' : ''}>${esc(row.sku||"")}</span></td>
+            <td data-label="Nombre del Producto"><span contenteditable="${editable ? 'true' : 'false'}" class="nombre ${editable ? 'celda-editable' : ''}" ${editable ? 'list="dlNombres"' : ''}>${esc(row.nombre_producto||"")}</span></td>
             ${celdasAlias}
-            <td data-label="Bodega" class="col-bodega"><span contenteditable="false" class="bodega">${esc(row.bodega||"")}</span></td>
+            <td data-label="Bodega" class="col-bodega"><span contenteditable="${editable ? 'true' : 'false'}" class="bodega ${editable ? 'celda-editable' : ''}">${esc(row.bodega||"")}</span></td>
             <td class="col-editar">
                 <button class="btn-editar" data-accion="borrar" title="Marcar para borrar">🗑️</button>
             </td>
         `;
         
-        // Configurar celdas editables
-        const spans = ["sku","nombre","bodega"].map(c=>tr.querySelector("."+c));
-        spans.forEach(sp => {
-            if(editable){
-            sp.setAttribute("contenteditable","true");
-            sp.classList.add("celda-editable");
-            if(sp.classList.contains("sku"))    sp.setAttribute("list","dlSkus");
-            if(sp.classList.contains("nombre")) sp.setAttribute("list","dlNombres");
-            if(sp.classList.contains("bodega")){
-              // Restringir a dígitos y longitud 2, y zfill al perder foco
-              sp.addEventListener("input", ()=>{
-                let t = sp.textContent.replace(/\D+/g, "");
-                if(t.length > 2) t = t.slice(0,2);
-                sp.textContent = t;
-                // mover cursor al final
-                const sel = window.getSelection();
-                const range = document.createRange();
-                range.selectNodeContents(sp);
-                range.collapse(false);
-                sel.removeAllRanges(); sel.addRange(range);
-              });
-              sp.addEventListener("blur", ()=>{
-                let t = (sp.textContent || "").trim();
-                if(t !== "") sp.textContent = t.padStart(2, "0");
-              });
+        // Configurar event listeners para celdas editables
+        if(editable){
+            // Configurar bodega (restricciones especiales)
+            const bodegaSpan = tr.querySelector(".bodega");
+            if(bodegaSpan){
+                bodegaSpan.addEventListener("input", ()=>{
+                    let t = bodegaSpan.textContent.replace(/\D+/g, "");
+                    if(t.length > 2) t = t.slice(0,2);
+                    bodegaSpan.textContent = t;
+                    // mover cursor al final
+                    const sel = window.getSelection();
+                    const range = document.createRange();
+                    range.selectNodeContents(bodegaSpan);
+                    range.collapse(false);
+                    sel.removeAllRanges(); sel.addRange(range);
+                });
+                bodegaSpan.addEventListener("blur", ()=>{
+                    let t = (bodegaSpan.textContent || "").trim();
+                    if(t !== "") bodegaSpan.textContent = t.padStart(2, "0");
+                });
             }
-            } else {
-            sp.removeAttribute("contenteditable");
-            sp.classList.remove("celda-editable");
-            }
-        });
-        
-        // Configurar celdas de alias editables
-        for(let i = 1; i <= cantidadAlias; i++) {
-            const aliasSpan = tr.querySelector(`.alias-${i}`);
-            if(aliasSpan) {
-                if(editable){
-                    aliasSpan.setAttribute("contenteditable","true");
-                    aliasSpan.classList.add("celda-editable");
-                } else {
-                    aliasSpan.removeAttribute("contenteditable");
-                    aliasSpan.classList.remove("celda-editable");
+            
+            // Configurar alias editables
+            for(let i = 1; i <= cantidadAlias; i++) {
+                const aliasSpan = tr.querySelector(`.alias-${i}`);
+                if(aliasSpan){
+                    aliasSpan.addEventListener("blur", ()=>{
+                        // Normalizar texto del alias
+                        let t = (aliasSpan.textContent || "").trim();
+                        aliasSpan.textContent = t;
+                    });
                 }
             }
         }

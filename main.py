@@ -661,16 +661,27 @@ def api_productos_por_cliente_bulk():
 
             # Upsert bodega por cliente
             if mapeo_id:
-                cur.execute("""
-                    UPDATE bodegas_producto_por_cliente
-                       SET producto_id = %s, bodega = %s
-                     WHERE id = %s;
-                """, (producto_id, bodega, mapeo_id))
-                res["actualizados"] += (cur.rowcount or 0)
-            else:
+                # Usar una sola operación que maneje todos los casos
+                # Primero eliminar el registro actual si existe
+                cur.execute("DELETE FROM bodegas_producto_por_cliente WHERE id = %s;", (mapeo_id,))
+                
+                # Luego insertar el nuevo registro (puede ser el mismo producto_id o uno diferente)
                 cur.execute("""
                     INSERT INTO bodegas_producto_por_cliente (cliente_id, producto_id, bodega)
                     VALUES (%s, %s, %s)
+                    ON CONFLICT (cliente_id, producto_id) 
+                    DO UPDATE SET bodega = EXCLUDED.bodega
+                    RETURNING id;
+                """, (cliente_id, producto_id, bodega))
+                _ = cur.fetchone()[0]
+                res["actualizados"] += 1
+            else:
+                # Usar INSERT ... ON CONFLICT para manejar duplicados
+                cur.execute("""
+                    INSERT INTO bodegas_producto_por_cliente (cliente_id, producto_id, bodega)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (cliente_id, producto_id) 
+                    DO UPDATE SET bodega = EXCLUDED.bodega
                     RETURNING id;
                 """, (cliente_id, producto_id, bodega))
                 _ = cur.fetchone()[0]

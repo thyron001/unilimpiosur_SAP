@@ -187,7 +187,7 @@
                     <div class="campo">
                         <label for="inputArchivoSucursales"><b>Archivo</b></label>
                         <input id="inputArchivoSucursales" type="file" accept=".csv,.xlsx" class="glass-input" />
-                        <small id="mensajeColumnasSucursales" class="ayuda">Recuerde poner el nombre de las columnas de las siguientes maneras: SAP, Alias, Encargado, Direccion, RUC, Ciudad</small>
+                        <small id="mensajeColumnasSucursales" class="ayuda">Recuerde poner el nombre de las columnas de las siguientes maneras: SAP, Alias, Encargado, Direccion, Ciudad</small>
                         <small>Usa .csv (UTF-8) o .xlsx. La columna SAP es obligatoria.</small>
                     </div>
                 </div>
@@ -932,12 +932,9 @@
 
       async function cargarClientesParaModalSucursales() {
         try {
-          const r = await fetch("/api/clientes");
+          const r = await fetch("/api/clientes_con_sucursales");
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          const data = await r.json();
-          
-          // El endpoint devuelve {clientes: [...]}, no directamente un array
-          const clientes = data.clientes || data;
+          const clientes = await r.json();
           
           // Verificar que la respuesta sea un array
           if (!Array.isArray(clientes)) {
@@ -948,12 +945,15 @@
           mapaClientesModal = {};
           selectClienteSucursales.innerHTML = '<option value="">Selecciona un cliente...</option>';
           
+          console.log("Clientes cargados para modal:", clientes);
+          
           for (const c of cacheClientesModal) {
             mapaClientesModal[c.id] = c;
             const opt = document.createElement("option");
             opt.value = String(c.id);
             opt.textContent = c.nombre;
             selectClienteSucursales.appendChild(opt);
+            console.log(`Cliente agregado: ${c.nombre} (ID: ${c.id}, RUC por sucursal: ${c.ruc_por_sucursal})`);
           }
         } catch (e) {
           console.error("Error cargando clientes para modal:", e);
@@ -964,16 +964,29 @@
       function actualizarMensajeColumnasSucursales() {
         const id = Number(selectClienteSucursales.value);
         const cli = mapaClientesModal[id];
-        if (!cli) return;
+        
+        console.log("Actualizando mensaje para cliente ID:", id);
+        console.log("Datos del cliente:", cli);
+        
+        if (!cli) {
+          console.log("No se encontró cliente con ID:", id);
+          return;
+        }
 
         let columnas = ["SAP", "Alias", "Encargado", "Direccion", "Ciudad"];
         
         // Si el cliente tiene RUC por sucursal activado, agregar RUC
         if (cli.ruc_por_sucursal) {
+          console.log("Cliente tiene RUC por sucursal activado, agregando columna RUC");
           columnas.push("RUC");
+        } else {
+          console.log("Cliente NO tiene RUC por sucursal activado");
         }
         
-        mensajeColumnasSucursales.textContent = `Recuerde poner el nombre de las columnas de las siguientes maneras: ${columnas.join(", ")}`;
+        const mensaje = `Recuerde poner el nombre de las columnas de las siguientes maneras: ${columnas.join(", ")}`;
+        console.log("Mensaje actualizado:", mensaje);
+        
+        mensajeColumnasSucursales.textContent = mensaje;
         ayudaClienteSucursales.textContent = "Selecciona el cliente para subir datos de sus sucursales.";
       }
 
