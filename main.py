@@ -623,6 +623,7 @@ def api_productos_por_cliente_bulk():
         for c in cambios:
             cliente_id   = c.get("cliente_id")
             mapeo_id     = c.get("mapeo_id")
+            producto_id_existente = c.get("producto_id")
             sku          = (c.get("producto_sku") or "").strip() or None
             nombre_prod  = (c.get("producto_nombre") or "").strip() or None
             bodega       = (c.get("bodega") or "").strip() or None
@@ -641,23 +642,37 @@ def api_productos_por_cliente_bulk():
             if not sku and not nombre_prod:
                 continue  # necesita al menos algo
 
-            # Asegurar producto
-            producto_id = None
-            if sku:
-                cur.execute("SELECT id FROM productos WHERE sku = %s;", (sku,))
-                r = cur.fetchone()
-                if r: producto_id = r[0]
-            if not producto_id and nombre_prod:
-                cur.execute("SELECT id FROM productos WHERE upper(nombre) = upper(%s) LIMIT 1;", (nombre_prod,))
-                r = cur.fetchone()
-                if r: producto_id = r[0]
+            # Asegurar producto - permite SKUs duplicados con diferentes nombres
+            producto_id = producto_id_existente
+            
+            # Si no tenemos producto_id existente, buscar/crear producto
             if not producto_id:
-                cur.execute("""
-                    INSERT INTO productos (sku, nombre, activo) VALUES (%s, %s, TRUE)
-                    RETURNING id;
-                """, (sku, nombre_prod or sku))
-                producto_id = cur.fetchone()[0]
-                res["productos_creados"] += 1
+                # Si hay SKU y nombre, buscar por ambos para evitar duplicados exactos
+                if sku and nombre_prod:
+                    cur.execute("SELECT id FROM productos WHERE sku = %s AND upper(nombre) = upper(%s);", (sku, nombre_prod))
+                    r = cur.fetchone()
+                    if r: producto_id = r[0]
+                
+                # Si solo hay SKU, buscar el primer producto con ese SKU
+                elif sku:
+                    cur.execute("SELECT id FROM productos WHERE sku = %s LIMIT 1;", (sku,))
+                    r = cur.fetchone()
+                    if r: producto_id = r[0]
+                
+                # Si solo hay nombre, buscar por nombre exacto
+                elif nombre_prod:
+                    cur.execute("SELECT id FROM productos WHERE upper(nombre) = upper(%s) LIMIT 1;", (nombre_prod,))
+                    r = cur.fetchone()
+                    if r: producto_id = r[0]
+                
+                # Crear nuevo producto si no existe
+                if not producto_id:
+                    cur.execute("""
+                        INSERT INTO productos (sku, nombre, activo) VALUES (%s, %s, TRUE)
+                        RETURNING id;
+                    """, (sku or "", nombre_prod or ""))
+                    producto_id = cur.fetchone()[0]
+                    res["productos_creados"] += 1
 
             # Upsert bodega por cliente
             if mapeo_id:
@@ -719,6 +734,7 @@ def api_productos_por_sucursal_bulk():
         for c in cambios:
             sucursal_id  = c.get("sucursal_id")
             mapeo_id     = c.get("mapeo_id")
+            producto_id_existente = c.get("producto_id")
             sku          = (c.get("producto_sku") or "").strip() or None
             nombre_prod  = (c.get("producto_nombre") or "").strip() or None
             bodega       = (c.get("bodega") or "").strip() or None
@@ -737,23 +753,37 @@ def api_productos_por_sucursal_bulk():
             if not sku and not nombre_prod:
                 continue
 
-            # Asegurar producto
-            producto_id = None
-            if sku:
-                cur.execute("SELECT id FROM productos WHERE sku = %s;", (sku,))
-                r = cur.fetchone()
-                if r: producto_id = r[0]
-            if not producto_id and nombre_prod:
-                cur.execute("SELECT id FROM productos WHERE upper(nombre) = upper(%s) LIMIT 1;", (nombre_prod,))
-                r = cur.fetchone()
-                if r: producto_id = r[0]
+            # Asegurar producto - permite SKUs duplicados con diferentes nombres
+            producto_id = producto_id_existente
+            
+            # Si no tenemos producto_id existente, buscar/crear producto
             if not producto_id:
-                cur.execute("""
-                    INSERT INTO productos (sku, nombre, activo) VALUES (%s, %s, TRUE)
-                    RETURNING id;
-                """, (sku, nombre_prod or sku))
-                producto_id = cur.fetchone()[0]
-                res["productos_creados"] += 1
+                # Si hay SKU y nombre, buscar por ambos para evitar duplicados exactos
+                if sku and nombre_prod:
+                    cur.execute("SELECT id FROM productos WHERE sku = %s AND upper(nombre) = upper(%s);", (sku, nombre_prod))
+                    r = cur.fetchone()
+                    if r: producto_id = r[0]
+                
+                # Si solo hay SKU, buscar el primer producto con ese SKU
+                elif sku:
+                    cur.execute("SELECT id FROM productos WHERE sku = %s LIMIT 1;", (sku,))
+                    r = cur.fetchone()
+                    if r: producto_id = r[0]
+                
+                # Si solo hay nombre, buscar por nombre exacto
+                elif nombre_prod:
+                    cur.execute("SELECT id FROM productos WHERE upper(nombre) = upper(%s) LIMIT 1;", (nombre_prod,))
+                    r = cur.fetchone()
+                    if r: producto_id = r[0]
+                
+                # Crear nuevo producto si no existe
+                if not producto_id:
+                    cur.execute("""
+                        INSERT INTO productos (sku, nombre, activo) VALUES (%s, %s, TRUE)
+                        RETURNING id;
+                    """, (sku or "", nombre_prod or ""))
+                    producto_id = cur.fetchone()[0]
+                    res["productos_creados"] += 1
 
             # Upsert bodega por sucursal
             if mapeo_id:

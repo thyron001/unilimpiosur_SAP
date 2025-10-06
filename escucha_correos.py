@@ -34,9 +34,30 @@ IMAP_CLAVE      = os.getenv("IMAP_PASS")
 IMAP_BUZON      = os.getenv("IMAP_MAILBOX", "INBOX")
 TIEMPO_IDLE     = int(os.getenv("IMAP_IDLE_SECS", "1740"))  # 29 min por defecto
 DEFAULT_CLIENTE = os.getenv("DEFAULT_CLIENTE", "Roldan")    # cliente por defecto para bodegas/emparejado
-REMITENTE_PERMITIDO = os.getenv("REMITENTE_PERMITIDO", "tyminobra@outlook.es")  # solo procesar correos de este remitente
+# Configuración de remitentes permitidos
+REMITENTES_PERMITIDOS_STR = os.getenv("REMITENTES_PERMITIDOS", "tyminobra@outlook.es,@gruporoldan.com.ec")
+REMITENTES_PERMITIDOS = [r.strip().lower() for r in REMITENTES_PERMITIDOS_STR.split(",") if r.strip()]
 
 # ---------- Utilidades ----------
+def es_remitente_permitido(correo_remitente: str) -> bool:
+    """
+    Verifica si un remitente está en la lista de permitidos.
+    Soporta tanto direcciones completas como dominios (que empiecen con @).
+    """
+    correo_lower = correo_remitente.lower()
+    
+    for remitente_permitido in REMITENTES_PERMITIDOS:
+        if remitente_permitido.startswith("@"):
+            # Es un dominio, verificar si el correo termina con ese dominio
+            if correo_lower.endswith(remitente_permitido):
+                return True
+        else:
+            # Es una dirección completa, comparar exactamente
+            if correo_lower == remitente_permitido:
+                return True
+    
+    return False
+
 def decodificar(valor):
     if valor is None:
         return ""
@@ -110,8 +131,8 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
             correo_remitente = f"{buzon}@{host}" if buzon and host else ""
             remitente = (f"{nombre_limpio} <{correo_remitente}>" if nombre_limpio else correo_remitente) or "(desconocido)"
 
-        # Validar que el remitente sea el permitido
-        if correo_remitente.lower() != REMITENTE_PERMITIDO.lower():
+        # Validar que el remitente esté en la lista de permitidos
+        if not es_remitente_permitido(correo_remitente):
             print(f"🚫 Correo UID {uid} ignorado: remitente '{correo_remitente}' no está en la lista de permitidos")
             continue
 
@@ -143,6 +164,7 @@ def iniciar_escucha_correos(al_encontrar_pdf: Callable[[Dict[str, Any], str, byt
 
     contexto = ssl.create_default_context()
     print(f"Conectando a {IMAP_SERVIDOR} como {IMAP_USUARIO} ...")
+    print(f"📧 Remitentes permitidos: {', '.join(REMITENTES_PERMITIDOS)}")
 
     while True:
         try:

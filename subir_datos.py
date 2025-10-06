@@ -105,31 +105,18 @@ def _upsert_alias_producto(cur, cliente_id: int, producto_id: int, alias_1: str,
 
 def _asegurar_producto(cur, sku: str, nombre: str) -> int | None:
     """
-    Si existe por SKU, devuelve id.
-    Si no hay SKU, intenta por nombre (CI).
-    Si no existe y NO hay SKU, no puede crear (SKU es NOT NULL) -> retorna None.
-    Si no existe y hay SKU, crea el producto con ese SKU y nombre (o usa SKU como nombre si vacío).
+    Permite SKUs duplicados con diferentes nombres/alias.
+    Siempre crea un nuevo producto si hay SKU o nombre, permitiendo duplicados.
     """
-    # Primero por SKU
-    if sku:
-        cur.execute("SELECT id FROM productos WHERE sku = %s;", (sku,))
-        r = cur.fetchone()
-        if r:
-            return int(r[0])
-    # Intentar por nombre si no hay SKU
-    if not sku and nombre:
-        cur.execute("SELECT id FROM productos WHERE upper(nombre) = upper(%s) LIMIT 1;", (nombre,))
-        r = cur.fetchone()
-        if r:
-            return int(r[0])
-    # Crear solo si hay SKU
-    if sku:
+    # Crear nuevo producto si hay SKU o nombre
+    if sku or nombre:
         cur.execute("""
             INSERT INTO productos (sku, nombre, activo)
             VALUES (%s, %s, TRUE)
             RETURNING id;
-        """, (sku, nombre or sku))
+        """, (sku or "", nombre or ""))
         return int(cur.fetchone()[0])
+    
     return None
 
 def _upsert_bodega_por_cliente(conn, cliente_id: int, filas: Iterable[Dict[str,str]]) -> Tuple[int,int,int,List[str]]:
