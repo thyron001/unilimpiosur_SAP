@@ -5,6 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Clientes — SAP</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -21,8 +22,14 @@
           <a class="menu-link is-active" href="/clientes">Clientes</a>
           <a class="menu-link" href="/productos">Productos</a>
         </nav>
-        <div class="search-bar">
-          <input type="text" id="busquedaRapida" placeholder="Buscar en clientes/sucursales…">
+        <div class="header-right">
+          <div class="search-bar">
+            <input type="text" id="busquedaRapida" placeholder="Buscar en clientes/sucursales…">
+          </div>
+          <div class="user-info">
+            <span class="user-name">{{ session.saludo or (session.nombre_completo or session.username) }}</span>
+            <a href="/logout" class="logout-btn" title="Cerrar sesión">🚪</a>
+          </div>
         </div>
       </div>
 
@@ -1050,6 +1057,55 @@
     </script>
 
     <style>
+    /* Estilos para header con información del usuario */
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-left: auto;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      backdrop-filter: blur(10px);
+    }
+
+    .user-name {
+      font-size: 14px;
+      color: var(--theme-color);
+      font-weight: 500;
+    }
+
+    .logout-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      text-decoration: none;
+      color: var(--inactive-color);
+      border-radius: 50%;
+      transition: all 0.2s ease;
+      font-size: 16px;
+    }
+
+    .logout-btn:hover {
+      color: var(--theme-color);
+      background: rgba(255, 255, 255, 0.1);
+      transform: scale(1.1);
+    }
+
+    /* Ajustar el search-bar para que no ocupe todo el espacio */
+    .search-bar {
+      width: min(300px, 30vw);
+    }
+
     /* Ajustes mínimos encima del glass.css existente */
     .celda-editable { outline: 1px dashed var(--border-color); border-radius: 6px; }
     .marcada-borrado { opacity: .5; filter: grayscale(0.4); }

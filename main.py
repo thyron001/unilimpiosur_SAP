@@ -3,6 +3,8 @@
 import os
 from datetime import datetime
 from decimal import Decimal
+import bcrypt
+from functools import wraps
 
 # Cargar variables de entorno desde .env
 from dotenv import load_dotenv
@@ -10,7 +12,7 @@ load_dotenv()
 
 import psycopg
 from threading import Thread
-from flask import Flask, render_template, jsonify, abort
+from flask import Flask, render_template, jsonify, abort, session, redirect, url_for, request as flask_request
 from flask import request
 
 import subir_datos as subir
@@ -20,6 +22,11 @@ import persistencia_postgresql as db
 
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'clave-secreta-por-defecto-cambiar-en-produccion')
+
+# Configurar sesión para que expire en 8 horas
+from datetime import timedelta
+app.permanent_session_lifetime = timedelta(hours=8)
 
 # ========= UTILIDADES DE PERSISTENCIA (quedan aquí) =========
 
@@ -34,6 +41,84 @@ def a_decimal(valor) -> Decimal | None:
         return Decimal(s)
     except Exception:
         return None
+
+# ========= SISTEMA DE AUTENTICACIÓN =========
+
+def verificar_usuario(username: str, password: str) -> dict | None:
+    """Verifica las credenciales del usuario y devuelve los datos del usuario si son válidas"""
+    try:
+        with db.obtener_conexion() as conn, conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, username, password_hash, nombre_completo, email
+                FROM usuarios 
+                WHERE username = %s AND activo = TRUE
+            """, (username,))
+            row = cur.fetchone()
+            
+            if row:
+                user_id, username_db, password_hash, nombre_completo, email = row
+                # Verificar la contraseña usando bcrypt
+                if bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8')):
+                    # Actualizar último acceso
+                    cur.execute("""
+                        UPDATE usuarios 
+                        SET ultimo_acceso = CURRENT_TIMESTAMP 
+                        WHERE id = %s
+                    """, (user_id,))
+                    conn.commit()
+                    
+                    return {
+                        'id': user_id,
+                        'username': username_db,
+                        'nombre_completo': nombre_completo,
+                        'email': email
+                    }
+    except Exception as e:
+        print(f"Error al verificar usuario: {e}")
+    
+    return None
+
+def login_required(f):
+    """Decorador para requerir autenticación"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            # Si la sesión expiró, redirigir al login con mensaje
+            return redirect(url_for('login', expired='true'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def login_user(user_data: dict):
+    """Inicia sesión para el usuario"""
+    session.permanent = True  # Marcar sesión como permanente para que use el tiempo de vida configurado
+    session['user_id'] = user_data['id']
+    session['username'] = user_data['username']
+    session['nombre_completo'] = user_data['nombre_completo']
+    session['email'] = user_data['email']
+
+def logout_user():
+    """Cierra la sesión del usuario"""
+    session.clear()
+
+def obtener_saludo_aleatorio(nombre_usuario: str) -> str:
+    """Genera un saludo aleatorio con el nombre del usuario"""
+    import random
+    
+    frases_saludo = [
+        "Bienvenido",
+        "¡Hola",
+        "¡Qué tal",
+        "¡Saludos",
+        "¡Buenos días",
+        "¡Buenas tardes",
+        "¡Buenas noches",
+        "¡Encantado de verte",
+        "¡Es un placer verte",
+        "¡Qué gusto verte"
+    ]
+    
+    frase = random.choice(frases_saludo)
+    return f"{frase} {nombre_usuario}!"
 
 
 
@@ -138,7 +223,46 @@ def index():
     from flask import redirect, url_for
     return redirect(url_for('ver_pedidos'))
 
+# ========= RUTAS DE AUTENTICACIÓN =========
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """Página de login"""
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        
+        if not username or not password:
+            return render_template("login.html", error="Por favor, complete todos los campos")
+        
+        user_data = verificar_usuario(username, password)
+        if user_data:
+            login_user(user_data)
+            # Generar saludo aleatorio y guardarlo en la sesión
+            saludo = obtener_saludo_aleatorio(user_data['nombre_completo'])
+            session['saludo'] = saludo
+            # Redirigir a la página que intentaba acceder o a pedidos por defecto
+            next_page = request.args.get('next')
+            return redirect(next_page or url_for('ver_pedidos'))
+        else:
+            return render_template("login.html", error="Usuario o contraseña incorrectos")
+    
+    # Verificar si la sesión expiró
+    expired = request.args.get('expired')
+    error_message = None
+    if expired == 'true':
+        error_message = "Su sesión ha expirado. Por favor, inicie sesión nuevamente."
+    
+    return render_template("login.html", error=error_message)
+
+@app.route("/logout")
+def logout():
+    """Cerrar sesión"""
+    logout_user()
+    return redirect(url_for('login'))
+
 @app.route("/pedidos")
+@login_required
 def ver_pedidos():
     # Por defecto mostrar pedidos por procesar
     estado = request.args.get('estado', 'por_procesar')
@@ -158,10 +282,12 @@ def ver_pedidos():
 
 
 @app.route("/clientes")
+@login_required
 def vista_clientes():
     return render_template("clientes.html")
 
 @app.route("/api/clientes")
+@login_required
 def api_clientes():
     """Obtiene lista de clientes para filtros"""
     with db.obtener_conexion() as conn, conn.cursor() as cur:
@@ -194,6 +320,7 @@ def api_clientes():
     return jsonify({"clientes": clientes})
 
 @app.route("/api/clientes_con_sucursales")
+@login_required
 def api_clientes_con_sucursales():
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
@@ -235,6 +362,7 @@ def api_clientes_con_sucursales():
 
 
 @app.route("/api/clientes/<int:cliente_id>", methods=["PUT"])
+@login_required
 def api_actualizar_cliente(cliente_id):
     data = request.get_json(silent=True) or {}
     
@@ -297,6 +425,7 @@ def api_actualizar_cliente(cliente_id):
 
 
 @app.route("/api/sucursales/bulk", methods=["POST"])
+@login_required
 def api_sucursales_bulk():
     data = request.get_json(silent=True) or {}
     cambios = data.get("cambios") or []
@@ -347,6 +476,7 @@ def api_sucursales_bulk():
 
 # === VISTA HTML ===
 @app.route("/productos")
+@login_required
 def vista_productos():
     return render_template("productos.html")
 
@@ -733,6 +863,7 @@ def api_pedidos_por_estado(estado: str):
     return jsonify({"pedidos": filas, "estado": estado})
 
 @app.route("/api/generar_sap", methods=["POST"])
+@login_required
 def api_generar_sap():
     """Genera archivos SAP para pedidos seleccionados o todos los por procesar"""
     try:

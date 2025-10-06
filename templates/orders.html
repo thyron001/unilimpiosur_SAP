@@ -11,6 +11,7 @@ Sección 2: CSS  (static/css/glass.css)
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Pedidos — SAP</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -21,15 +22,21 @@ Sección 2: CSS  (static/css/glass.css)
   </head>
   <body>
     <div class="app">
-      <!-- Header superior (sin menu-circle, sin profile, sin toggle de tema) -->
+      <!-- Header superior -->
       <div class="header">
         <nav class="header-menu" aria-label="Secciones">
           <a class="menu-link is-active" href="#">Pedidos</a>
           <a class="menu-link" href="/clientes">Clientes</a>
           <a class="menu-link" href="/productos">Productos</a>
         </nav>
-        <div class="search-bar">
-          <input type="text" id="quickSearch" placeholder="Buscar en pedidos…">
+        <div class="header-right">
+          <div class="search-bar">
+            <input type="text" id="quickSearch" placeholder="Buscar en pedidos…">
+          </div>
+          <div class="user-info">
+            <span class="user-name">{{ session.saludo or (session.nombre_completo or session.username) }}</span>
+            <a href="/logout" class="logout-btn" title="Cerrar sesión">🚪</a>
+          </div>
         </div>
       </div>
 
@@ -284,6 +291,55 @@ Sección 2: CSS  (static/css/glass.css)
     </div>
 
     <style>
+    /* Estilos para header con información del usuario */
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-left: auto;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      backdrop-filter: blur(10px);
+    }
+
+    .user-name {
+      font-size: 14px;
+      color: var(--theme-color);
+      font-weight: 500;
+    }
+
+    .logout-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      text-decoration: none;
+      color: var(--inactive-color);
+      border-radius: 50%;
+      transition: all 0.2s ease;
+      font-size: 16px;
+    }
+
+    .logout-btn:hover {
+      color: var(--theme-color);
+      background: rgba(255, 255, 255, 0.1);
+      transform: scale(1.1);
+    }
+
+    /* Ajustar el search-bar para que no ocupe todo el espacio */
+    .search-bar {
+      width: min(300px, 30vw);
+    }
+
     /* Estilos para configuración */
     .config-item {
         display: flex;
@@ -2005,6 +2061,31 @@ Sección 2: CSS  (static/css/glass.css)
       if (window.estadoSeleccionado === "por_procesar") {
         btnSAP.classList.remove("hidden");
       }
+
+      // Sistema de advertencia de sesión
+      function verificarSesion() {
+        // La sesión dura 8 horas (28800 segundos)
+        const tiempoSesion = 8 * 60 * 60 * 1000; // 8 horas en milisegundos
+        const tiempoInicio = Date.now();
+        const tiempoExpiracion = tiempoInicio + tiempoSesion;
+        
+        // Verificar cada minuto
+        setInterval(() => {
+          const tiempoActual = Date.now();
+          const tiempoRestante = tiempoExpiracion - tiempoActual;
+          
+          // Si quedan menos de 30 minutos, mostrar advertencia
+          if (tiempoRestante < 30 * 60 * 1000 && tiempoRestante > 0) {
+            const minutosRestantes = Math.floor(tiempoRestante / (60 * 1000));
+            if (minutosRestantes <= 5) {
+              alert(`⚠️ Su sesión expirará en ${minutosRestantes} minutos. Por favor, guarde su trabajo.`);
+            }
+          }
+        }, 60000); // Verificar cada minuto
+      }
+      
+      // Inicializar verificación de sesión
+      verificarSesion();
     })();
     </script>
 
