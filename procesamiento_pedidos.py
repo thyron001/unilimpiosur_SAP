@@ -88,50 +88,92 @@ def extraer_filas_pdf(pdf_en_bytes: bytes) -> List[Dict[str, Any]]:
     """
     Lee el PDF y extrae filas tipo:
       {'uni','desc','cant'} (cadenas tal como vienen en el PDF)
+    
+    Usa extracción por tablas para mayor precisión en las descripciones.
     """
     filas: List[Dict[str, Any]] = []
-    unidad_en_espera: str | None = None
 
     with pdfplumber.open(io.BytesIO(pdf_en_bytes)) as pdf:
         for page in pdf.pages:
             try:
-                texto = page.extract_text() or ""
+                # Primero intentar extraer por tablas (más preciso)
+                tables = page.extract_tables()
+                tabla_encontrada = False
+                
+                if tables:
+                    for table in tables:
+                        if len(table) > 1:  # Al menos header + 1 fila
+                            # Verificar si es una tabla de productos
+                            header = table[0]
+                            if len(header) >= 3 and any(col and ("descripcion" in col.lower() or "descripción" in col.lower()) for col in header):
+                                # Es una tabla de productos
+                                tabla_encontrada = True
+                                for row in table[1:]:  # Saltar header
+                                    if len(row) >= 3 and row[0] and row[1]:
+                                        uni = str(row[0]).strip()
+                                        desc = str(row[1]).strip()
+                                        
+                                        # Buscar la cantidad en diferentes posiciones posibles
+                                        cant = None
+                                        for i in range(2, min(len(row), 5)):  # Buscar en columnas 2, 3, 4
+                                            if row[i] and str(row[i]).strip().isdigit():
+                                                cant = str(row[i]).strip()
+                                                break
+                                        
+                                        # Validar que sea un producto (no totales, subtotales, etc.)
+                                        if (cant and cant.isdigit() and 
+                                            desc and 
+                                            not any(palabra in desc.upper() for palabra in ["SUBTOTAL", "TOTAL", "IVA", "DESCUENTO"])):
+                                            filas.append({
+                                                "uni": uni,
+                                                "desc": desc,
+                                                "cant": cant
+                                            })
+                                break  # Si encontramos tabla, no procesar más tablas
+                
+                # Solo usar método de texto si no se encontraron tablas de productos
+                if not tabla_encontrada:
+                    # Si no hay tablas o no son de productos, usar método de texto (fallback)
+                    texto = page.extract_text() or ""
+                    unidad_en_espera: str | None = None
+                
+                    for raw in texto.splitlines():
+                        linea = raw.strip()
+                        if es_linea_omitible(linea):
+                            continue
+
+                        # Caso 1: con unidad al inicio
+                        m1 = PATRON_FILA_CON_UNIDAD.match(linea)
+                        if m1:
+                            d = m1.groupdict()
+                            filas.append(d)
+                            unidad_en_espera = None
+                            continue
+
+                        # Detectar palabra de unidad suelta al principio
+                        if not unidad_en_espera:
+                            token0 = (linea.split() or [""])[0]
+                            if token0 in PALABRAS_UNIDAD:
+                                unidad_en_espera = token0
+                                continue
+
+                        # Caso 2: sin unidad (usar la última detectada)
+                        m2 = PATRON_FILA_SIN_UNIDAD.match(linea)
+                        if m2 and unidad_en_espera:
+                            d = m2.groupdict()
+                            d["uni"] = unidad_en_espera
+                            filas.append(d)
+                            unidad_en_espera = None
+                            continue
+                        
             except Exception:
                 continue
-            for raw in texto.splitlines():
-                linea = raw.strip()
-                if es_linea_omitible(linea):
-                    continue
-
-                # Caso 1: con unidad al inicio
-                m1 = PATRON_FILA_CON_UNIDAD.match(linea)
-                if m1:
-                    d = m1.groupdict()
-                    filas.append(d)
-                    unidad_en_espera = None
-                    continue
-
-                # Detectar palabra de unidad suelta al principio
-                if not unidad_en_espera:
-                    token0 = (linea.split() or [""])[0]
-                    if token0 in PALABRAS_UNIDAD:
-                        unidad_en_espera = token0
-                        continue
-
-                # Caso 2: sin unidad (usar la última detectada)
-                m2 = PATRON_FILA_SIN_UNIDAD.match(linea)
-                if m2 and unidad_en_espera:
-                    d = m2.groupdict()
-                    d["uni"] = unidad_en_espera
-                    filas.append(d)
-                    unidad_en_espera = None
-                    continue
 
     return filas
 
 def imprimir_filas(filas: List[Dict[str, Any]]) -> None:
     if not filas:
-        print("⚠️ No se detectaron filas en el PDF.")
+        print("ADVERTENCIA: No se detectaron filas en el PDF.")
         return
     print(f"{'Uni.':<10} | {'Descripción':<70} | {'Cant':>4}")
     print("-" * 90)
@@ -376,11 +418,11 @@ def _resolver_sucursal_por_alias_y_ruc(cliente_id: int, alias_pdf: str | None, r
                 candidatos_alias.append((sid, nombre, ruc, encargado))
         
         if candidatos_alias:
-            print(f"✅ Encontradas {len(candidatos_alias)} sucursal(es) con alias exacto: {alias_pdf}")
+            print(f"OK: Encontradas {len(candidatos_alias)} sucursal(es) con alias exacto: {alias_pdf}")
             
             # Paso 2: Si hay múltiples candidatos con el mismo alias, filtrar por RUC
             if len(candidatos_alias) > 1 and target_ruc:
-                print(f"🔍 Múltiples sucursales con mismo alias, filtrando por RUC: {target_ruc}")
+                print(f"INFO: Múltiples sucursales con mismo alias, filtrando por RUC: {target_ruc}")
                 candidatos_ruc = []
                 for (sid, nombre, ruc, encargado) in candidatos_alias:
                     if ruc and ruc.strip() == target_ruc:
@@ -389,35 +431,35 @@ def _resolver_sucursal_por_alias_y_ruc(cliente_id: int, alias_pdf: str | None, r
                 if candidatos_ruc:
                     # Paso 3: Si hay múltiples con mismo alias y RUC, filtrar por encargado
                     if len(candidatos_ruc) > 1 and target_encargado:
-                        print(f"🔍 Múltiples sucursales con mismo alias y RUC, filtrando por encargado: {encargado_pdf}")
+                        print(f"INFO: Múltiples sucursales con mismo alias y RUC, filtrando por encargado: {encargado_pdf}")
                         for (sid, nombre, ruc, encargado) in candidatos_ruc:
                             encargado_norm = normalizar_texto(encargado)
                             if encargado_norm == target_encargado:
-                                print(f"✅ Sucursal encontrada por alias + RUC + encargado: {alias_pdf} + {target_ruc} + {encargado_pdf} -> {nombre}")
+                                print(f"OK: Sucursal encontrada por alias + RUC + encargado: {alias_pdf} + {target_ruc} + {encargado_pdf} -> {nombre}")
                                 return {"id": int(sid), "nombre": nombre}
                         
-                        print(f"⚠️ No se encontró sucursal con alias '{alias_pdf}', RUC '{target_ruc}' y encargado '{encargado_pdf}'")
+                        print(f"ADVERTENCIA: No se encontró sucursal con alias '{alias_pdf}', RUC '{target_ruc}' y encargado '{encargado_pdf}'")
                         return {}
                     elif len(candidatos_ruc) == 1:
                         # Solo una sucursal con ese alias y RUC
                         sid, nombre, ruc, encargado = candidatos_ruc[0]
-                        print(f"✅ Sucursal encontrada por alias + RUC: {alias_pdf} + {target_ruc} -> {nombre}")
+                        print(f"OK: Sucursal encontrada por alias + RUC: {alias_pdf} + {target_ruc} -> {nombre}")
                         return {"id": int(sid), "nombre": nombre}
                     else:
                         # Múltiples candidatos con mismo alias y RUC pero no se proporcionó encargado
-                        print(f"⚠️ Múltiples sucursales con alias '{alias_pdf}' y RUC '{target_ruc}' pero no se proporcionó encargado para filtrar")
+                        print(f"ADVERTENCIA: Múltiples sucursales con alias '{alias_pdf}' y RUC '{target_ruc}' pero no se proporcionó encargado para filtrar")
                         return {}
                 else:
-                    print(f"⚠️ No se encontró sucursal con alias '{alias_pdf}' y RUC '{target_ruc}'")
+                    print(f"ADVERTENCIA: No se encontró sucursal con alias '{alias_pdf}' y RUC '{target_ruc}'")
                     return {}
             elif len(candidatos_alias) == 1:
                 # Solo una sucursal con ese alias
                 sid, nombre, ruc, encargado = candidatos_alias[0]
-                print(f"✅ Sucursal encontrada por alias: {alias_pdf} -> {nombre}")
+                print(f"OK: Sucursal encontrada por alias: {alias_pdf} -> {nombre}")
                 return {"id": int(sid), "nombre": nombre}
             else:
                 # Múltiples candidatos pero no se proporcionó RUC
-                print(f"⚠️ Múltiples sucursales con alias '{alias_pdf}' pero no se proporcionó RUC para filtrar")
+                print(f"ADVERTENCIA: Múltiples sucursales con alias '{alias_pdf}' pero no se proporcionó RUC para filtrar")
                 return {}
     
     # Paso 4: Si no se encontró por alias exacto, buscar por similitud
@@ -435,10 +477,10 @@ def _resolver_sucursal_por_alias_y_ruc(cliente_id: int, alias_pdf: str | None, r
         
         if mejor_match:
             sid, nombre, ruc, encargado = mejor_match
-            print(f"✅ Sucursal encontrada por similitud de alias: {alias_pdf} -> {nombre} (puntaje: {mejor_puntaje:.2f})")
+            print(f"OK: Sucursal encontrada por similitud de alias: {alias_pdf} -> {nombre} (puntaje: {mejor_puntaje:.2f})")
             return {"id": int(sid), "nombre": nombre}
     
-    print(f"❌ No se encontró sucursal para alias: '{alias_pdf}', RUC: '{ruc_pdf}' o encargado: '{encargado_pdf}'")
+    print(f"ERROR: No se encontró sucursal para alias: '{alias_pdf}', RUC: '{ruc_pdf}' o encargado: '{encargado_pdf}'")
     return {}
 
 # ---------- Catálogo global y similitud de nombres ----------
@@ -705,7 +747,7 @@ def emparejar_filas_con_bd(
 
 def imprimir_filas_emparejadas(filas_enriquecidas: List[Dict[str, Any]]) -> None:
     if not filas_enriquecidas:
-        print("⚠️ No hay filas emparejadas.")
+        print("ADVERTENCIA: No hay filas emparejadas.")
         return
     print("========== 2) FILAS ENRIQUECIDAS ==========")
     print(f"{'Uni.':<8} | {'Descripción':<58} | {'Cant':>4} | {'SKU':<10} | {'Bod':>3} | {'Score':>5} | {'Match':<16}")

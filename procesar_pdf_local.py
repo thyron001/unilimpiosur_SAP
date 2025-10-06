@@ -309,20 +309,20 @@ def main():
 
     # ======== DRY-RUN: Solo mostrar información sin grabar en BD ========
     if args.dry_run:
-        print("\n🧪 DRY-RUN activado: no se guardará en la base de datos.")
-        print(f"   → Cliente ID: {cliente_id}")
-        print(f"   → Sucursal ID: {suc.get('id') if suc else None}")
-        print(f"   → Sucursal: {sucursal_txt}")
+        print("\nDRY-RUN activado: no se guardará en la base de datos.")
+        print(f"   Cliente ID: {cliente_id}")
+        print(f"   Sucursal ID: {suc.get('id') if suc else None}")
+        print(f"   Sucursal: {sucursal_txt}")
         return
 
     print("\n========== 4) GUARDANDO EN POSTGRESQL ==========")
     sucursal_id = suc.get("id") if suc else None
     pedido_id, numero_pedido, estado = guardar_pedido(pedido, filas_enriquecidas, cliente_id, sucursal_id)
-    print(f"✅ Guardado: pedido_id={pedido_id}, numero_pedido={numero_pedido}, estado={estado}")
-    print(f"   → Cliente ID: {cliente_id}")
-    print(f"   → Sucursal ID: {sucursal_id}")
+    print(f"OK: Guardado: pedido_id={pedido_id}, numero_pedido={numero_pedido}, estado={estado}")
+    print(f"   Cliente ID: {cliente_id}")
+    print(f"   Sucursal ID: {sucursal_id}")
 
-    print("\n✅ Procesamiento completado. El pedido está listo para generar archivos SAP desde la interfaz web.")
+    print("\nOK: Procesamiento completado. El pedido está listo para generar archivos SAP desde la interfaz web.")
 
 
 if __name__ == "__main__":
