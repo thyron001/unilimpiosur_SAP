@@ -78,7 +78,10 @@ def extraer_primer_pdf(mensaje_crudo: bytes) -> Tuple[str | None, bytes | None]:
 
 # ---------- Núcleo del listener ----------
 def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Callable[[Dict[str, Any], str, bytes], None]) -> int:
-    nuevos_uids = [uid for uid in cliente.search(["UNSEEN"]) if uid > ultimo_uid]
+    # Buscar TODOS los correos (leídos y no leídos) del remitente autorizado
+    # Esto asegura que no se pierda ningún correo importante
+    todos_los_uids = cliente.search(["ALL"])
+    nuevos_uids = [uid for uid in todos_los_uids if uid > ultimo_uid]
     if not nuevos_uids:
         return ultimo_uid
 
@@ -110,11 +113,6 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
         # Validar que el remitente sea el permitido
         if correo_remitente.lower() != REMITENTE_PERMITIDO.lower():
             print(f"🚫 Correo UID {uid} ignorado: remitente '{correo_remitente}' no está en la lista de permitidos")
-            # Marcar como leído para no procesarlo de nuevo
-            try:
-                cliente.set_flags([uid], [b"\\Seen"])
-            except Exception as e:
-                print(f"⚠️  No se pudo marcar el correo UID {uid} como leído: {e}")
             continue
 
         nombre_pdf, bytes_pdf = extraer_primer_pdf(crudo)
@@ -130,21 +128,11 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
             print(f"✅ Correo UID {uid} de remitente autorizado '{correo_remitente}' - procesando PDF")
             try:
                 al_encontrar_pdf(meta, nombre_pdf or "adjunto.pdf", bytes_pdf)
-                # Marcar el correo como leído después del procesamiento exitoso
-                try:
-                    cliente.set_flags([uid], [b"\\Seen"])
-                    print(f"✅ Correo UID {uid} marcado como leído")
-                except Exception as e:
-                    print(f"⚠️  No se pudo marcar el correo UID {uid} como leído: {e}")
+                print(f"✅ Correo UID {uid} procesado exitosamente (mantenido como no leído)")
             except Exception as err_cb:
                 print(f"⚠️  Error en callback al_encontrar_pdf: {err_cb}")
         else:
             print(f"⚠️  Correo UID {uid} de remitente autorizado '{correo_remitente}' pero sin PDF adjunto")
-            # Marcar como leído aunque no tenga PDF
-            try:
-                cliente.set_flags([uid], [b"\\Seen"])
-            except Exception as e:
-                print(f"⚠️  No se pudo marcar el correo UID {uid} como leído: {e}")
 
     return max(ultimo_uid, max(nuevos_uids))
 
@@ -193,33 +181,9 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
     print(f"Asunto: {meta.get('asunto')} | Remitente: {meta.get('remitente')} | UID: {meta.get('uid')}")
     print(f"Adjunto: {nombre_pdf}")
 
-    # VERIFICAR SI YA EXISTE UN PEDIDO CON ESTE UID DE CORREO
+    # Procesar todos los correos sin restricciones temporales
     uid_correo = meta.get("uid")
-    if uid_correo:
-        from persistencia_postgresql import obtener_conexion
-        with obtener_conexion() as conn:
-            with conn.cursor() as cur:
-                # Buscar pedidos recientes con el mismo remitente y asunto (últimas 24 horas)
-                cur.execute("""
-                    SELECT id FROM pedidos 
-                    WHERE fecha >= NOW() - INTERVAL '24 hours'
-                    AND sucursal IS NOT NULL
-                    ORDER BY id DESC
-                    LIMIT 10
-                """)
-                pedidos_recientes = cur.fetchall()
-                
-                if pedidos_recientes:
-                    print(f"⚠️  Detectado posible duplicado para UID {uid_correo}. Verificando...")
-                    # Si hay pedidos muy recientes (últimos 5 minutos), saltar procesamiento
-                    cur.execute("""
-                        SELECT COUNT(*) FROM pedidos 
-                        WHERE fecha >= NOW() - INTERVAL '5 minutes'
-                    """)
-                    pedidos_muy_recientes = cur.fetchone()[0]
-                    if pedidos_muy_recientes > 0:
-                        print(f"🚫 Saltando procesamiento: hay {pedidos_muy_recientes} pedido(s) procesado(s) en los últimos 5 minutos")
-                        return
+    print(f"📧 Procesando correo UID {uid_correo} sin restricciones temporales")
 
     # 1) Filas de productos desde PDF
     filas = extraer_filas_pdf(bytes_pdf)

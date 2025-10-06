@@ -132,32 +132,9 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     print(f"UID:     {meta.get('uid')}")
     print(f"📎 PDF:  {nombre_pdf}")
 
-    # VERIFICAR SI YA EXISTE UN PEDIDO CON ESTE UID DE CORREO
+    # Procesar todos los correos sin restricciones temporales
     uid_correo = meta.get("uid")
-    if uid_correo:
-        with db.obtener_conexion() as conn:
-            with conn.cursor() as cur:
-                # Buscar pedidos recientes con el mismo remitente y asunto (últimas 24 horas)
-                cur.execute("""
-                    SELECT id FROM pedidos 
-                    WHERE fecha >= NOW() - INTERVAL '24 hours'
-                    AND sucursal IS NOT NULL
-                    ORDER BY id DESC
-                    LIMIT 10
-                """)
-                pedidos_recientes = cur.fetchall()
-                
-                if pedidos_recientes:
-                    print(f"[WARNING] Detectado posible duplicado para UID {uid_correo}. Verificando...")
-                    # Si hay pedidos muy recientes (últimos 5 minutos), saltar procesamiento
-                    cur.execute("""
-                        SELECT COUNT(*) FROM pedidos 
-                        WHERE fecha >= NOW() - INTERVAL '5 minutes'
-                    """)
-                    pedidos_muy_recientes = cur.fetchone()[0]
-                    if pedidos_muy_recientes > 0:
-                        print(f"[SKIP] Saltando procesamiento: hay {pedidos_muy_recientes} pedido(s) procesado(s) en los últimos 5 minutos")
-                        return
+    print(f"📧 Procesando correo UID {uid_correo} sin restricciones temporales")
 
     # 1) Filas de la tabla
     filas = proc.extraer_filas_pdf(pdf_en_bytes)
