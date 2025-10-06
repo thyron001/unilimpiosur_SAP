@@ -282,16 +282,18 @@ def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
         
         return pedidos
 
-def generar_archivos_sap(carpeta_salida: str | Path = ".") -> Tuple[str, str]:
+def generar_archivos_sap(carpeta_salida: str | Path = None) -> Tuple[str, str]:
     """
     Función principal que genera los archivos ODRF.txt y DRF1.txt
     para todos los pedidos en estado 'por_procesar'
     
+    Args:
+        carpeta_salida: Si es None, usa archivos temporales. Si se especifica, usa esa carpeta.
+    
     Returns:
         Tuple[str, str]: Rutas de los archivos generados (odrf_path, drf1_path)
     """
-    carpeta_salida = Path(carpeta_salida)
-    carpeta_salida.mkdir(exist_ok=True)
+    import tempfile
     
     # Obtener pedidos por procesar
     pedidos = obtener_pedidos_por_procesar()
@@ -302,10 +304,17 @@ def generar_archivos_sap(carpeta_salida: str | Path = ".") -> Tuple[str, str]:
     
     print(f"Generando archivos SAP para {len(pedidos)} pedidos...")
     
-    # Generar archivos
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    odrf_path = carpeta_salida / f"ODRF_{timestamp}.txt"
-    drf1_path = carpeta_salida / f"DRF1_{timestamp}.txt"
+    # Usar archivos temporales si no se especifica carpeta
+    if carpeta_salida is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        odrf_path = Path(tempfile.gettempdir()) / f"ODRF_{timestamp}.txt"
+        drf1_path = Path(tempfile.gettempdir()) / f"DRF1_{timestamp}.txt"
+    else:
+        carpeta_salida = Path(carpeta_salida)
+        carpeta_salida.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        odrf_path = carpeta_salida / f"ODRF_{timestamp}.txt"
+        drf1_path = carpeta_salida / f"DRF1_{timestamp}.txt"
     
     generar_archivo_odrf(pedidos, odrf_path)
     generar_archivo_drf1(pedidos, drf1_path)
@@ -321,20 +330,19 @@ def generar_archivos_sap(carpeta_salida: str | Path = ".") -> Tuple[str, str]:
     
     return str(odrf_path), str(drf1_path)
 
-def generar_archivos_sap_por_ids(pedidos_ids: List[int], carpeta_salida: str | Path = ".") -> Tuple[str, str]:
+def generar_archivos_sap_por_ids(pedidos_ids: List[int], carpeta_salida: str | Path = None) -> Tuple[str, str]:
     """
     Función que genera los archivos ODRF.txt y DRF1.txt
     para pedidos específicos por sus IDs
     
     Args:
         pedidos_ids: Lista de IDs de pedidos a procesar
-        carpeta_salida: Carpeta donde guardar los archivos
+        carpeta_salida: Si es None, usa archivos temporales. Si se especifica, usa esa carpeta.
     
     Returns:
         Tuple[str, str]: Rutas de los archivos generados (odrf_path, drf1_path)
     """
-    carpeta_salida = Path(carpeta_salida)
-    carpeta_salida.mkdir(exist_ok=True)
+    import tempfile
     
     # Obtener pedidos específicos
     pedidos = obtener_pedidos_por_ids(pedidos_ids)
@@ -360,10 +368,17 @@ def generar_archivos_sap_por_ids(pedidos_ids: List[int], carpeta_salida: str | P
     
     print(f"Generando archivos SAP para {len(pedidos)} pedidos seleccionados...")
     
-    # Generar archivos
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    odrf_path = carpeta_salida / f"ODRF_{timestamp}.txt"
-    drf1_path = carpeta_salida / f"DRF1_{timestamp}.txt"
+    # Usar archivos temporales si no se especifica carpeta
+    if carpeta_salida is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        odrf_path = Path(tempfile.gettempdir()) / f"ODRF_{timestamp}.txt"
+        drf1_path = Path(tempfile.gettempdir()) / f"DRF1_{timestamp}.txt"
+    else:
+        carpeta_salida = Path(carpeta_salida)
+        carpeta_salida.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        odrf_path = carpeta_salida / f"ODRF_{timestamp}.txt"
+        drf1_path = carpeta_salida / f"DRF1_{timestamp}.txt"
     
     generar_archivo_odrf(pedidos, odrf_path)
     generar_archivo_drf1(pedidos, drf1_path)

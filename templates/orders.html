@@ -1965,6 +1965,81 @@ Sección 2: CSS  (static/css/glass.css)
         });
       });
 
+      // Función para generar archivos SAP completos
+      async function generarArchivosSAPCompletos(pedidosIds) {
+        try {
+          const resp = await fetch("/api/generar_sap_completo", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              pedidos_ids: pedidosIds
+            })
+          });
+          
+          const data = await resp.json();
+          
+          if (data.ok) {
+            return data.session_id;
+          } else {
+            throw new Error(data.error || data.mensaje || 'Error al generar archivos');
+          }
+        } catch (error) {
+          console.error("Error al generar archivos SAP:", error);
+          throw error;
+        }
+      }
+
+      // Función para descargar un archivo SAP específico
+      async function descargarArchivoSAP(tipoArchivo, sessionId) {
+        try {
+          const resp = await fetch(`/api/descargar_sap/${tipoArchivo}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              session_id: sessionId
+            })
+          });
+          
+          if (resp.ok) {
+            // Obtener el nombre del archivo del header Content-Disposition
+            const contentDisposition = resp.headers.get('Content-Disposition');
+            let filename = `${tipoArchivo.toUpperCase()}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.txt`;
+            
+            if (contentDisposition) {
+              const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+              if (filenameMatch) {
+                filename = filenameMatch[1];
+              }
+            }
+            
+            // Crear blob y descargar
+            const blob = await resp.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            console.log(`✅ Archivo ${tipoArchivo.toUpperCase()} descargado: ${filename}`);
+            return true;
+          } else {
+            const errorData = await resp.json();
+            throw new Error(errorData.error || errorData.mensaje || 'Error al descargar archivo');
+          }
+        } catch (error) {
+          console.error(`Error al descargar ${tipoArchivo}:`, error);
+          throw error;
+        }
+      }
+
       // Event listener para el botón SAP
       btnSAP.addEventListener("click", async () => {
         // Verificar si hay pedidos seleccionados
@@ -1987,28 +2062,27 @@ Sección 2: CSS  (static/css/glass.css)
         span.textContent = "Generando...";
         
         try {
-          const resp = await fetch("/api/generar_sap", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              pedidos_ids: idsSeleccionados
-            })
-          });
+          // Generar ambos archivos SAP automáticamente
+          span.textContent = "Generando...";
+          const sessionId = await generarArchivosSAPCompletos(idsSeleccionados);
           
-          const data = await resp.json();
+          // Descargar archivo ODRF
+          span.textContent = "Descargando ODRF...";
+          await descargarArchivoSAP("odrf", sessionId);
           
-          if (data.ok) {
-            alert(`✅ ${data.mensaje}\n\nArchivos generados:\n- ${data.archivos.odrf}\n- ${data.archivos.drf1}`);
-            // Recargar pedidos por procesar
-            window.cargarPedidosPorEstado("por_procesar");
-          } else {
-            alert(`❌ ${data.mensaje || data.error}`);
-          }
+          // Pequeña pausa entre descargas
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Descargar archivo DRF1
+          span.textContent = "Descargando DRF1...";
+          await descargarArchivoSAP("drf1", sessionId);
+          
+          // Recargar pedidos por procesar
+          window.cargarPedidosPorEstado("por_procesar");
+          
         } catch (error) {
           console.error("Error:", error);
-          alert("Error al generar archivos SAP");
+          alert(`Error al generar archivos SAP: ${error.message}`);
         } finally {
           button.disabled = false;
           span.textContent = "SAP";

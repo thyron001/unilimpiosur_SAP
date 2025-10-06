@@ -868,10 +868,15 @@ def api_generar_sap():
     """Genera archivos SAP para pedidos seleccionados o todos los por procesar"""
     try:
         import generador_sap
+        import tempfile
+        import os
+        from flask import send_file
+        from datetime import datetime
         
         # Obtener datos del request
         data = request.get_json() or {}
         pedidos_ids = data.get('pedidos_ids', [])
+        tipo_archivo = data.get('tipo_archivo')  # 'odrf' o 'drf1'
         
         # Si no se especifican pedidos, usar todos los por procesar
         if not pedidos_ids:
@@ -881,19 +886,139 @@ def api_generar_sap():
             odrf_path, drf1_path = generador_sap.generar_archivos_sap_por_ids(pedidos_ids)
         
         if odrf_path and drf1_path:
-            return jsonify({
-                "ok": True,
-                "mensaje": "Archivos SAP generados exitosamente",
-                "archivos": {
-                    "odrf": odrf_path,
-                    "drf1": drf1_path
-                }
-            })
+            # Si se especifica un tipo de archivo, devolver solo ese archivo
+            if tipo_archivo == 'odrf':
+                return send_file(odrf_path, as_attachment=True, download_name=f"ODRF_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+            elif tipo_archivo == 'drf1':
+                return send_file(drf1_path, as_attachment=True, download_name=f"DRF1_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+            else:
+                # Devolver información de los archivos generados
+                return jsonify({
+                    "ok": True,
+                    "mensaje": "Archivos SAP generados exitosamente",
+                    "archivos": {
+                        "odrf": odrf_path,
+                        "drf1": drf1_path
+                    }
+                })
         else:
             return jsonify({
                 "ok": False,
                 "mensaje": "No hay pedidos seleccionados para generar archivos SAP"
             })
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": str(e)
+        }), 500
+
+# Variable global para almacenar archivos temporales generados
+archivos_sap_temporales = {}
+
+@app.route("/api/generar_sap_completo", methods=["POST"])
+@login_required
+def api_generar_sap_completo():
+    """Genera ambos archivos SAP y los almacena temporalmente para descarga"""
+    try:
+        import generador_sap
+        from datetime import datetime
+        import uuid
+        
+        # Obtener datos del request
+        data = request.get_json() or {}
+        pedidos_ids = data.get('pedidos_ids', [])
+        
+        # Generar ID único para esta sesión de descarga
+        session_id = str(uuid.uuid4())
+        
+        # Si no se especifican pedidos, usar todos los por procesar
+        if not pedidos_ids:
+            odrf_path, drf1_path = generador_sap.generar_archivos_sap()
+        else:
+            # Generar archivos solo para los pedidos seleccionados
+            odrf_path, drf1_path = generador_sap.generar_archivos_sap_por_ids(pedidos_ids)
+        
+        if odrf_path and drf1_path:
+            # Almacenar rutas de archivos temporalmente
+            archivos_sap_temporales[session_id] = {
+                'odrf': odrf_path,
+                'drf1': drf1_path,
+                'timestamp': datetime.now()
+            }
+            
+            return jsonify({
+                "ok": True,
+                "mensaje": "Archivos SAP generados exitosamente",
+                "session_id": session_id
+            })
+        else:
+            return jsonify({
+                "ok": False,
+                "mensaje": "No hay pedidos seleccionados para generar archivos SAP"
+            }), 400
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": str(e)
+        }), 500
+
+@app.route("/api/descargar_sap/<tipo_archivo>", methods=["POST"])
+@login_required
+def api_descargar_sap(tipo_archivo):
+    """Descarga un archivo SAP específico (odrf o drf1) usando session_id"""
+    try:
+        from flask import send_file
+        from datetime import datetime
+        
+        # Obtener datos del request
+        data = request.get_json() or {}
+        session_id = data.get('session_id')
+        
+        # Validar tipo de archivo
+        if tipo_archivo not in ['odrf', 'drf1']:
+            return jsonify({
+                "ok": False,
+                "error": "Tipo de archivo inválido. Use 'odrf' o 'drf1'"
+            }), 400
+        
+        # Validar session_id
+        if not session_id or session_id not in archivos_sap_temporales:
+            return jsonify({
+                "ok": False,
+                "error": "Sesión de descarga inválida o expirada"
+            }), 400
+        
+        # Obtener rutas de archivos
+        archivos = archivos_sap_temporales[session_id]
+        archivo_path = archivos[tipo_archivo]
+        
+        if not os.path.exists(archivo_path):
+            return jsonify({
+                "ok": False,
+                "error": f"Archivo {tipo_archivo.upper()} no encontrado"
+            }), 404
+        
+        # Generar nombre de archivo
+        timestamp = archivos['timestamp'].strftime('%Y%m%d_%H%M%S')
+        nombre_archivo = f"{tipo_archivo.upper()}_{timestamp}.txt"
+        
+        # Enviar archivo
+        response = send_file(archivo_path, as_attachment=True, download_name=nombre_archivo)
+        
+        # Si es el segundo archivo (DRF1), limpiar ambos archivos
+        if tipo_archivo == 'drf1':
+            try:
+                if os.path.exists(archivos['odrf']):
+                    os.remove(archivos['odrf'])
+                if os.path.exists(archivos['drf1']):
+                    os.remove(archivos['drf1'])
+                # Eliminar entrada de la sesión
+                del archivos_sap_temporales[session_id]
+            except Exception as e:
+                print(f"Warning: No se pudieron limpiar archivos temporales: {e}")
+        
+        return response
+        
     except Exception as e:
         return jsonify({
             "ok": False,
