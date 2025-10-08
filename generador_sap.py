@@ -77,19 +77,14 @@ def obtener_items_pedido(pedido_id: int) -> List[Dict[str, Any]]:
     """Obtiene los items de un pedido específico con información de bodega"""
     with obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT DISTINCT
+            SELECT 
                 pi.id,
                 pi.sku,
                 pi.cantidad,
                 pi.bodega,
-                p.nombre as producto_nombre,
+                pi.descripcion,
                 s.nombre as sucursal_nombre
             FROM pedido_items pi
-            LEFT JOIN (
-                SELECT DISTINCT sku, nombre 
-                FROM productos 
-                WHERE sku IS NOT NULL
-            ) p ON p.sku = pi.sku
             LEFT JOIN pedidos ped ON ped.id = pi.pedido_id
             LEFT JOIN sucursales s ON s.id = ped.sucursal_id
             WHERE pi.pedido_id = %s
@@ -99,14 +94,87 @@ def obtener_items_pedido(pedido_id: int) -> List[Dict[str, Any]]:
         items = []
         for row in cur.fetchall():
             items.append({
+                "id": row[0],
                 "sku": row[1],
                 "cantidad": row[2],
                 "bodega": row[3],
-                "producto_nombre": row[4],
+                "descripcion": row[4],
                 "sucursal_nombre": row[5]
             })
         
         return items
+
+def encontrar_producto_especifico(cur, sku: str, descripcion_pedido: str, cliente_id: int = None) -> Dict[str, Any] | None:
+    """
+    Encuentra el producto específico que mejor coincide con la descripción del pedido.
+    Busca por SKU + descripción, luego por alias del cliente, y finalmente por similitud.
+    """
+    if not sku or not descripcion_pedido:
+        return None
+    
+    descripcion_norm = descripcion_pedido.strip().upper()
+    
+    # 1. Buscar por SKU + descripción exacta
+    cur.execute("""
+        SELECT id, sku, nombre 
+        FROM productos 
+        WHERE sku = %s AND upper(nombre) = %s
+        LIMIT 1;
+    """, (sku, descripcion_norm))
+    
+    row = cur.fetchone()
+    if row:
+        return {"id": row[0], "sku": row[1], "nombre": row[2]}
+    
+    # 2. Si hay cliente_id, buscar por alias del cliente
+    if cliente_id:
+        cur.execute("""
+            SELECT p.id, p.sku, p.nombre, ap.alias_1, ap.alias_2, ap.alias_3
+            FROM productos p
+            JOIN alias_productos ap ON ap.producto_id = p.id
+            WHERE p.sku = %s AND ap.cliente_id = %s
+            AND (
+                upper(ap.alias_1) = %s OR 
+                upper(ap.alias_2) = %s OR 
+                upper(ap.alias_3) = %s
+            )
+            LIMIT 1;
+        """, (sku, cliente_id, descripcion_norm, descripcion_norm, descripcion_norm))
+        
+        row = cur.fetchone()
+        if row:
+            return {"id": row[0], "sku": row[1], "nombre": row[2]}
+    
+    # 3. Buscar por similitud de descripción (usando LIKE)
+    cur.execute("""
+        SELECT id, sku, nombre 
+        FROM productos 
+        WHERE sku = %s AND (
+            upper(nombre) LIKE %s OR
+            upper(nombre) LIKE %s OR
+            upper(nombre) LIKE %s
+        )
+        LIMIT 1;
+    """, (sku, f"%{descripcion_norm}%", f"{descripcion_norm}%", f"%{descripcion_norm}"))
+    
+    row = cur.fetchone()
+    if row:
+        return {"id": row[0], "sku": row[1], "nombre": row[2]}
+    
+    # 4. Si no encuentra coincidencia específica, tomar el primer producto con ese SKU
+    cur.execute("""
+        SELECT id, sku, nombre 
+        FROM productos 
+        WHERE sku = %s 
+        ORDER BY id
+        LIMIT 1;
+    """, (sku,))
+    
+    row = cur.fetchone()
+    if row:
+        return {"id": row[0], "sku": row[1], "nombre": row[2]}
+    
+    return None
 
 def generar_archivo_odrf(pedidos: List[Dict[str, Any]], ruta_salida: str | Path) -> None:
     """Genera el archivo ODRF.txt con los encabezados y datos de pedidos"""
@@ -194,23 +262,34 @@ def generar_archivo_drf1(pedidos: List[Dict[str, Any]], ruta_salida: str | Path)
         f.write("DocNum\tItemCode\tPrice\tQuantity\tWhsCode\tCogsOcrCo5\n")
         
         # Escribir datos de cada item de cada pedido
-        for pedido in pedidos:
-            items = obtener_items_pedido(pedido["id"])
-            
-            for item in items:
-                # Bodega (WhsCode) - usar la bodega del item o default
-                whs_code = item.get("bodega") or "05"  # Default bodega 05
+        with obtener_conexion() as conn, conn.cursor() as cur:
+            for pedido in pedidos:
+                items = obtener_items_pedido(pedido["id"])
+                cliente_id = pedido.get("cliente_id")
                 
-                # Sucursal (CogsOcrCo5)
-                cogs_ocr_co5 = item.get("sucursal_nombre") or pedido.get("sucursal_nombre") or pedido.get("sucursal") or ""
-                
-                # Escribir línea (sin UseShpdGd ya que no está en los encabezados)
-                f.write(f"{pedido['numero_pedido']}\t")  # DocNum
-                f.write(f"{item['sku'] or ''}\t")        # ItemCode
-                f.write("1\t")                           # Price (fijo 1)
-                f.write(f"{item['cantidad'] or 0}\t")    # Quantity
-                f.write(f"{str(whs_code).zfill(2)}\t")   # WhsCode (2 dígitos)
-                f.write(f"{cogs_ocr_co5}\n")             # CogsOcrCo5
+                for item in items:
+                    # Encontrar el producto específico que coincide con la descripción
+                    producto_especifico = encontrar_producto_especifico(
+                        cur, 
+                        item.get("sku"), 
+                        item.get("descripcion", ""), 
+                        cliente_id
+                    )
+                    
+                    if producto_especifico:
+                        # Bodega (WhsCode) - usar la bodega del item o default
+                        whs_code = item.get("bodega") or "05"  # Default bodega 05
+                        
+                        # Sucursal (CogsOcrCo5)
+                        cogs_ocr_co5 = item.get("sucursal_nombre") or pedido.get("sucursal_nombre") or pedido.get("sucursal") or ""
+                        
+                        # Escribir línea (sin UseShpdGd ya que no está en los encabezados)
+                        f.write(f"{pedido['numero_pedido']}\t")  # DocNum
+                        f.write(f"{producto_especifico['sku'] or ''}\t")  # ItemCode
+                        f.write("1\t")                           # Price (fijo 1)
+                        f.write(f"{item['cantidad'] or 0}\t")    # Quantity
+                        f.write(f"{str(whs_code).zfill(2)}\t")   # WhsCode (2 dígitos)
+                        f.write(f"{cogs_ocr_co5}\n")             # CogsOcrCo5
 
 def actualizar_estado_pedidos(pedido_ids: List[int], nuevo_estado: str) -> None:
     """Actualiza el estado de los pedidos especificados"""

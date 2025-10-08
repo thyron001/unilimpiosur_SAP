@@ -391,7 +391,7 @@ def _buscar_cliente_por_nombre(nombre: str) -> Tuple[int, bool]:
 def _resolver_sucursal_por_alias_y_ruc(cliente_id: int, alias_pdf: str | None, ruc_pdf: str | None, encargado_pdf: str | None = None) -> Dict[str, Any]:
     """
     Busca sucursal del cliente por alias, RUC y encargado.
-    Lógica: 1) Buscar por alias, 2) Si hay múltiples, filtrar por RUC, 3) Si todavía hay múltiples, filtrar por encargado
+    NUEVA LÓGICA: 1) Buscar por alias, 2) SIEMPRE filtrar por RUC si está disponible, 3) Si hay múltiples, filtrar por encargado
     Devuelve dict {id, nombre} si encuentra coincidencia, o {} si no encontró.
     """
     if not alias_pdf and not ruc_pdf:
@@ -420,9 +420,9 @@ def _resolver_sucursal_por_alias_y_ruc(cliente_id: int, alias_pdf: str | None, r
         if candidatos_alias:
             print(f"OK: Encontradas {len(candidatos_alias)} sucursal(es) con alias exacto: {alias_pdf}")
             
-            # Paso 2: Si hay múltiples candidatos con el mismo alias, filtrar por RUC
-            if len(candidatos_alias) > 1 and target_ruc:
-                print(f"INFO: Múltiples sucursales con mismo alias, filtrando por RUC: {target_ruc}")
+            # Paso 2: SIEMPRE filtrar por RUC si está disponible (NUEVA LÓGICA)
+            if target_ruc:
+                print(f"INFO: Filtrando por RUC: {target_ruc}")
                 candidatos_ruc = []
                 for (sid, nombre, ruc, encargado) in candidatos_alias:
                     if ruc and ruc.strip() == target_ruc:
@@ -452,15 +452,17 @@ def _resolver_sucursal_por_alias_y_ruc(cliente_id: int, alias_pdf: str | None, r
                 else:
                     print(f"ADVERTENCIA: No se encontró sucursal con alias '{alias_pdf}' y RUC '{target_ruc}'")
                     return {}
-            elif len(candidatos_alias) == 1:
-                # Solo una sucursal con ese alias
-                sid, nombre, ruc, encargado = candidatos_alias[0]
-                print(f"OK: Sucursal encontrada por alias: {alias_pdf} -> {nombre}")
-                return {"id": int(sid), "nombre": nombre}
             else:
-                # Múltiples candidatos pero no se proporcionó RUC
-                print(f"ADVERTENCIA: Múltiples sucursales con alias '{alias_pdf}' pero no se proporcionó RUC para filtrar")
-                return {}
+                # No se proporcionó RUC, pero se encontraron candidatos por alias
+                if len(candidatos_alias) == 1:
+                    # Solo una sucursal con ese alias y no se proporcionó RUC
+                    sid, nombre, ruc, encargado = candidatos_alias[0]
+                    print(f"OK: Sucursal encontrada por alias (sin RUC): {alias_pdf} -> {nombre}")
+                    return {"id": int(sid), "nombre": nombre}
+                else:
+                    # Múltiples candidatos con mismo alias pero no se proporcionó RUC
+                    print(f"ADVERTENCIA: Múltiples sucursales con alias '{alias_pdf}' pero no se proporcionó RUC para filtrar")
+                    return {}
     
     # Paso 4: Si no se encontró por alias exacto, buscar por similitud
     if target_alias:
@@ -477,8 +479,16 @@ def _resolver_sucursal_por_alias_y_ruc(cliente_id: int, alias_pdf: str | None, r
         
         if mejor_match:
             sid, nombre, ruc, encargado = mejor_match
-            print(f"OK: Sucursal encontrada por similitud de alias: {alias_pdf} -> {nombre} (puntaje: {mejor_puntaje:.2f})")
-            return {"id": int(sid), "nombre": nombre}
+            # NUEVA LÓGICA: También verificar RUC en similitud si está disponible
+            if target_ruc and ruc and ruc.strip() == target_ruc:
+                print(f"OK: Sucursal encontrada por similitud de alias + RUC: {alias_pdf} + {target_ruc} -> {nombre} (puntaje: {mejor_puntaje:.2f})")
+                return {"id": int(sid), "nombre": nombre}
+            elif not target_ruc:
+                print(f"OK: Sucursal encontrada por similitud de alias: {alias_pdf} -> {nombre} (puntaje: {mejor_puntaje:.2f})")
+                return {"id": int(sid), "nombre": nombre}
+            else:
+                print(f"ADVERTENCIA: Sucursal encontrada por similitud de alias pero RUC no coincide: {alias_pdf} -> {nombre} (RUC BD: {ruc}, RUC PDF: {target_ruc})")
+                return {}
     
     print(f"ERROR: No se encontró sucursal para alias: '{alias_pdf}', RUC: '{ruc_pdf}' o encargado: '{encargado_pdf}'")
     return {}
