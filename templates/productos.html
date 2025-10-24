@@ -786,7 +786,7 @@
                         <div class="campo">
                             <label for="inputArchivo"><b>Archivo</b></label>
                             <input id="inputArchivo" type="file" accept=".csv,.xlsx" class="glass-input" />
-                            <small id="mensajeColumnas" class="ayuda">Recuerde poner el nombre de las columnas de las siguientes maneras: SKU, Nombre, Alias1, Alias2, Alias3, Bodega</small>
+                            <small id="mensajeColumnas" class="ayuda">Recuerde poner el nombre de las columnas de las siguientes maneras: SKU, Nombre, Bodega</small>
                             <small>Usa .csv (UTF-8) o .xlsx. Si vas a crear productos nuevos, <u>SKU es obligatorio</u>.</small>
                         </div>
                     </div>
@@ -943,13 +943,17 @@
         }
 
         function actualizarMensajeColumnas(cliente) {
-            const mensaje = `Recuerde poner el nombre de las columnas de las siguientes maneras: SKU, Nombre, Bodega`;
-            mensajeColumnas.textContent = mensaje;
+            let mensaje = `Recuerde poner el nombre de las columnas de las siguientes maneras: SKU, Nombre, Bodega`;
             
-            // Nota informativa si el cliente tiene alias activados
+            // Si el cliente tiene alias activados, incluir la columna Alias
             if (cliente.alias_por_producto) {
-                mensajeColumnas.textContent += ". Los alias se gestionan desde el botón 'Alias' en cada producto.";
+                mensaje = `Recuerde poner el nombre de las columnas de las siguientes maneras: SKU, Nombre, Bodega, Alias`;
+                mensaje += "\n\n📝 IMPORTANTE: Si un SKU se repite en el archivo, los valores de la columna 'Alias' se agregarán automáticamente como alias del producto existente (no se creará un producto duplicado).";
+            } else {
+                mensaje += ". Los alias se gestionan desde el botón 'Alias' en cada producto.";
             }
+            
+            mensajeColumnas.textContent = mensaje;
         }
 
         function abrirModal(){

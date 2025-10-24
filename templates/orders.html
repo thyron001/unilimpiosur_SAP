@@ -227,7 +227,6 @@ Sección 2: CSS  (static/css/glass.css)
                   <th>Descripción</th>
                   <th class="num" style="text-align: center;">Cant.</th>
                   <th style="text-align: center;">Bodega</th>
-                  <th style="text-align: center;">Acciones</th>
                 </tr>
               </thead>
               <tbody id="m-items"></tbody>
@@ -1320,6 +1319,32 @@ Sección 2: CSS  (static/css/glass.css)
     .item-error .campo-editable.error {
       border: 2px solid rgba(244, 67, 54, 0.5);
     }
+    
+    /* Ajustar ancho de inputs en el popup de errores */
+    .campo-editable {
+      max-width: 120px;
+      width: 100%;
+    }
+    .campo-editable[type="text"] {
+      max-width: 100px;
+    }
+    .campo-editable[type="number"] {
+      max-width: 80px;
+    }
+
+    /* Estilos para filas de productos sin emparejar */
+    .fila-producto-sin-emparejar {
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .fila-producto-sin-emparejar:hover {
+      background: rgba(255, 193, 7, 0.15);
+      transform: scale(1.01);
+    }
+    .fila-producto-sin-emparejar:active {
+      background: rgba(255, 193, 7, 0.25);
+      transform: scale(0.99);
+    }
 
     .sucursal-nombre {
       font-weight: 500;
@@ -1834,17 +1859,14 @@ Sección 2: CSS  (static/css/glass.css)
               inputSku.value = productoSeleccionado.sku;
             }
             
-            // Remover clase de error
-            fila.classList.remove("item-error");
+            // Remover clases de error y clickeable
+            fila.classList.remove("item-error", "fila-producto-sin-emparejar");
             fila.querySelectorAll(".campo-editable").forEach(input => {
               input.classList.remove("error");
             });
             
-            // Ocultar botón de seleccionar producto
-            const btnSeleccionar = fila.querySelector(".btn-seleccionar-producto");
-            if (btnSeleccionar) {
-              btnSeleccionar.style.display = "none";
-            }
+            // Remover event listener de click
+            fila.removeEventListener("click", fila._clickHandler);
           }
           
           alert(`✅ Producto emparejado correctamente\n\nAlias guardado: "${productoNombreOriginal}"\nProducto: ${productoSeleccionado.nombre}\nSKU: ${productoSeleccionado.sku}`);
@@ -1934,10 +1956,14 @@ Sección 2: CSS  (static/css/glass.css)
           const tdDesc = document.createElement("td");
           const tdCant = document.createElement("td");
           const tdBodega = document.createElement("td");
-          const tdAcciones = document.createElement("td");
-          tdAcciones.style.textAlign = "center";
           
           if (it.tiene_error) {
+            // Agregar clase para hacer la fila clickeable
+            tr.classList.add("fila-producto-sin-emparejar");
+            tr.dataset.itemIndex = (data.items || []).indexOf(it);
+            tr.dataset.descripcion = it.descripcion || "";
+            tr.dataset.clienteId = data.cliente_id;
+            
             // SKU editable
             const inputSku = document.createElement("input");
             inputSku.type = "text";
@@ -1965,19 +1991,6 @@ Sección 2: CSS  (static/css/glass.css)
             tdBodega.textContent = it.bodega || "-";
             tdBodega.className = "mono";
             tdBodega.style.textAlign = "center";
-            
-            // Botón para seleccionar producto
-            const btnSeleccionar = document.createElement("button");
-            btnSeleccionar.className = "btn-seleccionar-producto";
-            btnSeleccionar.innerHTML = "🔍 Seleccionar Producto";
-            btnSeleccionar.dataset.itemIndex = (data.items || []).indexOf(it);
-            btnSeleccionar.dataset.descripcion = it.descripcion || "";
-            btnSeleccionar.addEventListener("click", function() {
-              const index = this.dataset.itemIndex;
-              const descripcion = this.dataset.descripcion;
-              abrirModalProductos(descripcion, index, data.cliente_id);
-            });
-            tdAcciones.appendChild(btnSeleccionar);
           } else {
             // Campos normales (solo lectura)
             tdSku.textContent = it.sku || "";
@@ -1989,18 +2002,32 @@ Sección 2: CSS  (static/css/glass.css)
             tdBodega.textContent = it.bodega || "-";
             tdBodega.className = "mono";
             tdBodega.style.textAlign = "center";
-            
-            // Celda de acciones vacía para productos sin error
-            tdAcciones.textContent = "-";
           }
           
           tr.appendChild(tdSku);
           tr.appendChild(tdDesc);
           tr.appendChild(tdCant);
           tr.appendChild(tdBodega);
-          tr.appendChild(tdAcciones);
           tb.appendChild(tr);
         }
+
+        // Agregar event listeners para filas clickeables (productos sin emparejar)
+        document.querySelectorAll(".fila-producto-sin-emparejar").forEach(fila => {
+          const clickHandler = function(e) {
+            // No abrir modal si se clickea en un input
+            if (e.target.tagName === 'INPUT') return;
+            
+            const index = this.dataset.itemIndex;
+            const descripcion = this.dataset.descripcion;
+            const clienteId = this.dataset.clienteId;
+            
+            abrirModalProductos(descripcion, index, clienteId);
+          };
+          
+          // Guardar referencia del handler para poder removerlo después
+          fila._clickHandler = clickHandler;
+          fila.addEventListener("click", clickHandler);
+        });
 
         // Mostrar recuadro de verificación si hay errores
         const tieneErroresProductos = data.items && data.items.some(item => item.tiene_error);
