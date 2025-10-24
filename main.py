@@ -845,7 +845,7 @@ def api_pedidos_por_estado(estado: str):
         
         cur.execute(query, params)
         filas = [
-            {"id": i, "numero_pedido": n, "fecha": f, "sucursal": s, "estado": e, "cliente_nombre": cn}
+            {"id": i, "numero_pedido": n, "fecha": f.strftime('%Y-%m-%d') if f else None, "sucursal": s, "estado": e, "cliente_nombre": cn}
             for (i, n, f, s, e, cn) in cur.fetchall()
         ]
     return jsonify({"pedidos": filas, "estado": estado})
