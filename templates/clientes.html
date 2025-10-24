@@ -146,16 +146,7 @@
                   <input type="checkbox" id="editAliasPorProducto">
                   <span class="glass-checkbox-text">Activar Alias por Producto</span>
                 </label>
-                <small class="glass-help">Si está activado, se podrán configurar alias para productos</small>
-              </div>
-
-              <div class="glass-form-group" id="campoCantidadAlias" style="display:none;">
-                <label for="editCantidadAlias" class="glass-label">Cantidad de Alias por Producto</label>
-                <select id="editCantidadAlias" class="glass-select">
-                  <option value="1">1 Alias</option>
-                  <option value="2">2 Alias</option>
-                  <option value="3">3 Alias</option>
-                </select>
+                <small class="glass-help">Si está activado, se podrán configurar alias ilimitados para productos (gestionados desde la vista de productos)</small>
               </div>
             </div>
           </form>
@@ -674,7 +665,6 @@
       const btnCancelarEditar = $$("#btnCancelarEditar");
       const btnGuardarCliente = $$("#btnGuardarCliente");
       const formEditarCliente = $$("#formEditarCliente");
-      const campoCantidadAlias = $$("#campoCantidadAlias");
       const editAliasPorProducto = $$("#editAliasPorProducto");
       const editRucPorCliente = $$("#editRucPorCliente");
       const editRucPorSucursal = $$("#editRucPorSucursal");
@@ -784,12 +774,6 @@
         $$("#editAliasPorSucursal").checked = Boolean(cliente.alias_por_sucursal);
         $$("#editAliasPorProducto").checked = Boolean(cliente.alias_por_producto);
         
-        // Configurar cantidad de alias
-        $$("#editCantidadAlias").value = cliente.cantidad_alias_producto || 1;
-        
-        // Mostrar/ocultar campo de cantidad de alias
-        actualizarVisibilidadCantidadAlias();
-        
         // Mostrar modal
         overlayEditar.classList.remove("hidden");
         modalEditarCliente.classList.remove("hidden");
@@ -803,15 +787,6 @@
         formEditarCliente.reset();
       }
 
-      // Función para actualizar visibilidad del campo cantidad de alias
-      function actualizarVisibilidadCantidadAlias() {
-        if (editAliasPorProducto.checked) {
-          campoCantidadAlias.style.display = "block";
-        } else {
-          campoCantidadAlias.style.display = "none";
-        }
-      }
-
       // Función para guardar cambios del cliente
       async function guardarCliente() {
         if (!clienteEditando) return;
@@ -822,8 +797,7 @@
           usa_bodega_por_sucursal: $$("#editBodegaPorSucursal").checked,
           ruc_por_sucursal: $$("#editRucPorSucursal").checked,
           alias_por_sucursal: $$("#editAliasPorSucursal").checked,
-          alias_por_producto: $$("#editAliasPorProducto").checked,
-          cantidad_alias_producto: parseInt($$("#editCantidadAlias").value)
+          alias_por_producto: $$("#editAliasPorProducto").checked
         };
 
         // Validaciones
@@ -857,11 +831,6 @@
         }
       }
 
-      // Event listeners para el modal
-      if (editAliasPorProducto) {
-        editAliasPorProducto.addEventListener("change", actualizarVisibilidadCantidadAlias);
-      }
-      
       // Listener para radio buttons de RUC - reconstruir filas cuando cambie la configuración
       if (editRucPorCliente && editRucPorSucursal) {
         editRucPorCliente.addEventListener("change", () => {

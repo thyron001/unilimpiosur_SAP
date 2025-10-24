@@ -302,7 +302,7 @@ def api_clientes_con_sucursales():
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
             SELECT c.id, c.nombre, c.ruc, c.usa_bodega_por_sucursal, 
-                   c.alias_por_sucursal, c.alias_por_producto, c.cantidad_alias_producto,
+                   c.alias_por_sucursal, c.alias_por_producto,
                    c.ruc_por_sucursal
             FROM clientes c
             ORDER BY upper(c.nombre);
@@ -313,11 +313,10 @@ def api_clientes_con_sucursales():
                 "usa_bodega_por_sucursal": bool(ubs),
                 "alias_por_sucursal": bool(alias_suc),
                 "alias_por_producto": bool(alias_prod),
-                "cantidad_alias_producto": cantidad_alias or 1,
                 "ruc_por_sucursal": bool(ruc_por_suc),
                 "sucursales": []
             }
-            for (cid, nom, ruc, ubs, alias_suc, alias_prod, cantidad_alias, ruc_por_suc) in cur.fetchall()
+            for (cid, nom, ruc, ubs, alias_suc, alias_prod, ruc_por_suc) in cur.fetchall()
         ]
         idx = {c["id"]: c for c in clientes}
 
@@ -378,7 +377,6 @@ def api_actualizar_cliente(cliente_id):
                     usa_bodega_por_sucursal = %s,
                     alias_por_sucursal = %s,
                     alias_por_producto = %s,
-                    cantidad_alias_producto = %s,
                     ruc_por_sucursal = %s
                 WHERE id = %s
             """, (
@@ -387,7 +385,6 @@ def api_actualizar_cliente(cliente_id):
                 data.get("usa_bodega_por_sucursal", False),
                 data.get("alias_por_sucursal", False),
                 data.get("alias_por_producto", False),
-                data.get("cantidad_alias_producto", 1),
                 data.get("ruc_por_sucursal", False),
                 cliente_id
             ))
@@ -479,12 +476,12 @@ def api_productos_mapeos():
     with db.obtener_conexion() as conn, conn.cursor() as cur:
         # ------- POR CLIENTE -------
         cur.execute("""
-            SELECT c.id, c.nombre, c.ruc, c.alias_por_producto, c.cantidad_alias_producto
+            SELECT c.id, c.nombre, c.ruc, c.alias_por_producto
             FROM clientes c
             WHERE c.usa_bodega_por_sucursal = FALSE
             ORDER BY upper(c.nombre);
         """)
-        clientes_pc = [{"id": i, "nombre": n, "ruc": r, "alias_por_producto": ap, "cantidad_alias_producto": cap} for (i,n,r,ap,cap) in cur.fetchall()]
+        clientes_pc = [{"id": i, "nombre": n, "ruc": r, "alias_por_producto": ap} for (i,n,r,ap) in cur.fetchall()]
         idmap = {c["id"]: c for c in clientes_pc}
 
         por_cliente = {}
@@ -496,28 +493,13 @@ def api_productos_mapeos():
                 ORDER BY bpc.cliente_id, upper(p.nombre);
             """)
             for (mapeo_id, cliente_id, pid, sku, pnom, bodega) in cur.fetchall():
-                # Obtener alias para este producto y cliente
-                cur.execute("""
-                    SELECT alias_1, alias_2, alias_3 
-                    FROM alias_productos 
-                    WHERE producto_id = %s AND cliente_id = %s;
-                """, (pid, cliente_id))
-                alias_data = cur.fetchone()
-                
-                # Construir objeto con alias
+                # Construir objeto sin alias (los alias se gestionan en el modal)
                 fila = {
                     "mapeo_id": mapeo_id,
                     "producto_id": pid,
                     "sku": sku, "nombre_producto": pnom,
                     "bodega": bodega
                 }
-                
-                # Agregar alias si existen
-                if alias_data:
-                    alias_1, alias_2, alias_3 = alias_data
-                    if alias_1: fila["alias_1"] = alias_1
-                    if alias_2: fila["alias_2"] = alias_2
-                    if alias_3: fila["alias_3"] = alias_3
                 
                 por_cliente.setdefault(cliente_id, []).append(fila)
         for cid, cli in idmap.items():
@@ -529,12 +511,12 @@ def api_productos_mapeos():
 
         # ------- POR SUCURSAL + CLIENTE -------
         cur.execute("""
-            SELECT c.id, c.nombre, c.ruc, c.alias_por_producto, c.cantidad_alias_producto
+            SELECT c.id, c.nombre, c.ruc, c.alias_por_producto
             FROM clientes c
             WHERE c.usa_bodega_por_sucursal = TRUE
             ORDER BY upper(c.nombre);
         """)
-        clientes_ps = [{"id": i, "nombre": n, "ruc": r, "alias_por_producto": ap, "cantidad_alias_producto": cap} for (i,n,r,ap,cap) in cur.fetchall()]
+        clientes_ps = [{"id": i, "nombre": n, "ruc": r, "alias_por_producto": ap} for (i,n,r,ap) in cur.fetchall()]
 
         if clientes_ps:
             # 1) sucursales activas
@@ -571,28 +553,13 @@ def api_productos_mapeos():
                     "filas": []
                 })
                 
-                # Obtener alias para este producto y cliente
-                cur.execute("""
-                    SELECT alias_1, alias_2, alias_3 
-                    FROM alias_productos 
-                    WHERE producto_id = %s AND cliente_id = %s;
-                """, (pid, cli_id))
-                alias_data = cur.fetchone()
-                
-                # Construir objeto con alias
+                # Construir objeto sin alias (los alias se gestionan en el modal)
                 fila = {
                     "mapeo_id": mapeo_id,
                     "producto_id": pid,
                     "sku": sku, "nombre_producto": pnom,
                     "bodega": bodega
                 }
-                
-                # Agregar alias si existen
-                if alias_data:
-                    alias_1, alias_2, alias_3 = alias_data
-                    if alias_1: fila["alias_1"] = alias_1
-                    if alias_2: fila["alias_2"] = alias_2
-                    if alias_3: fila["alias_3"] = alias_3
                 
                 por_cliente[cli_id][suc_id]["filas"].append(fila)
 
@@ -628,11 +595,6 @@ def api_productos_por_cliente_bulk():
             nombre_prod  = (c.get("producto_nombre") or "").strip() or None
             bodega       = (c.get("bodega") or "").strip() or None
             borrar       = bool(c.get("borrar"))
-            
-            # Extraer alias
-            alias_1 = (c.get("alias_1") or "").strip() or None
-            alias_2 = (c.get("alias_2") or "").strip() or None
-            alias_3 = (c.get("alias_3") or "").strip() or None
 
             if borrar and mapeo_id:
                 cur.execute("DELETE FROM bodegas_producto_por_cliente WHERE id = %s;", (mapeo_id,))
@@ -701,20 +663,8 @@ def api_productos_por_cliente_bulk():
                 """, (cliente_id, producto_id, bodega))
                 _ = cur.fetchone()[0]
                 res["insertados"] += 1
-
-            # Manejar alias de productos
-            if producto_id and cliente_id:
-                # Upsert alias en la tabla alias_productos
-                cur.execute("""
-                    INSERT INTO alias_productos (producto_id, cliente_id, alias_1, alias_2, alias_3)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (cliente_id, producto_id) 
-                    DO UPDATE SET 
-                        alias_1 = EXCLUDED.alias_1,
-                        alias_2 = EXCLUDED.alias_2,
-                        alias_3 = EXCLUDED.alias_3,
-                        fecha_actualizacion = CURRENT_TIMESTAMP;
-                """, (producto_id, cliente_id, alias_1, alias_2, alias_3))
+            
+            # Los alias ahora se gestionan desde el modal de alias en el frontend
 
     return jsonify({"ok": True, **res})
 
@@ -739,11 +689,6 @@ def api_productos_por_sucursal_bulk():
             nombre_prod  = (c.get("producto_nombre") or "").strip() or None
             bodega       = (c.get("bodega") or "").strip() or None
             borrar       = bool(c.get("borrar"))
-            
-            # Extraer alias
-            alias_1 = (c.get("alias_1") or "").strip() or None
-            alias_2 = (c.get("alias_2") or "").strip() or None
-            alias_3 = (c.get("alias_3") or "").strip() or None
 
             if borrar and mapeo_id:
                 cur.execute("DELETE FROM bodegas_producto_por_sucursal WHERE id = %s;", (mapeo_id,))
@@ -801,26 +746,8 @@ def api_productos_por_sucursal_bulk():
                 """, (sucursal_id, producto_id, bodega))
                 _ = cur.fetchone()[0]
                 res["insertados"] += 1
-
-            # Manejar alias de productos (para sucursales, necesitamos el cliente_id)
-            if producto_id and sucursal_id:
-                # Obtener cliente_id de la sucursal
-                cur.execute("SELECT cliente_id FROM sucursales WHERE id = %s;", (sucursal_id,))
-                cliente_result = cur.fetchone()
-                if cliente_result:
-                    cliente_id = cliente_result[0]
-                    
-                    # Upsert alias en la tabla alias_productos
-                    cur.execute("""
-                        INSERT INTO alias_productos (producto_id, cliente_id, alias_1, alias_2, alias_3)
-                        VALUES (%s, %s, %s, %s, %s)
-                        ON CONFLICT (cliente_id, producto_id) 
-                        DO UPDATE SET 
-                            alias_1 = EXCLUDED.alias_1,
-                            alias_2 = EXCLUDED.alias_2,
-                            alias_3 = EXCLUDED.alias_3,
-                            fecha_actualizacion = CURRENT_TIMESTAMP;
-                    """, (producto_id, cliente_id, alias_1, alias_2, alias_3))
+            
+            # Los alias ahora se gestionan desde el modal de alias en el frontend
 
     return jsonify({"ok": True, **res})
 
@@ -1519,6 +1446,201 @@ def api_sucursales_cliente(cliente_id: int):
             return jsonify({"sucursales": sucursales})
             
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ========= ENDPOINTS DE GESTIÓN DE ALIAS DE PRODUCTOS =========
+
+@app.route("/api/productos/<int:producto_id>/alias", methods=["GET"])
+@login_required
+def api_listar_alias_producto(producto_id: int):
+    """Lista todos los alias de un producto para un cliente específico"""
+    try:
+        cliente_id = request.args.get('cliente_id', type=int)
+        if not cliente_id:
+            return jsonify({"error": "cliente_id es requerido"}), 400
+        
+        with db.obtener_conexion() as conn, conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, alias, fecha_creacion, fecha_actualizacion
+                FROM producto_alias
+                WHERE producto_id = %s AND cliente_id = %s
+                ORDER BY fecha_creacion ASC;
+            """, (producto_id, cliente_id))
+            
+            alias = []
+            for row in cur.fetchall():
+                alias.append({
+                    "id": row[0],
+                    "alias": row[1],
+                    "fecha_creacion": row[2].isoformat() if row[2] else None,
+                    "fecha_actualizacion": row[3].isoformat() if row[3] else None
+                })
+            
+            return jsonify({"alias": alias})
+            
+    except Exception as e:
+        print(f"Error al listar alias: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/productos/<int:producto_id>/alias", methods=["POST"])
+@login_required
+def api_agregar_alias_producto(producto_id: int):
+    """Agrega un nuevo alias a un producto"""
+    try:
+        data = request.get_json()
+        cliente_id = data.get("cliente_id")
+        alias = data.get("alias", "").strip()
+        
+        if not cliente_id:
+            return jsonify({"error": "cliente_id es requerido"}), 400
+        if not alias:
+            return jsonify({"error": "El alias no puede estar vacío"}), 400
+        
+        with db.obtener_conexion() as conn, conn.cursor() as cur:
+            # Verificar que el producto existe
+            cur.execute("SELECT id FROM productos WHERE id = %s", (producto_id,))
+            if not cur.fetchone():
+                return jsonify({"error": "Producto no encontrado"}), 404
+            
+            # Verificar que el cliente existe
+            cur.execute("SELECT id FROM clientes WHERE id = %s", (cliente_id,))
+            if not cur.fetchone():
+                return jsonify({"error": "Cliente no encontrado"}), 404
+            
+            # Insertar el alias
+            try:
+                cur.execute("""
+                    INSERT INTO producto_alias (producto_id, cliente_id, alias)
+                    VALUES (%s, %s, %s)
+                    RETURNING id;
+                """, (producto_id, cliente_id, alias))
+                alias_id = cur.fetchone()[0]
+                conn.commit()
+                
+                return jsonify({
+                    "ok": True,
+                    "alias_id": alias_id,
+                    "mensaje": "Alias agregado correctamente"
+                })
+            except Exception as e:
+                # Manejar error de constraint único (alias duplicado)
+                if "unique" in str(e).lower():
+                    return jsonify({"error": "Este alias ya existe para este producto y cliente"}), 400
+                raise
+            
+    except Exception as e:
+        print(f"Error al agregar alias: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/productos/<int:producto_id>/alias/<int:alias_id>", methods=["PUT"])
+@login_required
+def api_actualizar_alias_producto(producto_id: int, alias_id: int):
+    """Actualiza un alias existente"""
+    try:
+        data = request.get_json()
+        alias = data.get("alias", "").strip()
+        
+        if not alias:
+            return jsonify({"error": "El alias no puede estar vacío"}), 400
+        
+        with db.obtener_conexion() as conn, conn.cursor() as cur:
+            # Verificar que el alias existe y pertenece al producto
+            cur.execute("""
+                SELECT id FROM producto_alias
+                WHERE id = %s AND producto_id = %s;
+            """, (alias_id, producto_id))
+            
+            if not cur.fetchone():
+                return jsonify({"error": "Alias no encontrado"}), 404
+            
+            # Actualizar el alias
+            try:
+                cur.execute("""
+                    UPDATE producto_alias
+                    SET alias = %s, fecha_actualizacion = CURRENT_TIMESTAMP
+                    WHERE id = %s;
+                """, (alias, alias_id))
+                conn.commit()
+                
+                return jsonify({
+                    "ok": True,
+                    "mensaje": "Alias actualizado correctamente"
+                })
+            except Exception as e:
+                # Manejar error de constraint único (alias duplicado)
+                if "unique" in str(e).lower():
+                    return jsonify({"error": "Este alias ya existe para este producto y cliente"}), 400
+                raise
+            
+    except Exception as e:
+        print(f"Error al actualizar alias: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/productos/<int:producto_id>/alias/<int:alias_id>", methods=["DELETE"])
+@login_required
+def api_eliminar_alias_producto(producto_id: int, alias_id: int):
+    """Elimina un alias"""
+    try:
+        with db.obtener_conexion() as conn, conn.cursor() as cur:
+            # Verificar que el alias existe y pertenece al producto
+            cur.execute("""
+                SELECT id FROM producto_alias
+                WHERE id = %s AND producto_id = %s;
+            """, (alias_id, producto_id))
+            
+            if not cur.fetchone():
+                return jsonify({"error": "Alias no encontrado"}), 404
+            
+            # Eliminar el alias
+            cur.execute("DELETE FROM producto_alias WHERE id = %s;", (alias_id,))
+            conn.commit()
+            
+            return jsonify({
+                "ok": True,
+                "mensaje": "Alias eliminado correctamente"
+            })
+            
+    except Exception as e:
+        print(f"Error al eliminar alias: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/clientes/<int:cliente_id>/productos", methods=["GET"])
+@login_required
+def api_productos_cliente(cliente_id: int):
+    """Obtiene todos los productos asociados a un cliente específico"""
+    try:
+        with db.obtener_conexion() as conn, conn.cursor() as cur:
+            # Verificar que el cliente existe
+            cur.execute("SELECT id FROM clientes WHERE id = %s", (cliente_id,))
+            if not cur.fetchone():
+                return jsonify({"error": "Cliente no encontrado"}), 404
+            
+            # Obtener productos del cliente
+            cur.execute("""
+                SELECT DISTINCT p.id, p.sku, p.nombre
+                FROM productos p
+                INNER JOIN bodegas_producto_por_cliente bpc ON p.id = bpc.producto_id
+                WHERE bpc.cliente_id = %s
+                ORDER BY p.nombre;
+            """, (cliente_id,))
+            
+            productos = []
+            for row in cur.fetchall():
+                productos.append({
+                    "id": row[0],
+                    "sku": row[1] or "",
+                    "nombre": row[2] or ""
+                })
+            
+            return jsonify({"productos": productos})
+            
+    except Exception as e:
+        print(f"Error al obtener productos del cliente: {e}")
         return jsonify({"error": str(e)}), 500
 
 

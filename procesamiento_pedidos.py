@@ -521,27 +521,26 @@ def _cargar_catalogo_productos() -> List[Dict[str, Any]]:
 
 def _cargar_alias_productos_por_cliente(cliente_id: int) -> List[Dict[str, Any]]:
     """
-    Carga alias de productos para un cliente específico.
-    Devuelve: lista de dicts {producto_id, alias_1, alias_2, alias_3, alias_norm, tokens}
+    Carga alias de productos para un cliente específico desde la nueva tabla producto_alias.
+    Devuelve: lista de dicts {producto_id, alias, alias_norm, tokens}
     """
     alias_list: List[Dict[str, Any]] = []
     with _pg.obtener_conexion() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT producto_id, alias_1, alias_2, alias_3
-            FROM alias_productos
+            SELECT producto_id, alias
+            FROM producto_alias
             WHERE cliente_id = %s
         """, (cliente_id,))
-        for pid, alias_1, alias_2, alias_3 in cur.fetchall():
-            # Procesar cada alias que no esté vacío
-            for alias in [alias_1, alias_2, alias_3]:
-                if alias and alias.strip():
-                    alias_norm = normalizar_texto(alias)
-                    alias_list.append({
-                        "producto_id": int(pid),
-                        "alias": alias.strip(),
-                        "alias_norm": alias_norm,
-                        "tokens": set(alias_norm.split())
-                    })
+        for pid, alias in cur.fetchall():
+            # Procesar cada alias
+            if alias and alias.strip():
+                alias_norm = normalizar_texto(alias)
+                alias_list.append({
+                    "producto_id": int(pid),
+                    "alias": alias.strip(),
+                    "alias_norm": alias_norm,
+                    "tokens": set(alias_norm.split())
+                })
     return alias_list
 
 def _puntaje_similitud(q_norm: str, cand_norm: str, cand_tokens: set[str]) -> float:

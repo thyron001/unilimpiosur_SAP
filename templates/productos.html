@@ -222,37 +222,30 @@
     // ============================
     // Construcción de tablas
     // ============================
-    function thsProductos(cantidadAlias = 0){ 
-        let headersAlias = '';
-        for(let i = 1; i <= cantidadAlias; i++) {
-            headersAlias += `<th>Alias ${i}</th>`;
-        }
+    function thsProductos(mostrarAlias = false){ 
         return `
         <tr>
             <th>SKU</th>
             <th>Nombre del Producto</th>
-            ${headersAlias}
             <th class="col-bodega">Bodega</th>
             <th class="col-editar">Editar</th>
         </tr>`; 
     }
 
-    function construirFilaProducto(row, editable, cantidadAlias = 0){
+    function construirFilaProducto(row, editable, mostrarAlias = false, clienteId = null){
         const tr = document.createElement("tr");
         tr.dataset.mapeoId = row.mapeo_id ?? "";
         tr.dataset.productoId = row.producto_id ?? "";
+        tr.dataset.clienteId = clienteId ?? "";
         
-        // Generar columnas de alias
-        let celdasAlias = '';
-        for(let i = 1; i <= cantidadAlias; i++) {
-            const aliasValue = row[`alias_${i}`] || '';
-            celdasAlias += `<td data-label="Alias ${i}"><span contenteditable="${editable ? 'true' : 'false'}" class="alias-${i} ${editable ? 'celda-editable' : ''}">${esc(aliasValue)}</span></td>`;
+        // Agregar clase para filas clickeables si tiene alias activado
+        if(mostrarAlias && !editable) {
+            tr.classList.add("fila-clickeable");
         }
         
         tr.innerHTML = `
             <td data-label="SKU"><span contenteditable="${editable ? 'true' : 'false'}" class="sku ${editable ? 'celda-editable' : ''}" ${editable ? 'list="dlSkus"' : ''}>${esc(row.sku||"")}</span></td>
             <td data-label="Nombre del Producto"><span contenteditable="${editable ? 'true' : 'false'}" class="nombre ${editable ? 'celda-editable' : ''}" ${editable ? 'list="dlNombres"' : ''}>${esc(row.nombre_producto||"")}</span></td>
-            ${celdasAlias}
             <td data-label="Bodega" class="col-bodega"><span contenteditable="${editable ? 'true' : 'false'}" class="bodega ${editable ? 'celda-editable' : ''}">${esc(row.bodega||"")}</span></td>
             <td class="col-editar">
                 <button class="btn-editar" data-accion="borrar" title="Marcar para borrar">🗑️</button>
@@ -280,18 +273,15 @@
                     if(t !== "") bodegaSpan.textContent = t.padStart(2, "0");
                 });
             }
-            
-            // Configurar alias editables
-            for(let i = 1; i <= cantidadAlias; i++) {
-                const aliasSpan = tr.querySelector(`.alias-${i}`);
-                if(aliasSpan){
-                    aliasSpan.addEventListener("blur", ()=>{
-                        // Normalizar texto del alias
-                        let t = (aliasSpan.textContent || "").trim();
-                        aliasSpan.textContent = t;
-                    });
-                }
-            }
+        }
+        
+        // Event listener para hacer toda la fila clickeable (abrir modal de alias)
+        if(mostrarAlias && !editable) {
+            tr.addEventListener("click", (e) => {
+                // No abrir modal si se clickea en el botón de borrar
+                if(e.target.closest(".btn-editar")) return;
+                abrirModalAlias(row.producto_id, row.nombre_producto, clienteId);
+            });
         }
         
         tr.querySelector(".btn-editar[data-accion='borrar']").addEventListener("click", ()=>{
@@ -300,20 +290,17 @@
         return tr;
         }
 
-    function agregarFilaNueva(tbody, cantidadAlias = 0){
+    function agregarFilaNueva(tbody, mostrarAlias = false){
         const tr = document.createElement("tr");
         tr.className = "fila-nueva";
         
-        // Generar columnas de alias
-        let celdasAlias = '';
-        for(let i = 1; i <= cantidadAlias; i++) {
-            celdasAlias += `<td data-label="Alias ${i}"><span contenteditable="true" class="alias-${i} celda-editable"></span></td>`;
-        }
+        // No mostramos columna de alias en filas nuevas - los alias se gestionan después con el popup
+        const celdaAlias = mostrarAlias ? '<td data-label="Alias" class="col-alias"></td>' : '';
         
         tr.innerHTML = `
             <td data-label="SKU"><span contenteditable="true" class="sku celda-editable" list="dlSkus"></span></td>
             <td data-label="Nombre del Producto"><span contenteditable="true" class="nombre celda-editable" list="dlNombres"></span></td>
-            ${celdasAlias}
+            ${celdaAlias}
             <td data-label="Bodega" class="col-bodega"><span contenteditable="true" class="bodega celda-editable"></span></td>
             <td class="col-editar">
                 <button class="btn-editar" data-accion="agregar" title="Agregar producto">＋</button>
@@ -352,15 +339,6 @@
             const nombre= nombreSpan.textContent.trim();
             const bodega= bodegaSpan.textContent.trim();
             
-            // Recopilar alias
-            const alias = {};
-            for(let i = 1; i <= cantidadAlias; i++) {
-                const aliasSpan = tr.querySelector(`.alias-${i}`);
-                if(aliasSpan) {
-                    alias[`alias_${i}`] = aliasSpan.textContent.trim();
-                }
-            }
-            
             if(!sku && !nombre){
             alert("❌ Error: Debe ingresar el SKU o el nombre del producto.\n\nPor favor, complete al menos uno de estos campos:\n• SKU del producto\n• Nombre del producto");
             return;
@@ -370,7 +348,13 @@
             alert("❌ Error: Debe ingresar la bodega del producto.\n\nPor favor, complete el campo 'Bodega' antes de agregar el producto.");
             return;
             }
-            const nueva = construirFilaProducto({sku, nombre_producto:nombre, bodega, ...alias}, true, cantidadAlias);
+            
+            // Obtener tabla para determinar clienteId y mostrarAlias
+            const tabla = tbody.closest('table');
+            const clienteId = tabla.dataset.clienteId || null;
+            const mostrarAlias = tabla.dataset.aliasActivados === 'true';
+            
+            const nueva = construirFilaProducto({sku, nombre_producto:nombre, bodega}, true, mostrarAlias, clienteId);
             tr.before(nueva);
             const skuSpanClear = tr.querySelector(".sku");
             const nombreSpanClear = tr.querySelector(".nombre");
@@ -379,14 +363,6 @@
             if (skuSpanClear) skuSpanClear.textContent = "";
             if (nombreSpanClear) nombreSpanClear.textContent = "";
             if (bodegaSpanClear) bodegaSpanClear.textContent = "";
-            
-            // Limpiar alias
-            for(let i = 1; i <= cantidadAlias; i++) {
-                const aliasSpan = tr.querySelector(`.alias-${i}`);
-                if(aliasSpan) {
-                    aliasSpan.textContent = "";
-                }
-            }
         });
         }
 
@@ -408,14 +384,14 @@
       const content = document.createElement("div");
       content.className = "card-content";
       
-      // Determinar cantidad de alias
-      const cantidadAlias = bloque.cliente.alias_por_producto ? (bloque.cliente.cantidad_alias_producto || 1) : 0;
+      // Determinar si mostrar alias
+      const mostrarAlias = Boolean(bloque.cliente.alias_por_producto);
       
       const wrap = document.createElement("div");
       wrap.className = "table-wrap";
       wrap.innerHTML = `
-        <table class="glass-table tabla-por-cliente" data-cliente-id="${bloque.cliente.id}" data-cantidad-alias="${cantidadAlias}">
-          <thead>${thsProductos(cantidadAlias)}</thead>
+        <table class="glass-table tabla-por-cliente" data-cliente-id="${bloque.cliente.id}" data-alias-activados="${mostrarAlias}">
+          <thead>${thsProductos(mostrarAlias)}</thead>
           <tbody></tbody>
         </table>
       `;
@@ -426,10 +402,10 @@
       const tbody = wrap.querySelector("tbody");
       
       // Agregar fila nueva al inicio si edición activa
-      if(toggleEdicion.checked) agregarFilaNueva(tbody, cantidadAlias);
+      if(toggleEdicion.checked) agregarFilaNueva(tbody, mostrarAlias);
       
       for(const r of (bloque.filas||[])){
-        tbody.appendChild(construirFilaProducto(r, toggleEdicion.checked, cantidadAlias));
+        tbody.appendChild(construirFilaProducto(r, toggleEdicion.checked, mostrarAlias, bloque.cliente.id));
       }
 
       // Cargar estado persistente del acordeón
@@ -488,8 +464,8 @@
         (porSuc[b.sucursal.id] ||= { sucursal: b.sucursal, filas: [] }).filas.push(...(b.filas||[]));
       }
 
-      // Determinar cantidad de alias del cliente
-      const cantidadAlias = grupo.cliente.alias_por_producto ? (grupo.cliente.cantidad_alias_producto || 1) : 0;
+      // Determinar si mostrar alias
+      const mostrarAlias = Boolean(grupo.cliente.alias_por_producto);
 
       for(const sid of Object.keys(porSuc)){
         const data = porSuc[sid];
@@ -501,15 +477,16 @@
         const tabla = document.createElement("table");
         tabla.className = "glass-table tabla-por-sucursal";
         tabla.setAttribute("data-sucursal-id", data.sucursal.id);
-        tabla.setAttribute("data-cantidad-alias", cantidadAlias);
-        tabla.innerHTML = `<thead>${thsProductos(cantidadAlias)}</thead><tbody></tbody>`;
+        tabla.setAttribute("data-cliente-id", grupo.cliente.id);
+        tabla.setAttribute("data-alias-activados", mostrarAlias);
+        tabla.innerHTML = `<thead>${thsProductos(mostrarAlias)}</thead><tbody></tbody>`;
         const tbody = tabla.tBodies[0];
         
         // Agregar fila nueva al inicio si edición activa
-        if(toggleEdicion.checked) agregarFilaNueva(tbody, cantidadAlias);
+        if(toggleEdicion.checked) agregarFilaNueva(tbody, mostrarAlias);
         
         for(const r of (data.filas||[])){
-          tbody.appendChild(construirFilaProducto(r, toggleEdicion.checked, cantidadAlias));
+          tbody.appendChild(construirFilaProducto(r, toggleEdicion.checked, mostrarAlias, grupo.cliente.id));
         }
         cont.appendChild(tabla);
       }
@@ -614,7 +591,6 @@
         const cambios = [];
         for(const t of $$$(".tabla-por-cliente")){
             const clienteId = Number(t.dataset.clienteId);
-            const cantidadAlias = Number(t.dataset.cantidadAlias) || 0;
             for(const tr of $$$("tbody tr", t)){
             if(tr.classList.contains("fila-nueva")) continue;
             
@@ -634,16 +610,7 @@
             const mapeoId= tr.dataset.mapeoId ? Number(tr.dataset.mapeoId) : null;
             const productoId = tr.dataset.productoId ? Number(tr.dataset.productoId) : null;
             
-            // Recopilar alias
-            const alias = {};
-            for(let i = 1; i <= cantidadAlias; i++) {
-                const aliasSpan = tr.querySelector(`.alias-${i}`);
-                if(aliasSpan) {
-                    alias[`alias_${i}`] = aliasSpan.textContent.trim();
-                }
-            }
-            
-            cambios.push({ cliente_id: clienteId, producto_sku: sku, producto_nombre: nombre, bodega, mapeo_id: mapeoId, producto_id: productoId, borrar, ...alias });
+            cambios.push({ cliente_id: clienteId, producto_sku: sku, producto_nombre: nombre, bodega, mapeo_id: mapeoId, producto_id: productoId, borrar });
             }
         }
         return cambios;
@@ -653,7 +620,6 @@
         const cambios = [];
         for(const t of $$$(".tabla-por-sucursal")){
             const sucursalId = Number(t.dataset.sucursalId);
-            const cantidadAlias = Number(t.dataset.cantidadAlias) || 0;
             for(const tr of $$$("tbody tr", t)){
             if(tr.classList.contains("fila-nueva")) continue;
             
@@ -673,16 +639,7 @@
             const mapeoId= tr.dataset.mapeoId ? Number(tr.dataset.mapeoId) : null;
             const productoId = tr.dataset.productoId ? Number(tr.dataset.productoId) : null;
             
-            // Recopilar alias
-            const alias = {};
-            for(let i = 1; i <= cantidadAlias; i++) {
-                const aliasSpan = tr.querySelector(`.alias-${i}`);
-                if(aliasSpan) {
-                    alias[`alias_${i}`] = aliasSpan.textContent.trim();
-                }
-            }
-            
-            cambios.push({ sucursal_id: sucursalId, producto_sku: sku, producto_nombre: nombre, bodega, mapeo_id: mapeoId, producto_id: productoId, borrar, ...alias });
+            cambios.push({ sucursal_id: sucursalId, producto_sku: sku, producto_nombre: nombre, bodega, mapeo_id: mapeoId, producto_id: productoId, borrar });
             }
         }
         return cambios;
@@ -728,7 +685,7 @@
         // Alternar celdas + fila nueva
         for(const tabla of $$$(".tabla-por-cliente, .tabla-por-sucursal")){
             const tbody = tabla.tBodies[0];
-            const cantidadAlias = parseInt(tabla.dataset.cantidadAlias) || 0;
+            const mostrarAlias = tabla.dataset.aliasActivados === 'true';
             
             for(const tr of $$$("tr", tbody)){
             if(tr.classList.contains("fila-nueva")) continue;
@@ -744,18 +701,10 @@
                 sp.removeAttribute("list");
                 }
             });
-            
-            // Configurar celdas de alias
-            for(let i = 1; i <= cantidadAlias; i++) {
-                const aliasSpan = tr.querySelector(`.alias-${i}`);
-                if(aliasSpan) {
-                    configurarCeldaEditable(aliasSpan, habilitar);
-                }
-            }
             }
             const existe = tbody.querySelector(".fila-nueva");
             if(habilitar){
-            if(!existe) agregarFilaNueva(tbody, cantidadAlias);
+            if(!existe) agregarFilaNueva(tbody, mostrarAlias);
             }else{
             if(existe) existe.remove();
             }
@@ -994,19 +943,13 @@
         }
 
         function actualizarMensajeColumnas(cliente) {
-            let columnas = ["SKU", "Nombre"];
-            
-            // Si el cliente tiene alias por producto activado
-            if (cliente.alias_por_producto && cliente.cantidad_alias_producto > 0) {
-                for (let i = 1; i <= cliente.cantidad_alias_producto; i++) {
-                    columnas.push(`Alias${i}`);
-                }
-            }
-            
-            columnas.push("Bodega");
-            
-            const mensaje = `Recuerde poner el nombre de las columnas de las siguientes maneras: ${columnas.join(", ")}`;
+            const mensaje = `Recuerde poner el nombre de las columnas de las siguientes maneras: SKU, Nombre, Bodega`;
             mensajeColumnas.textContent = mensaje;
+            
+            // Nota informativa si el cliente tiene alias activados
+            if (cliente.alias_por_producto) {
+                mensajeColumnas.textContent += ". Los alias se gestionan desde el botón 'Alias' en cada producto.";
+            }
         }
 
         function abrirModal(){
@@ -1093,6 +1036,426 @@
         });
         selectCliente?.addEventListener("change", actualizarUIClienteSeleccionado);
         btnSubirEjecutar?.addEventListener("click", enviarArchivo);
+        })();
+        </script>
+
+        <!-- ================= Modal Gestión de Alias ================= -->
+        <div id="modalAlias" class="glass-overlay hidden">
+            <div class="glass-modal" role="dialog" aria-modal="true" aria-labelledby="modalAliasTitle">
+                <div class="glass-modal-card">
+                    <div class="glass-modal-head">
+                        <h3 id="modalAliasTitle" class="mono">Gestionar Alias del Producto</h3>
+                        <button id="btnCerrarModalAlias" class="btn-close" aria-label="Cerrar">✕</button>
+                    </div>
+
+                    <div class="glass-modal-sub">
+                        <div><strong>Producto:</strong> <span id="alias-producto-nombre">-</span></div>
+                        <div><strong>SKU:</strong> <span id="alias-producto-sku">-</span></div>
+                    </div>
+
+                    <div class="glass-modal-body">
+                        <div class="alias-controls">
+                            <input type="text" id="nuevoAliasInput" class="glass-input" placeholder="Agregar nuevo alias..." />
+                            <button id="btnAgregarAlias" class="glass-btn glass-btn-primary">➕ Agregar</button>
+                        </div>
+
+                        <div class="alias-lista-wrapper">
+                            <table class="glass-table tabla-alias">
+                                <thead>
+                                    <tr>
+                                        <th>Alias</th>
+                                        <th class="col-editar">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbodyAlias">
+                                    <!-- Los alias se cargarán dinámicamente aquí -->
+                                </tbody>
+                            </table>
+                            <div id="mensajeNoAlias" class="mensaje-vacio hidden">
+                                No hay alias configurados para este producto. Agregue uno usando el campo de arriba.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-modal-foot">
+                        <button id="btnCerrarAlias" class="glass-btn glass-btn-secondary">Cerrar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <style>
+            /* Estilos adicionales para el modal de alias */
+            .alias-controls {
+                display: flex;
+                gap: 12px;
+                margin-bottom: 20px;
+            }
+            .alias-controls #nuevoAliasInput {
+                flex: 1;
+            }
+            .alias-lista-wrapper {
+                max-height: 400px;
+                overflow-y: auto;
+            }
+            .tabla-alias {
+                width: 100%;
+            }
+            .tabla-alias td {
+                vertical-align: middle;
+            }
+            .tabla-alias .col-editar {
+                width: 140px !important;
+                text-align: center !important;
+                white-space: nowrap !important;
+                display: table-cell !important;
+                visibility: visible !important;
+            }
+            .tabla-alias .col-editar button {
+                display: inline-block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+            }
+            .tabla-alias tbody tr {
+                transition: background 0.2s ease;
+            }
+            .tabla-alias tbody tr:hover {
+                background: rgba(255, 255, 255, 0.03);
+            }
+            .tabla-alias .alias-editable {
+                padding: 4px 8px;
+                border-radius: 4px;
+                border: 1px solid transparent;
+                transition: all 0.2s ease;
+            }
+            .tabla-alias .alias-editable:hover {
+                border-color: var(--border-color);
+                background: rgba(255, 255, 255, 0.05);
+            }
+            .tabla-alias .alias-editable[contenteditable="true"] {
+                border-color: var(--theme-color);
+                background: rgba(102, 126, 234, 0.1);
+            }
+            .mensaje-vacio {
+                text-align: center;
+                padding: 40px 20px;
+                color: var(--inactive-color);
+                font-style: italic;
+            }
+            .btn-alias-action {
+                padding: 6px 12px !important;
+                font-size: 14px !important;
+                margin: 0 4px !important;
+                cursor: pointer !important;
+                border: 1px solid var(--border-color) !important;
+                background: var(--hover-menu-bg) !important;
+                color: var(--theme-color) !important;
+                border-radius: 6px !important;
+                transition: all 0.2s ease !important;
+                display: inline-block !important;
+                min-width: 35px !important;
+                user-select: none !important;
+                -webkit-user-select: none !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+            }
+            .btn-alias-action:hover {
+                filter: brightness(1.2);
+                transform: translateY(-1px);
+            }
+            .btn-alias-action:active {
+                transform: scale(0.95);
+            }
+            .btn-editar-alias {
+                background: rgba(102, 126, 234, 0.2);
+                border-color: rgba(102, 126, 234, 0.5);
+            }
+            .btn-editar-alias:hover {
+                background: rgba(102, 126, 234, 0.35);
+            }
+            .btn-eliminar-alias {
+                background: rgba(244, 67, 54, 0.2);
+                border-color: rgba(244, 67, 54, 0.5);
+            }
+            .btn-eliminar-alias:hover {
+                background: rgba(244, 67, 54, 0.35);
+            }
+            .btn-alias-action.btn-guardar {
+                background: rgba(76, 175, 80, 0.2);
+                border-color: rgba(76, 175, 80, 0.5);
+                color: #4caf50;
+            }
+            .btn-alias-action.btn-cancelar {
+                background: rgba(244, 67, 54, 0.2);
+                border-color: rgba(244, 67, 54, 0.5);
+                color: #f44336;
+            }
+            .fila-clickeable {
+                cursor: pointer;
+                transition: all 0.2s ease;
+            }
+            .fila-clickeable:hover {
+                background: rgba(102, 126, 234, 0.15);
+                transform: scale(1.01);
+            }
+            .fila-clickeable:active {
+                background: rgba(102, 126, 234, 0.25);
+                transform: scale(0.99);
+            }
+        </style>
+
+        <script>
+        (function(){
+            // ============================
+            // Modal de Gestión de Alias - v2.0
+            // Actualizado: Botones de editar/eliminar sin fecha
+            // ============================
+            const modalAlias = document.getElementById("modalAlias");
+            const btnCerrarModalAlias = document.getElementById("btnCerrarModalAlias");
+            const btnCerrarAlias = document.getElementById("btnCerrarAlias");
+            const nuevoAliasInput = document.getElementById("nuevoAliasInput");
+            const btnAgregarAlias = document.getElementById("btnAgregarAlias");
+            const tbodyAlias = document.getElementById("tbodyAlias");
+            const mensajeNoAlias = document.getElementById("mensajeNoAlias");
+
+            let productoIdActual = null;
+            let clienteIdActual = null;
+
+            // Función para abrir el modal de alias
+            window.abrirModalAlias = async function(productoId, productoNombre, clienteId) {
+                productoIdActual = productoId;
+                clienteIdActual = clienteId;
+
+                // Buscar el SKU del producto
+                const tabla = document.querySelector(`table[data-cliente-id="${clienteId}"]`);
+                let sku = "-";
+                if (tabla) {
+                    const fila = tabla.querySelector(`tr[data-producto-id="${productoId}"]`);
+                    if (fila) {
+                        const skuSpan = fila.querySelector(".sku");
+                        sku = skuSpan ? skuSpan.textContent.trim() : "-";
+                    }
+                }
+
+                document.getElementById("alias-producto-nombre").textContent = productoNombre || "-";
+                document.getElementById("alias-producto-sku").textContent = sku;
+
+                await cargarAliasProducto(productoId, clienteId);
+                modalAlias.classList.remove("hidden");
+            };
+
+            // Función para cerrar el modal
+            function cerrarModalAlias() {
+                modalAlias.classList.add("hidden");
+                nuevoAliasInput.value = "";
+                productoIdActual = null;
+                clienteIdActual = null;
+            }
+
+            // Función para cargar alias del producto
+            async function cargarAliasProducto(productoId, clienteId) {
+                try {
+                    const resp = await fetch(`/api/productos/${productoId}/alias?cliente_id=${clienteId}`);
+                    if (!resp.ok) throw new Error("Error al cargar alias");
+
+                    const data = await resp.json();
+                    renderizarAlias(data.alias || []);
+                } catch (error) {
+                    console.error("Error cargando alias:", error);
+                    alert("Error al cargar los alias del producto");
+                }
+            }
+
+            // Función para renderizar la lista de alias
+            function renderizarAlias(alias) {
+                tbodyAlias.innerHTML = "";
+
+                if (alias.length === 0) {
+                    mensajeNoAlias.classList.remove("hidden");
+                    return;
+                }
+
+                mensajeNoAlias.classList.add("hidden");
+
+                for (const a of alias) {
+                    const tr = document.createElement("tr");
+                    tr.dataset.aliasId = a.id;
+
+                    tr.innerHTML = `
+                        <td>
+                            <span class="alias-texto alias-editable">${a.alias}</span>
+                        </td>
+                        <td class="col-editar">
+                            <button class="btn-alias-action btn-editar-alias" title="Editar">✏️</button>
+                            <button class="btn-alias-action btn-eliminar-alias" title="Eliminar">🗑️</button>
+                        </td>
+                    `;
+
+                    tbodyAlias.appendChild(tr);
+                    
+                    // Debug: verificar que los botones se crearon
+                    const botones = tr.querySelectorAll('.btn-alias-action');
+                    console.log(`Creada fila con ${botones.length} botones:`, tr.innerHTML);
+                }
+
+                // Agregar event listeners
+                const botonesEditar = tbodyAlias.querySelectorAll(".btn-editar-alias");
+                const botonesEliminar = tbodyAlias.querySelectorAll(".btn-eliminar-alias");
+                
+                console.log(`Agregando event listeners: ${botonesEditar.length} botones de editar, ${botonesEliminar.length} botones de eliminar`);
+                
+                botonesEditar.forEach(btn => {
+                    btn.addEventListener("click", function(e) {
+                        console.log("Click en botón editar");
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const tr = this.closest("tr");
+                        if (tr) {
+                            iniciarEdicionAlias(tr);
+                        } else {
+                            console.error("No se encontró el tr para editar");
+                        }
+                    });
+                });
+
+                botonesEliminar.forEach(btn => {
+                    btn.addEventListener("click", function(e) {
+                        console.log("Click en botón eliminar");
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const tr = this.closest("tr");
+                        if (tr) {
+                            eliminarAlias(tr);
+                        } else {
+                            console.error("No se encontró el tr para eliminar");
+                        }
+                    });
+                });
+            }
+
+            // Función para agregar un nuevo alias
+            async function agregarAlias() {
+                const alias = nuevoAliasInput.value.trim();
+                if (!alias) {
+                    alert("Por favor, ingrese un alias");
+                    return;
+                }
+
+                try {
+                    const resp = await fetch(`/api/productos/${productoIdActual}/alias`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ cliente_id: clienteIdActual, alias })
+                    });
+
+                    if (!resp.ok) {
+                        const error = await resp.json();
+                        throw new Error(error.error || "Error al agregar alias");
+                    }
+
+                    nuevoAliasInput.value = "";
+                    await cargarAliasProducto(productoIdActual, clienteIdActual);
+                } catch (error) {
+                    console.error("Error agregando alias:", error);
+                    alert(`Error: ${error.message}`);
+                }
+            }
+
+            // Función para iniciar edición de un alias
+            function iniciarEdicionAlias(tr) {
+                const aliasTexto = tr.querySelector(".alias-texto");
+                const botonesOriginales = tr.querySelector(".col-editar");
+
+                const valorOriginal = aliasTexto.textContent;
+                aliasTexto.contentEditable = "true";
+                aliasTexto.focus();
+
+                botonesOriginales.innerHTML = `
+                    <button class="btn-alias-action btn-guardar" title="Guardar">💾</button>
+                    <button class="btn-alias-action btn-cancelar" title="Cancelar">❌</button>
+                `;
+
+                const btnGuardar = botonesOriginales.querySelector(".btn-guardar");
+                const btnCancelar = botonesOriginales.querySelector(".btn-cancelar");
+
+                btnGuardar.addEventListener("click", async () => {
+                    const nuevoValor = aliasTexto.textContent.trim();
+                    if (!nuevoValor) {
+                        alert("El alias no puede estar vacío");
+                        return;
+                    }
+
+                    try {
+                        const aliasId = tr.dataset.aliasId;
+                        const resp = await fetch(`/api/productos/${productoIdActual}/alias/${aliasId}`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ alias: nuevoValor })
+                        });
+
+                        if (!resp.ok) {
+                            const error = await resp.json();
+                            throw new Error(error.error || "Error al actualizar alias");
+                        }
+
+                        await cargarAliasProducto(productoIdActual, clienteIdActual);
+                    } catch (error) {
+                        console.error("Error actualizando alias:", error);
+                        alert(`Error: ${error.message}`);
+                        aliasTexto.textContent = valorOriginal;
+                    }
+                });
+
+                btnCancelar.addEventListener("click", () => {
+                    aliasTexto.textContent = valorOriginal;
+                    aliasTexto.contentEditable = "false";
+                    cargarAliasProducto(productoIdActual, clienteIdActual);
+                });
+            }
+
+            // Función para eliminar un alias
+            async function eliminarAlias(tr) {
+                const aliasTexto = tr.querySelector(".alias-texto").textContent;
+                if (!confirm(`¿Está seguro de eliminar el alias "${aliasTexto}"?`)) {
+                    return;
+                }
+
+                try {
+                    const aliasId = tr.dataset.aliasId;
+                    const resp = await fetch(`/api/productos/${productoIdActual}/alias/${aliasId}`, {
+                        method: "DELETE"
+                    });
+
+                    if (!resp.ok) {
+                        const error = await resp.json();
+                        throw new Error(error.error || "Error al eliminar alias");
+                    }
+
+                    await cargarAliasProducto(productoIdActual, clienteIdActual);
+                } catch (error) {
+                    console.error("Error eliminando alias:", error);
+                    alert(`Error: ${error.message}`);
+                }
+            }
+
+            // Event listeners
+            btnCerrarModalAlias.addEventListener("click", cerrarModalAlias);
+            btnCerrarAlias.addEventListener("click", cerrarModalAlias);
+            btnAgregarAlias.addEventListener("click", agregarAlias);
+
+            // Permitir agregar con Enter
+            nuevoAliasInput.addEventListener("keypress", (e) => {
+                if (e.key === "Enter") {
+                    agregarAlias();
+                }
+            });
+
+            // Cerrar al hacer clic fuera del modal
+            modalAlias.addEventListener("click", (e) => {
+                if (e.target === modalAlias) {
+                    cerrarModalAlias();
+                }
+            });
         })();
         </script>
 

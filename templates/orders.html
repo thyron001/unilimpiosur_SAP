@@ -227,6 +227,7 @@ Sección 2: CSS  (static/css/glass.css)
                   <th>Descripción</th>
                   <th class="num" style="text-align: center;">Cant.</th>
                   <th style="text-align: center;">Bodega</th>
+                  <th style="text-align: center;">Acciones</th>
                 </tr>
               </thead>
               <tbody id="m-items"></tbody>
@@ -283,6 +284,45 @@ Sección 2: CSS  (static/css/glass.css)
               </button>
               <button id="btn-confirmar-sucursal" class="glass-btn glass-btn-primary" disabled>
                 Confirmar Selección
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de Selección de Productos -->
+    <div id="modalProductosOverlay" class="glass-overlay hidden"></div>
+    
+    <div id="modalProductos" class="glass-modal hidden" role="dialog"
+      aria-modal="true" aria-labelledby="modalProductosTitle">
+      <div class="glass-modal-card">
+        <div class="glass-modal-head">
+          <h3 id="modalProductosTitle" class="mono">Seleccionar Producto</h3>
+          <button id="modalProductosCerrar" class="btn-close" aria-label="Cerrar">✕</button>
+        </div>
+        
+        <div class="glass-modal-sub" style="grid-template-columns: 1fr;">
+          <div class="productos-container">
+            <div class="productos-header">
+              <p>Producto no identificado: <strong id="producto-nombre-original"></strong></p>
+              <p style="margin-top: 8px; color: rgba(255, 255, 255, 0.7);">Selecciona el producto correcto y se guardará automáticamente como alias:</p>
+            </div>
+            
+            <!-- Buscador de productos -->
+            <div class="buscador-productos">
+              <input type="text" id="buscador-producto" placeholder="Buscar por SKU o nombre..." class="input-buscador">
+            </div>
+            
+            <div id="productos-lista" class="productos-lista">
+              <!-- Los productos se cargarán aquí dinámicamente -->
+            </div>
+            <div class="productos-actions">
+              <button id="btn-cancelar-producto" class="glass-btn glass-btn-secondary">
+                Cancelar
+              </button>
+              <button id="btn-confirmar-producto" class="glass-btn glass-btn-primary" disabled>
+                Confirmar y Guardar Alias
               </button>
             </div>
           </div>
@@ -1172,6 +1212,115 @@ Sección 2: CSS  (static/css/glass.css)
       border-left: 4px solid #667eea;
     }
 
+    /* ================= Estilos para el modal de productos ================= */
+    .productos-container {
+      padding: 0;
+    }
+
+    .productos-header {
+      padding: 16px 20px;
+      background: rgba(255, 193, 7, 0.1);
+      border: 1px solid rgba(255, 193, 7, 0.3);
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .productos-header p {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .productos-header strong {
+      color: #ffc107;
+    }
+
+    .buscador-productos {
+      margin-bottom: 16px;
+    }
+
+    .productos-lista {
+      max-height: 400px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    #modalProductos .glass-modal-card {
+      width: 90vw;
+      max-width: 900px;
+      min-width: 700px;
+    }
+
+    .producto-item {
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .producto-item:last-child {
+      border-bottom: none;
+    }
+
+    .producto-item:hover {
+      background: rgba(102, 126, 234, 0.15);
+    }
+
+    .producto-item.selected {
+      background: rgba(102, 126, 234, 0.3);
+      border-left: 4px solid #667eea;
+    }
+
+    .producto-item-sku {
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      color: var(--theme-color);
+      font-size: 14px;
+    }
+
+    .producto-item-nombre {
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 14px;
+    }
+
+    .productos-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      padding-top: 12px;
+    }
+
+    /* Botón para seleccionar producto en filas con error */
+    .btn-seleccionar-producto {
+      background: rgba(102, 126, 234, 0.2);
+      border: 1px solid rgba(102, 126, 234, 0.5);
+      color: var(--theme-color);
+      padding: 4px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .btn-seleccionar-producto:hover {
+      background: rgba(102, 126, 234, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .item-error .campo-editable.error {
+      border: 2px solid rgba(244, 67, 54, 0.5);
+    }
+
     .sucursal-nombre {
       font-weight: 500;
       color: #e2e8f0;
@@ -1531,6 +1680,206 @@ Sección 2: CSS  (static/css/glass.css)
         console.log("✅ Datos del popup actualizados con la sucursal seleccionada");
       }
 
+      // ========= MODAL DE SELECCIÓN DE PRODUCTOS =========
+      
+      // Event listeners para el modal de productos
+      const modalProductosOverlay = $$("#modalProductosOverlay");
+      const modalProductosCerrar = $$("#modalProductosCerrar");
+      const btnCancelarProducto = $$("#btn-cancelar-producto");
+      const btnConfirmarProducto = $$("#btn-confirmar-producto");
+      const buscadorProducto = $$("#buscador-producto");
+
+      modalProductosOverlay.addEventListener("click", cerrarModalProductos);
+      modalProductosCerrar.addEventListener("click", cerrarModalProductos);
+      btnCancelarProducto.addEventListener("click", cerrarModalProductos);
+      btnConfirmarProducto.addEventListener("click", confirmarSeleccionProducto);
+
+      // Variables globales para el modal de productos
+      let productoSeleccionado = null;
+      let productoNombreOriginal = "";
+      let itemIndexActual = null;
+      let clienteIdActualProducto = null;
+      let todosLosProductos = [];
+
+      // Función para abrir el modal de productos
+      async function abrirModalProductos(nombreProducto, itemIndex, clienteId) {
+        productoNombreOriginal = nombreProducto;
+        itemIndexActual = itemIndex;
+        clienteIdActualProducto = clienteId;
+        productoSeleccionado = null;
+        
+        const modal = $$("#modalProductos");
+        const overlay = $$("#modalProductosOverlay");
+        const lista = $$("#productos-lista");
+        const btnConfirmar = $$("#btn-confirmar-producto");
+        const productoNombreElement = $$("#producto-nombre-original");
+        
+        // Mostrar nombre del producto original
+        productoNombreElement.textContent = nombreProducto;
+        
+        // Limpiar lista anterior y buscador
+        lista.innerHTML = "";
+        btnConfirmar.disabled = true;
+        buscadorProducto.value = "";
+        todosLosProductos = [];
+        
+        // Abrir modal
+        overlay.classList.remove("hidden");
+        modal.classList.remove("hidden");
+        
+        // Cargar productos del cliente
+        try {
+          const resp = await fetch(`/api/clientes/${clienteId}/productos`);
+          if (!resp.ok) throw new Error("No se pudieron cargar los productos");
+          
+          const data = await resp.json();
+          todosLosProductos = data.productos || [];
+          
+          // Renderizar productos
+          renderizarProductos(todosLosProductos);
+          
+          if (todosLosProductos.length === 0) {
+            lista.innerHTML = '<div style="padding: 20px; text-align: center; color: rgba(255, 255, 255, 0.6);">No hay productos disponibles para este cliente</div>';
+          }
+          
+        } catch (error) {
+          console.error("Error cargando productos:", error);
+          lista.innerHTML = '<div style="padding: 20px; text-align: center; color: #f44336;">Error al cargar productos</div>';
+        }
+      }
+
+      // Función para renderizar productos
+      function renderizarProductos(productos) {
+        const lista = $$("#productos-lista");
+        lista.innerHTML = "";
+        
+        productos.forEach(producto => {
+          const div = document.createElement("div");
+          div.className = "producto-item";
+          div.dataset.productoId = producto.id;
+          
+          div.innerHTML = `
+            <div class="producto-item-sku">${producto.sku || "Sin SKU"}</div>
+            <div class="producto-item-nombre">${producto.nombre || "Sin nombre"}</div>
+          `;
+          
+          div.addEventListener("click", function() {
+            seleccionarProducto(producto, this);
+          });
+          
+          lista.appendChild(div);
+        });
+      }
+
+      // Función para seleccionar un producto
+      function seleccionarProducto(producto, elemento) {
+        // Deseleccionar todos
+        document.querySelectorAll(".producto-item").forEach(item => {
+          item.classList.remove("selected");
+        });
+        
+        // Seleccionar nuevo elemento
+        elemento.classList.add("selected");
+        productoSeleccionado = producto;
+        
+        // Habilitar botón de confirmar
+        $$("#btn-confirmar-producto").disabled = false;
+      }
+
+      // Función para cerrar el modal de productos
+      function cerrarModalProductos() {
+        const modal = $$("#modalProductos");
+        const overlay = $$("#modalProductosOverlay");
+        
+        overlay.classList.add("hidden");
+        modal.classList.add("hidden");
+        
+        productoSeleccionado = null;
+        productoNombreOriginal = "";
+        itemIndexActual = null;
+        clienteIdActualProducto = null;
+      }
+
+      // Función para confirmar la selección y guardar el alias
+      async function confirmarSeleccionProducto() {
+        if (!productoSeleccionado) {
+          alert("Por favor selecciona un producto");
+          return;
+        }
+        
+        try {
+          // Guardar el alias automáticamente
+          const resp = await fetch(`/api/productos/${productoSeleccionado.id}/alias`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              cliente_id: clienteIdActualProducto,
+              alias: productoNombreOriginal
+            })
+          });
+          
+          if (!resp.ok) {
+            const error = await resp.json();
+            throw new Error(error.error || "Error al guardar el alias");
+          }
+          
+          // Actualizar la fila en el modal principal
+          const filas = document.querySelectorAll("#m-items tr");
+          if (itemIndexActual !== null && filas[itemIndexActual]) {
+            const fila = filas[itemIndexActual];
+            
+            // Actualizar SKU
+            const inputSku = fila.querySelector(".campo-editable[type='text']");
+            if (inputSku) {
+              inputSku.value = productoSeleccionado.sku;
+            }
+            
+            // Remover clase de error
+            fila.classList.remove("item-error");
+            fila.querySelectorAll(".campo-editable").forEach(input => {
+              input.classList.remove("error");
+            });
+            
+            // Ocultar botón de seleccionar producto
+            const btnSeleccionar = fila.querySelector(".btn-seleccionar-producto");
+            if (btnSeleccionar) {
+              btnSeleccionar.style.display = "none";
+            }
+          }
+          
+          alert(`✅ Producto emparejado correctamente\n\nAlias guardado: "${productoNombreOriginal}"\nProducto: ${productoSeleccionado.nombre}\nSKU: ${productoSeleccionado.sku}`);
+          
+          cerrarModalProductos();
+          
+        } catch (error) {
+          console.error("Error al guardar alias:", error);
+          alert("Error al guardar el alias: " + error.message);
+        }
+      }
+
+      // Filtrar productos mientras se escribe en el buscador
+      buscadorProducto.addEventListener("input", function() {
+        const termino = this.value.toLowerCase().trim();
+        
+        if (!termino) {
+          renderizarProductos(todosLosProductos);
+          return;
+        }
+        
+        const productosFiltrados = todosLosProductos.filter(producto => {
+          const sku = (producto.sku || "").toLowerCase();
+          const nombre = (producto.nombre || "").toLowerCase();
+          return sku.includes(termino) || nombre.includes(termino);
+        });
+        
+        renderizarProductos(productosFiltrados);
+        
+        if (productosFiltrados.length === 0) {
+          const lista = $$("#productos-lista");
+          lista.innerHTML = '<div style="padding: 20px; text-align: center; color: rgba(255, 255, 255, 0.6);">No se encontraron productos que coincidan con la búsqueda</div>';
+        }
+      });
+
       function renderDetalle(data){
         // Guardar los datos del pedido actual para uso posterior
         window.pedidoActualData = data;
@@ -1585,6 +1934,8 @@ Sección 2: CSS  (static/css/glass.css)
           const tdDesc = document.createElement("td");
           const tdCant = document.createElement("td");
           const tdBodega = document.createElement("td");
+          const tdAcciones = document.createElement("td");
+          tdAcciones.style.textAlign = "center";
           
           if (it.tiene_error) {
             // SKU editable
@@ -1614,6 +1965,19 @@ Sección 2: CSS  (static/css/glass.css)
             tdBodega.textContent = it.bodega || "-";
             tdBodega.className = "mono";
             tdBodega.style.textAlign = "center";
+            
+            // Botón para seleccionar producto
+            const btnSeleccionar = document.createElement("button");
+            btnSeleccionar.className = "btn-seleccionar-producto";
+            btnSeleccionar.innerHTML = "🔍 Seleccionar Producto";
+            btnSeleccionar.dataset.itemIndex = (data.items || []).indexOf(it);
+            btnSeleccionar.dataset.descripcion = it.descripcion || "";
+            btnSeleccionar.addEventListener("click", function() {
+              const index = this.dataset.itemIndex;
+              const descripcion = this.dataset.descripcion;
+              abrirModalProductos(descripcion, index, data.cliente_id);
+            });
+            tdAcciones.appendChild(btnSeleccionar);
           } else {
             // Campos normales (solo lectura)
             tdSku.textContent = it.sku || "";
@@ -1625,12 +1989,16 @@ Sección 2: CSS  (static/css/glass.css)
             tdBodega.textContent = it.bodega || "-";
             tdBodega.className = "mono";
             tdBodega.style.textAlign = "center";
+            
+            // Celda de acciones vacía para productos sin error
+            tdAcciones.textContent = "-";
           }
           
           tr.appendChild(tdSku);
           tr.appendChild(tdDesc);
           tr.appendChild(tdCant);
           tr.appendChild(tdBodega);
+          tr.appendChild(tdAcciones);
           tb.appendChild(tr);
         }
 

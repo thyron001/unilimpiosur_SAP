@@ -46,7 +46,8 @@ def _leer_xlsx(buf: bytes) -> List[Dict[str, Any]]:
 def _estandarizar_columnas(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Acepta headers en cualquier combinación de mayúsculas/minúsculas/espacios:
-    SKU / sku / Sku, nombre / Nombre, bodega / BODEGA, alias1 / Alias1, etc.
+    SKU / sku / Sku, nombre / Nombre, bodega / BODEGA
+    NOTA: Los alias ahora se gestionan desde el modal de alias en el frontend
     """
     salida: List[Dict[str, Any]] = []
     def keymap(k: str) -> str:
@@ -57,13 +58,6 @@ def _estandarizar_columnas(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             return "nombre"
         if k2 in ("bodega", "whscode", "warehouse"):
             return "bodega"
-        # Mapear columnas de alias
-        if k2 in ("alias1", "alias 1"):
-            return "alias_1"
-        if k2 in ("alias2", "alias 2"):
-            return "alias_2"
-        if k2 in ("alias3", "alias 3"):
-            return "alias_3"
         return k2  # se ignora lo demás
     for r in rows:
         nr = { keymap(k): (r.get(k)) for k in r.keys() }
@@ -71,37 +65,8 @@ def _estandarizar_columnas(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         nr["sku"]    = _norm(nr.get("sku"))
         nr["nombre"] = _norm(nr.get("nombre"))
         nr["bodega"] = _norm(nr.get("bodega"))
-        nr["alias_1"] = _norm(nr.get("alias_1"))
-        nr["alias_2"] = _norm(nr.get("alias_2"))
-        nr["alias_3"] = _norm(nr.get("alias_3"))
         salida.append(nr)
     return salida
-
-def _upsert_alias_producto(cur, cliente_id: int, producto_id: int, alias_1: str, alias_2: str, alias_3: str) -> None:
-    """
-    Inserta o actualiza los alias de un producto para un cliente específico.
-    """
-    # Verificar si ya existe un registro de alias para este producto y cliente
-    cur.execute("""
-        SELECT id FROM alias_productos 
-        WHERE cliente_id = %s AND producto_id = %s;
-    """, (cliente_id, producto_id))
-    
-    existing = cur.fetchone()
-    
-    if existing:
-        # Actualizar alias existente
-        cur.execute("""
-            UPDATE alias_productos 
-            SET alias_1 = %s, alias_2 = %s, alias_3 = %s
-            WHERE id = %s;
-        """, (alias_1, alias_2, alias_3, existing[0]))
-    else:
-        # Insertar nuevo alias
-        cur.execute("""
-            INSERT INTO alias_productos (cliente_id, producto_id, alias_1, alias_2, alias_3)
-            VALUES (%s, %s, %s, %s, %s);
-        """, (cliente_id, producto_id, alias_1, alias_2, alias_3))
 
 def _asegurar_producto(cur, sku: str, nombre: str) -> int | None:
     """
@@ -125,7 +90,6 @@ def _upsert_bodega_por_cliente(conn, cliente_id: int, filas: Iterable[Dict[str,s
     with conn.cursor() as cur:
         for i, r in enumerate(filas, start=2):  # +2 por encabezado
             sku, nombre, bodega = r.get("sku",""), r.get("nombre",""), r.get("bodega","")
-            alias_1, alias_2, alias_3 = r.get("alias_1",""), r.get("alias_2",""), r.get("alias_3","")
             
             if not (sku or nombre):
                 om += 1; continue
@@ -137,9 +101,7 @@ def _upsert_bodega_por_cliente(conn, cliente_id: int, filas: Iterable[Dict[str,s
                 errores.append(f"Fila {i}: no existe producto y falta SKU para crearlo (nombre='{nombre}').")
                 om += 1; continue
             
-            # Manejar alias si hay alguno
-            if alias_1 or alias_2 or alias_3:
-                _upsert_alias_producto(cur, cliente_id, pid, alias_1, alias_2, alias_3)
+            # Los alias ahora se gestionan desde el modal de alias en el frontend
             
             # update si existe, sino insert
             cur.execute("""
@@ -166,16 +128,14 @@ def _upsert_bodega_por_sucursal(conn, sucursal_id: int, filas: Iterable[Dict[str
     ins = act = om = 0
     errores: List[str] = []
     with conn.cursor() as cur:
-        # Obtener cliente_id de la sucursal para manejar alias
+        # Verificar que la sucursal existe
         cur.execute("SELECT cliente_id FROM sucursales WHERE id = %s;", (sucursal_id,))
         cliente_result = cur.fetchone()
         if not cliente_result:
             raise RuntimeError("Sucursal no encontrada.")
-        cliente_id = cliente_result[0]
         
         for i, r in enumerate(filas, start=2):
             sku, nombre, bodega = r.get("sku",""), r.get("nombre",""), r.get("bodega","")
-            alias_1, alias_2, alias_3 = r.get("alias_1",""), r.get("alias_2",""), r.get("alias_3","")
             
             if not (sku or nombre):
                 om += 1; continue
@@ -187,9 +147,7 @@ def _upsert_bodega_por_sucursal(conn, sucursal_id: int, filas: Iterable[Dict[str
                 errores.append(f"Fila {i}: no existe producto y falta SKU para crearlo (nombre='{nombre}').")
                 om += 1; continue
             
-            # Manejar alias si hay alguno
-            if alias_1 or alias_2 or alias_3:
-                _upsert_alias_producto(cur, cliente_id, pid, alias_1, alias_2, alias_3)
+            # Los alias ahora se gestionan desde el modal de alias en el frontend
             
             # update/insert
             cur.execute("""
