@@ -1,7 +1,7 @@
 # main.py — limpio, usando procesamiento_pedidos.py
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 import bcrypt
 from functools import wraps
@@ -30,12 +30,15 @@ app.permanent_session_lifetime = timedelta(hours=8)
 
 # ========= UTILIDADES DE PERSISTENCIA (quedan aquí) =========
 
+# Zona horaria de Ecuador (GMT-5)
+ECUADOR_TZ = timezone(timedelta(hours=-5))
+
 def obtener_fecha_local() -> datetime:
-    """Obtiene la fecha y hora local actual en la zona horaria del servidor"""
-    return datetime.now()
+    """Obtiene la fecha y hora actual en la zona horaria de Ecuador (GMT-5)"""
+    return datetime.now(ECUADOR_TZ)
 
 def obtener_timestamp_local() -> str:
-    """Obtiene un timestamp formateado en la zona horaria local"""
+    """Obtiene un timestamp formateado en la zona horaria de Ecuador (GMT-5)"""
     return obtener_fecha_local().strftime("%Y-%m-%d %H:%M:%S")
 
 def a_decimal(valor) -> Decimal | None:

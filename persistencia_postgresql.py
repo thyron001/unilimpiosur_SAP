@@ -2,7 +2,7 @@
 # Utilidades para guardar pedidos y sus ítems en PostgreSQL (incluye sucursal y totales).
 
 import psycopg
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # ========================
 #  CONEXIÓN
@@ -12,9 +12,12 @@ def obtener_conexion():
     """Crea conexión a PostgreSQL usando variables de entorno PGHOST, PGUSER, etc."""
     return psycopg.connect()
 
+# Zona horaria de Ecuador (GMT-5)
+ECUADOR_TZ = timezone(timedelta(hours=-5))
+
 def obtener_fecha_local() -> datetime:
-    """Obtiene la fecha y hora local actual en la zona horaria del servidor"""
-    return datetime.now()
+    """Obtiene la fecha y hora actual en la zona horaria de Ecuador (GMT-5)"""
+    return datetime.now(ECUADOR_TZ)
 
 # ========================
 #  CONVERSIÓN

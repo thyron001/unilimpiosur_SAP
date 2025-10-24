@@ -10,7 +10,7 @@ import tempfile
 import fcntl
 import sys
 from typing import Callable, Dict, Any, Tuple
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from imapclient import IMAPClient
 from email import message_from_bytes
 from email.header import decode_header, make_header
@@ -46,12 +46,15 @@ REMITENTES_PERMITIDOS = [r.strip().lower() for r in REMITENTES_PERMITIDOS_STR.sp
 # Directorio para archivos de bloqueo
 LOCK_DIR = tempfile.gettempdir()
 
+# Zona horaria de Ecuador (GMT-5)
+ECUADOR_TZ = timezone(timedelta(hours=-5))
+
 def obtener_fecha_local() -> datetime:
-    """Obtiene la fecha y hora local actual en la zona horaria del servidor"""
-    return datetime.now()
+    """Obtiene la fecha y hora actual en la zona horaria de Ecuador (GMT-5)"""
+    return datetime.now(ECUADOR_TZ)
 
 def obtener_timestamp_local() -> str:
-    """Obtiene un timestamp formateado en la zona horaria local"""
+    """Obtiene un timestamp formateado en la zona horaria de Ecuador (GMT-5)"""
     return obtener_fecha_local().strftime("%Y-%m-%d %H:%M:%S")
 
 def log_imap(mensaje: str) -> None:
