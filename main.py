@@ -50,14 +50,14 @@ handler = logging.StreamHandler()
 handler.setFormatter(EcuadorFormatter('[%(asctime)s] %(message)s'))
 werkzeug_logger.handlers = [handler]
 
-# Filtro personalizado para formatear fechas (solo fecha, sin hora)
+# Filtro personalizado para formatear fechas (con fecha y hora)
 @app.template_filter('fecha_ecuador')
 def fecha_ecuador(fecha):
-    """Formatea una fecha mostrando solo día/mes/año (sin hora)"""
+    """Formatea una fecha mostrando día/mes/año y hora (HH:MM)"""
     if not fecha:
         return ''
-    # Solo mostrar fecha, sin hora
-    return fecha.strftime('%d/%m/%Y')
+    # Mostrar fecha y hora
+    return fecha.strftime('%d/%m/%Y %H:%M')
 
 # ========= UTILIDADES DE PERSISTENCIA (quedan aquí) =========
 

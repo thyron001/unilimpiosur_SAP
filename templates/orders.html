@@ -1424,26 +1424,29 @@ Sección 2: CSS  (static/css/glass.css)
       const fmtDate  = (iso) => {
         if(!iso) return "-";
         
-        // Solo mostrar fecha (día/mes/año), sin hora
+        // Mostrar fecha y hora (día/mes/año HH:MM)
         if (iso.includes('T')) {
-          // Si viene en formato YYYY-MM-DDTHH:MM:SS, extraer solo la fecha
+          // Si viene en formato YYYY-MM-DDTHH:MM:SS, extraer fecha y hora
           const partes = iso.split('T');
           const [year, month, day] = partes[0].split('-');
-          return `${day}/${month}/${year}`;
+          const timePart = partes[1] ? partes[1].substring(0, 5) : '00:00'; // HH:MM
+          return `${day}/${month}/${year} ${timePart}`;
         } else if (iso.includes('-')) {
-          // Si viene en formato YYYY-MM-DD, convertir a DD/MM/YYYY
+          // Si viene en formato YYYY-MM-DD, agregar hora por defecto
           const [year, month, day] = iso.split('-');
-          return `${day}/${month}/${year}`;
+          return `${day}/${month}/${year} 00:00`;
         }
         
-        // Si tiene zona horaria, usar Date normal pero solo mostrar fecha
+        // Si tiene zona horaria, usar Date normal y mostrar fecha y hora
         const d = new Date(iso);
         if(isNaN(d)) return iso;
         
         const day = String(d.getDate()).padStart(2, '0');
         const month = String(d.getMonth() + 1).padStart(2, '0');
         const year = d.getFullYear();
-        return `${day}/${month}/${year}`;
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${day}/${month}/${year} ${hours}:${minutes}`;
       };
 
       function abrirModal(){ overlay.classList.remove("hidden"); modal.classList.remove("hidden"); }
