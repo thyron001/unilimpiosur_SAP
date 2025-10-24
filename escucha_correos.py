@@ -8,6 +8,7 @@ import ssl
 import time
 import tempfile
 import fcntl
+import sys
 from typing import Callable, Dict, Any, Tuple
 from datetime import datetime
 from imapclient import IMAPClient
@@ -44,6 +45,13 @@ REMITENTES_PERMITIDOS = [r.strip().lower() for r in REMITENTES_PERMITIDOS_STR.sp
 
 # Directorio para archivos de bloqueo
 LOCK_DIR = tempfile.gettempdir()
+
+def log_imap(mensaje: str) -> None:
+    """Función de logging que fuerza el flush para Docker"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    mensaje_completo = f"[{timestamp}] [IMAP] {mensaje}"
+    print(mensaje_completo, flush=True)
+    sys.stdout.flush()
 
 def _obtener_archivo_bloqueo(uid: int) -> str:
     """Obtiene la ruta del archivo de bloqueo para un UID específico"""
@@ -130,7 +138,7 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
     if not nuevos_uids:
         return ultimo_uid
 
-    print(f"📧 Se encontraron {len(nuevos_uids)} correos nuevos (UIDs: {nuevos_uids})")
+    log_imap(f"📧 Se encontraron {len(nuevos_uids)} correos nuevos (UIDs: {nuevos_uids})")
 
     # Traemos ENVELOPE y RFC822 (cuerpo crudo)
     respuesta = cliente.fetch(nuevos_uids, ["ENVELOPE", "RFC822"])
@@ -159,13 +167,13 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
 
         # Validar que el remitente esté en la lista de permitidos
         if not es_remitente_permitido(correo_remitente):
-            print(f"🚫 Correo UID {uid} ignorado: remitente '{correo_remitente}' no está en la lista de permitidos")
+            log_imap(f"🚫 Correo UID {uid} ignorado: remitente '{correo_remitente}' no está en la lista de permitidos")
             continue
 
-        print(f"📬 Correo recibido UID {uid}:")
-        print(f"   De: {remitente}")
-        print(f"   Asunto: {asunto}")
-        print(f"   Fecha: {sobre.date or datetime.now()}")
+        log_imap(f"📬 Correo recibido UID {uid}:")
+        log_imap(f"   De: {remitente}")
+        log_imap(f"   Asunto: {asunto}")
+        log_imap(f"   Fecha: {sobre.date or datetime.now()}")
 
         nombre_pdf, bytes_pdf = extraer_primer_pdf(crudo)
 
@@ -179,17 +187,17 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
         if bytes_pdf:
             # Verificar si el correo ya fue procesado
             if _correo_ya_procesado(uid):
-                print(f"⏭️  Correo UID {uid} ya fue procesado anteriormente - omitiendo")
+                log_imap(f"⏭️  Correo UID {uid} ya fue procesado anteriormente - omitiendo")
                 continue
             
-            print(f"✅ Correo UID {uid} contiene PDF: '{nombre_pdf or 'adjunto.pdf'}' - iniciando procesamiento")
+            log_imap(f"✅ Correo UID {uid} contiene PDF: '{nombre_pdf or 'adjunto.pdf'}' - iniciando procesamiento")
             try:
                 # Marcar como procesado ANTES de procesar para evitar duplicados
                 _marcar_correo_procesado(uid)
                 al_encontrar_pdf(meta, nombre_pdf or "adjunto.pdf", bytes_pdf)
-                print(f"✅ Correo UID {uid} procesado exitosamente (mantenido como no leído)")
+                log_imap(f"✅ Correo UID {uid} procesado exitosamente (mantenido como no leído)")
             except Exception as err_cb:
-                print(f"⚠️  Error en callback al_encontrar_pdf: {err_cb}")
+                log_imap(f"⚠️  Error en callback al_encontrar_pdf: {err_cb}")
                 # En caso de error, eliminar el archivo de bloqueo para permitir reintento
                 try:
                     archivo_lock = _obtener_archivo_bloqueo(uid)
@@ -198,25 +206,27 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
                 except Exception:
                     pass
         else:
-            print(f"⚠️  Correo UID {uid} de remitente autorizado '{correo_remitente}' pero sin PDF adjunto")
+            log_imap(f"⚠️  Correo UID {uid} de remitente autorizado '{correo_remitente}' pero sin PDF adjunto")
 
     return max(ultimo_uid, max(nuevos_uids))
 
 def iniciar_escucha_correos(al_encontrar_pdf: Callable[[Dict[str, Any], str, bytes], None]) -> None:
+    log_imap("🚀 INICIANDO ESCUCHA DE CORREOS - HILO IMAP ACTIVO")
+    
     if not IMAP_USUARIO or not IMAP_CLAVE:
-        print("❌ Faltan IMAP_USER/IMAP_PASS en variables de entorno. Escucha no iniciada.")
+        log_imap("❌ Faltan IMAP_USER/IMAP_PASS en variables de entorno. Escucha no iniciada.")
         return
 
     contexto = ssl.create_default_context()
-    print(f"Conectando a {IMAP_SERVIDOR} como {IMAP_USUARIO} ...")
-    print(f"📧 Remitentes permitidos: {', '.join(REMITENTES_PERMITIDOS)}")
+    log_imap(f"Conectando a {IMAP_SERVIDOR} como {IMAP_USUARIO} ...")
+    log_imap(f"📧 Remitentes permitidos: {', '.join(REMITENTES_PERMITIDOS)}")
 
     while True:
         try:
             with IMAPClient(IMAP_SERVIDOR, ssl=True, ssl_context=contexto, timeout=60) as cliente:
                 cliente.login(IMAP_USUARIO, IMAP_CLAVE)
                 cliente.select_folder(IMAP_BUZON)
-                print(f"Conectado. Escuchando en '{IMAP_BUZON}' (IDLE).")
+                log_imap(f"Conectado. Escuchando en '{IMAP_BUZON}' (IDLE).")
 
                 estado = cliente.folder_status(IMAP_BUZON, [b"UIDNEXT"])
                 ultimo_uid = (estado.get(b"UIDNEXT") or 1) - 1
@@ -232,13 +242,17 @@ def iniciar_escucha_correos(al_encontrar_pdf: Callable[[Dict[str, Any], str, byt
                         except Exception:
                             pass
                     if respuestas:
+                        log_imap(f"🔄 IDLE detectó cambios, revisando correos...")
                         ultimo_uid = _revisar_nuevos(cliente, ultimo_uid, al_encontrar_pdf)
+                    else:
+                        # Log de heartbeat cada 5 minutos para verificar que está funcionando
+                        log_imap(f"💓 Heartbeat - Escuchando correos (último UID: {ultimo_uid})")
 
         except KeyboardInterrupt:
-            print("\n⏹️  Escucha detenida por el usuario.")
+            log_imap("\n⏹️  Escucha detenida por el usuario.")
             break
         except Exception as e:
-            print(f"⚠️  Error en escucha IMAP: {e}. Reintentando en 10s…")
+            log_imap(f"⚠️  Error en escucha IMAP: {e}. Reintentando en 10s…")
             time.sleep(10)
 
 # ---------- Pipeline por defecto (para usar directamente este archivo) ----------

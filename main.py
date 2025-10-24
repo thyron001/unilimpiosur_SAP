@@ -125,21 +125,22 @@ def obtener_saludo_aleatorio(nombre_usuario: str) -> str:
 # ========= CALLBACK DEL ESCUCHADOR =========
 
 def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
-    print("\n=== 📬 Nuevo correo (callback Flask) ===")
-    print(f"De:      {meta.get('remitente','')}")
-    print(f"Asunto:  {meta.get('asunto','')}")
-    print(f"Fecha:   {meta.get('fecha')}")
-    print(f"UID:     {meta.get('uid')}")
-    print(f"📎 PDF:  {nombre_pdf}")
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"\n[{timestamp}] === 📬 NUEVO CORREO (callback Flask) ===", flush=True)
+    print(f"[{timestamp}] De:      {meta.get('remitente','')}", flush=True)
+    print(f"[{timestamp}] Asunto:  {meta.get('asunto','')}", flush=True)
+    print(f"[{timestamp}] Fecha:   {meta.get('fecha')}", flush=True)
+    print(f"[{timestamp}] UID:     {meta.get('uid')}", flush=True)
+    print(f"[{timestamp}] 📎 PDF:  {nombre_pdf}", flush=True)
 
     # Procesar todos los correos sin restricciones temporales
     uid_correo = meta.get("uid")
-    print(f"📧 Procesando correo UID {uid_correo} desde aplicación Flask")
+    print(f"[{timestamp}] 📧 Procesando correo UID {uid_correo} desde aplicación Flask", flush=True)
 
     # 1) Filas de la tabla
     filas = proc.extraer_filas_pdf(pdf_en_bytes)
     if not filas:
-        print("[WARNING] No se detectaron filas en el PDF.")
+        print(f"[{timestamp}] [WARNING] No se detectaron filas en el PDF.", flush=True)
         return
 
     # 2) Sucursal (del PDF)
@@ -182,9 +183,9 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     try:
         sucursal_id = suc.get("id") if suc else None
         pedido_id, numero_pedido, estado = db.guardar_pedido(pedido, filas_enriquecidas, cliente_id, sucursal_id)
-        print(f"✅ [Flask] Pedido guardado exitosamente: ID={pedido_id}, N°={numero_pedido}, Estado={estado}")
+        print(f"[{timestamp}] ✅ [Flask] Pedido guardado exitosamente: ID={pedido_id}, N°={numero_pedido}, Estado={estado}", flush=True)
     except Exception as e:
-        print(f"❌ [Flask] Error al guardar el pedido: {e}")
+        print(f"[{timestamp}] ❌ [Flask] Error al guardar el pedido: {e}", flush=True)
         return
 
     # (opcional) logs en terminal
@@ -1649,7 +1650,7 @@ def api_productos_cliente(cliente_id: int):
 if __name__ == "__main__":
     es_proceso_principal = (os.environ.get("WERKZEUG_RUN_MAIN") == "true") or (not app.debug)
     if es_proceso_principal:
-        print("🚀 Iniciando escucha de correos desde aplicación Flask...")
+        print("🚀 Iniciando escucha de correos desde aplicación Flask...", flush=True)
         hilo_imap = Thread(
             target=escucha_correos.iniciar_escucha_correos,
             args=(al_encontrar_pdf,),
@@ -1657,6 +1658,7 @@ if __name__ == "__main__":
             daemon=True
         )
         hilo_imap.start()
-        print("✅ Hilo IMAP iniciado correctamente.")
+        print("✅ Hilo IMAP iniciado correctamente.", flush=True)
+        print("📧 El sistema está escuchando correos en segundo plano...", flush=True)
 
     app.run(host="0.0.0.0", port=5000, debug=True)
