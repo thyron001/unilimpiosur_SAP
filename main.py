@@ -28,6 +28,28 @@ app.secret_key = os.environ.get('SECRET_KEY', 'clave-secreta-por-defecto-cambiar
 from datetime import timedelta
 app.permanent_session_lifetime = timedelta(hours=8)
 
+# Configurar logging de Werkzeug para usar zona horaria de Ecuador
+import logging
+from time import strftime, localtime
+
+class EcuadorFormatter(logging.Formatter):
+    """Formatter que usa hora de Ecuador en los logs"""
+    def formatTime(self, record, datefmt=None):
+        # Obtener hora de Ecuador (GMT-5)
+        import datetime
+        ecuador_tz = datetime.timezone(datetime.timedelta(hours=-5))
+        ct = datetime.datetime.fromtimestamp(record.created, ecuador_tz)
+        if datefmt:
+            return ct.strftime(datefmt)
+        else:
+            return ct.strftime("%d/%b/%Y %H:%M:%S")
+
+# Configurar el formatter para Werkzeug
+werkzeug_logger = logging.getLogger('werkzeug')
+handler = logging.StreamHandler()
+handler.setFormatter(EcuadorFormatter('[%(asctime)s] %(message)s'))
+werkzeug_logger.handlers = [handler]
+
 # Filtro personalizado para formatear fechas en zona horaria de Ecuador
 @app.template_filter('fecha_ecuador')
 def fecha_ecuador(fecha):

@@ -191,15 +191,23 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
         nombre_pdf, bytes_pdf = extraer_primer_pdf(crudo)
 
         # Usar la fecha de llegada al servidor como prioridad, luego la fecha del correo, y finalmente la fecha actual
+        # IMPORTANTE: Convertir SIEMPRE a zona horaria de Ecuador (GMT-5)
         if fecha_llegada:
-            fecha_correo = fecha_llegada
-            log_imap(f"   ✅ Usando fecha de llegada al servidor: {fecha_correo}")
+            # fecha_llegada viene en UTC desde el servidor IMAP, convertir a Ecuador
+            if fecha_llegada.tzinfo is None:
+                fecha_llegada = fecha_llegada.replace(tzinfo=timezone.utc)
+            fecha_correo = fecha_llegada.astimezone(ECUADOR_TZ)
+            log_imap(f"   ✅ Usando fecha de llegada al servidor (UTC -> Ecuador): {fecha_correo}")
         elif sobre.date:
-            fecha_correo = sobre.date
-            log_imap(f"   ✅ Usando fecha del correo: {fecha_correo}")
+            # sobre.date puede venir en cualquier zona horaria, convertir a Ecuador
+            if sobre.date.tzinfo is None:
+                sobre.date = sobre.date.replace(tzinfo=timezone.utc)
+            fecha_correo = sobre.date.astimezone(ECUADOR_TZ)
+            log_imap(f"   ✅ Usando fecha del correo (convertida a Ecuador): {fecha_correo}")
         else:
+            # Usar fecha actual de Ecuador
             fecha_correo = obtener_fecha_local()
-            log_imap(f"   ⚠️  Usando fecha actual como fallback: {fecha_correo}")
+            log_imap(f"   ⚠️  Usando fecha actual de Ecuador como fallback: {fecha_correo}")
         
         meta = {
             "uid": int(uid),
