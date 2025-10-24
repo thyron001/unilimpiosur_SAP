@@ -125,52 +125,27 @@ def obtener_saludo_aleatorio(nombre_usuario: str) -> str:
 # ========= CALLBACK DEL ESCUCHADOR =========
 
 def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"\n{'='*60}")
-    print(f"📬 NUEVO CORREO RECIBIDO - {timestamp}")
-    print(f"{'='*60}")
-    print(f"📧 De:      {meta.get('remitente','')}")
-    print(f"📋 Asunto:  {meta.get('asunto','')}")
-    print(f"📅 Fecha:   {meta.get('fecha')}")
-    print(f"🆔 UID:     {meta.get('uid')}")
-    print(f"📎 PDF:     {nombre_pdf}")
-    print(f"📏 Tamaño:  {len(pdf_en_bytes)} bytes")
+    print("\n=== 📬 Nuevo correo (callback Flask) ===")
+    print(f"De:      {meta.get('remitente','')}")
+    print(f"Asunto:  {meta.get('asunto','')}")
+    print(f"Fecha:   {meta.get('fecha')}")
+    print(f"UID:     {meta.get('uid')}")
+    print(f"📎 PDF:  {nombre_pdf}")
 
-    # Verificar si el correo ya fue procesado
+    # Procesar todos los correos sin restricciones temporales
     uid_correo = meta.get("uid")
-    if uid_correo:
-        try:
-            with db.obtener_conexion() as conn, conn.cursor() as cur:
-                cur.execute("SELECT id, pedido_id, fecha_procesamiento FROM correos_procesados WHERE uid_correo = %s", (uid_correo,))
-                correo_existente = cur.fetchone()
-                
-                if correo_existente:
-                    print(f"⚠️  [ADVERTENCIA] Correo UID {uid_correo} ya fue procesado anteriormente")
-                    print(f"   📅 Fecha procesamiento: {correo_existente[2]}")
-                    print(f"   🆔 Pedido ID: {correo_existente[1]}")
-                    print(f"   ⏭️  Saltando procesamiento para evitar duplicados")
-                    return
-        except Exception as e:
-            print(f"⚠️  [ADVERTENCIA] Error al verificar correo duplicado: {e}")
-            print(f"   🔄 Continuando con el procesamiento...")
-
-    print(f"\n🔄 INICIANDO PROCESAMIENTO - UID {uid_correo}")
+    print(f"📧 Procesando correo UID {uid_correo} desde aplicación Flask")
 
     # 1) Filas de la tabla
-    print("📄 Extrayendo filas del PDF...")
     filas = proc.extraer_filas_pdf(pdf_en_bytes)
     if not filas:
-        print("❌ [ERROR] No se detectaron filas en el PDF.")
+        print("[WARNING] No se detectaron filas en el PDF.")
         return
-    print(f"✅ Se extrajeron {len(filas)} filas del PDF")
 
     # 2) Sucursal (del PDF)
-    print("🏢 Extrayendo información de sucursal...")
     resumen = proc.extraer_sucursal(pdf_en_bytes)
-    print(f"✅ Sucursal detectada: {resumen.get('sucursal', 'No detectada')}")
 
     # 3) Emparejar contra BD (cliente fijo: Roldan), usando el alias, RUC y encargado de sucursal del PDF
-    print("🔍 Emparejando productos con base de datos...")
     filas_enriquecidas, suc, cliente_id = proc.emparejar_filas_con_bd(
         filas,
         cliente_nombre="Roldan",
@@ -178,7 +153,6 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
         sucursal_ruc=resumen.get("ruc"),
         sucursal_encargado=resumen.get("encargado")
     )
-    print(f"✅ Emparejamiento completado. Cliente ID: {cliente_id}")
 
     # 4) Verificar si se encontró la sucursal por alias
     sucursal_alias_pdf = resumen.get("sucursal")
@@ -205,49 +179,16 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     }
 
     # 6) Guardar en PostgreSQL (usa tu función existente)
-    print("💾 Guardando pedido en base de datos...")
     try:
         sucursal_id = suc.get("id") if suc else None
         pedido_id, numero_pedido, estado = db.guardar_pedido(pedido, filas_enriquecidas, cliente_id, sucursal_id)
-        print(f"✅ PEDIDO GUARDADO EXITOSAMENTE:")
-        print(f"   🆔 ID: {pedido_id}")
-        print(f"   📋 Número: {numero_pedido}")
-        print(f"   📊 Estado: {estado}")
-        print(f"   🏢 Sucursal ID: {sucursal_id}")
-        print(f"   📦 Items: {len(filas_enriquecidas)}")
-        
-        # Registrar el correo como procesado
-        try:
-            with db.obtener_conexion() as conn, conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO correos_procesados 
-                    (uid_correo, remitente, asunto, fecha_correo, pedido_id, archivo_pdf, estado_procesamiento)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (uid_correo) DO NOTHING
-                """, (
-                    uid_correo,
-                    meta.get('remitente', ''),
-                    meta.get('asunto', ''),
-                    meta.get('fecha'),
-                    pedido_id,
-                    nombre_pdf,
-                    estado
-                ))
-                conn.commit()
-                print(f"📝 Correo registrado como procesado en la base de datos")
-        except Exception as e:
-            print(f"⚠️  [ADVERTENCIA] Error al registrar correo procesado: {e}")
-            
+        print(f"✅ [Flask] Pedido guardado exitosamente: ID={pedido_id}, N°={numero_pedido}, Estado={estado}")
     except Exception as e:
-        print(f"❌ [ERROR] No se guardó el pedido: {e}")
+        print(f"❌ [Flask] Error al guardar el pedido: {e}")
         return
 
     # (opcional) logs en terminal
     proc.imprimir_filas_emparejadas(filas_enriquecidas)
-    
-    print(f"\n{'='*60}")
-    print(f"✅ PROCESAMIENTO COMPLETADO - UID {uid_correo}")
-    print(f"{'='*60}")
 
 
 
@@ -1708,6 +1649,7 @@ def api_productos_cliente(cliente_id: int):
 if __name__ == "__main__":
     es_proceso_principal = (os.environ.get("WERKZEUG_RUN_MAIN") == "true") or (not app.debug)
     if es_proceso_principal:
+        print("🚀 Iniciando escucha de correos desde aplicación Flask...")
         hilo_imap = Thread(
             target=escucha_correos.iniciar_escucha_correos,
             args=(al_encontrar_pdf,),
@@ -1715,6 +1657,6 @@ if __name__ == "__main__":
             daemon=True
         )
         hilo_imap.start()
-        print("Hilo IMAP iniciado.")
+        print("✅ Hilo IMAP iniciado correctamente.")
 
     app.run(host="0.0.0.0", port=5000, debug=True)

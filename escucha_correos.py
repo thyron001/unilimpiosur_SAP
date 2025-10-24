@@ -6,6 +6,8 @@
 import os
 import ssl
 import time
+import tempfile
+import fcntl
 from typing import Callable, Dict, Any, Tuple
 from datetime import datetime
 from imapclient import IMAPClient
@@ -39,6 +41,28 @@ REMITENTES_PERMITIDOS_STR = os.getenv("REMITENTES_PERMITIDOS", "tyminobra@outloo
 REMITENTES_PERMITIDOS = [r.strip().lower() for r in REMITENTES_PERMITIDOS_STR.split(",") if r.strip()]
 
 # ---------- Utilidades ----------
+
+# Directorio para archivos de bloqueo
+LOCK_DIR = tempfile.gettempdir()
+
+def _obtener_archivo_bloqueo(uid: int) -> str:
+    """Obtiene la ruta del archivo de bloqueo para un UID específico"""
+    return os.path.join(LOCK_DIR, f"correo_procesado_{uid}.lock")
+
+def _correo_ya_procesado(uid: int) -> bool:
+    """Verifica si un correo ya fue procesado"""
+    archivo_lock = _obtener_archivo_bloqueo(uid)
+    return os.path.exists(archivo_lock)
+
+def _marcar_correo_procesado(uid: int) -> None:
+    """Marca un correo como procesado creando un archivo de bloqueo"""
+    archivo_lock = _obtener_archivo_bloqueo(uid)
+    try:
+        with open(archivo_lock, 'w') as f:
+            f.write(f"Procesado el {datetime.now().isoformat()}")
+    except Exception as e:
+        print(f"⚠️  No se pudo crear archivo de bloqueo para UID {uid}: {e}")
+
 def es_remitente_permitido(correo_remitente: str) -> bool:
     """
     Verifica si un remitente está en la lista de permitidos.
@@ -106,6 +130,8 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
     if not nuevos_uids:
         return ultimo_uid
 
+    print(f"📧 Se encontraron {len(nuevos_uids)} correos nuevos (UIDs: {nuevos_uids})")
+
     # Traemos ENVELOPE y RFC822 (cuerpo crudo)
     respuesta = cliente.fetch(nuevos_uids, ["ENVELOPE", "RFC822"])
 
@@ -136,6 +162,11 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
             print(f"🚫 Correo UID {uid} ignorado: remitente '{correo_remitente}' no está en la lista de permitidos")
             continue
 
+        print(f"📬 Correo recibido UID {uid}:")
+        print(f"   De: {remitente}")
+        print(f"   Asunto: {asunto}")
+        print(f"   Fecha: {sobre.date or datetime.now()}")
+
         nombre_pdf, bytes_pdf = extraer_primer_pdf(crudo)
 
         meta = {
@@ -146,12 +177,26 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
         }
 
         if bytes_pdf:
-            print(f"✅ Correo UID {uid} de remitente autorizado '{correo_remitente}' - procesando PDF")
+            # Verificar si el correo ya fue procesado
+            if _correo_ya_procesado(uid):
+                print(f"⏭️  Correo UID {uid} ya fue procesado anteriormente - omitiendo")
+                continue
+            
+            print(f"✅ Correo UID {uid} contiene PDF: '{nombre_pdf or 'adjunto.pdf'}' - iniciando procesamiento")
             try:
+                # Marcar como procesado ANTES de procesar para evitar duplicados
+                _marcar_correo_procesado(uid)
                 al_encontrar_pdf(meta, nombre_pdf or "adjunto.pdf", bytes_pdf)
                 print(f"✅ Correo UID {uid} procesado exitosamente (mantenido como no leído)")
             except Exception as err_cb:
                 print(f"⚠️  Error en callback al_encontrar_pdf: {err_cb}")
+                # En caso de error, eliminar el archivo de bloqueo para permitir reintento
+                try:
+                    archivo_lock = _obtener_archivo_bloqueo(uid)
+                    if os.path.exists(archivo_lock):
+                        os.remove(archivo_lock)
+                except Exception:
+                    pass
         else:
             print(f"⚠️  Correo UID {uid} de remitente autorizado '{correo_remitente}' pero sin PDF adjunto")
 
@@ -257,4 +302,5 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
         print(f"❌ No se guardó el pedido: {e}")
 
 if __name__ == "__main__":
+    print("🚀 Iniciando escucha de correos en modo standalone...")
     iniciar_escucha_correos(_pipeline_guardar)
