@@ -1036,7 +1036,7 @@ def api_detalle_pedido(pedido_id: int):
     return jsonify({
         "id": pedido_id,
         "numero_pedido": numero_pedido,
-        "fecha": fecha.isoformat() if fecha else None,
+        "fecha": fecha.strftime('%Y-%m-%dT%H:%M:%S') if fecha else None,
         "sucursal": sucursal,
         "tiene_error_sucursal": tiene_error_sucursal,
         "cliente_id": cliente_id,
