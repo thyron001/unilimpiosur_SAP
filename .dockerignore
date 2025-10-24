@@ -1,0 +1,54 @@
+# Archivos de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Archivos de desarrollo
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de Git
+.git/
+.gitignore
+
+# Archivos de backup
+*.sql
+backup_*
+
+# Archivos temporales
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Archivos de logs
+*.log
+logs/
+
+# Archivos de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Archivos de documentación
+*.md
+README*
+
+# Archivos de prueba
+test_*
+*_test.py

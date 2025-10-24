@@ -46,7 +46,8 @@ def _leer_xlsx(buf: bytes) -> List[Dict[str, Any]]:
 def _estandarizar_columnas(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Acepta headers en cualquier combinación de mayúsculas/minúsculas/espacios:
-    SKU / sku / Sku, nombre / Nombre, bodega / BODEGA, alias / Alias
+    SKU / sku / Sku, nombre / Nombre, bodega / BODEGA
+    NOTA: Los alias ahora se gestionan desde el modal de alias en el frontend
     """
     salida: List[Dict[str, Any]] = []
     def keymap(k: str) -> str:
@@ -57,8 +58,6 @@ def _estandarizar_columnas(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             return "nombre"
         if k2 in ("bodega", "whscode", "warehouse"):
             return "bodega"
-        if k2 in ("alias", "aliases", "apodo", "apodos"):
-            return "alias"
         return k2  # se ignora lo demás
     for r in rows:
         nr = { keymap(k): (r.get(k)) for k in r.keys() }
@@ -66,131 +65,68 @@ def _estandarizar_columnas(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         nr["sku"]    = _norm(nr.get("sku"))
         nr["nombre"] = _norm(nr.get("nombre"))
         nr["bodega"] = _norm(nr.get("bodega"))
-        nr["alias"]  = _norm(nr.get("alias"))
         salida.append(nr)
     return salida
 
-def _buscar_o_crear_producto(cur, sku: str, nombre: str) -> int | None:
+def _asegurar_producto(cur, sku: str, nombre: str) -> int | None:
     """
-    Busca un producto existente por SKU. Si no existe, lo crea.
+    Permite SKUs duplicados con diferentes nombres/alias.
+    Siempre crea un nuevo producto si hay SKU o nombre, permitiendo duplicados.
     """
-    if not (sku or nombre):
-        return None
-    
-    # Buscar producto existente por SKU
-    if sku:
-        cur.execute("SELECT id FROM productos WHERE sku = %s", (sku,))
-        row = cur.fetchone()
-        if row:
-            return int(row[0])
-    
-    # Si no existe, crear nuevo producto
-    cur.execute("""
-        INSERT INTO productos (sku, nombre, activo)
-        VALUES (%s, %s, TRUE)
-        RETURNING id;
-    """, (sku or "", nombre or ""))
-    return int(cur.fetchone()[0])
-
-def _agregar_alias_producto(cur, producto_id: int, cliente_id: int, alias: str) -> bool:
-    """
-    Agrega un alias a un producto si no existe ya.
-    Retorna True si se agregó, False si ya existía.
-    """
-    if not alias or not alias.strip():
-        return False
-    
-    alias_clean = alias.strip()
-    
-    # Verificar si el alias ya existe
-    cur.execute("""
-        SELECT id FROM producto_alias 
-        WHERE producto_id = %s AND cliente_id = %s AND alias = %s
-    """, (producto_id, cliente_id, alias_clean))
-    
-    if cur.fetchone():
-        print(f"DEBUG: Alias '{alias_clean}' ya existe para producto {producto_id}")
-        return False
-    
-    # Insertar el alias
-    try:
+    # Crear nuevo producto si hay SKU o nombre
+    if sku or nombre:
         cur.execute("""
-            INSERT INTO producto_alias (producto_id, cliente_id, alias)
-            VALUES (%s, %s, %s)
-        """, (producto_id, cliente_id, alias_clean))
-        print(f"DEBUG: Alias '{alias_clean}' agregado exitosamente para producto {producto_id}")
-        return True
-    except Exception as e:
-        print(f"DEBUG: Error al insertar alias '{alias_clean}': {str(e)}")
-        return False
+            INSERT INTO productos (sku, nombre, activo)
+            VALUES (%s, %s, TRUE)
+            RETURNING id;
+        """, (sku or "", nombre or ""))
+        return int(cur.fetchone()[0])
+    
+    return None
 
 def _upsert_bodega_por_cliente(conn, cliente_id: int, filas: Iterable[Dict[str,str]]) -> Tuple[int,int,int,List[str]]:
     ins = act = om = 0
     errores: List[str] = []
-    alias_agregados = 0
-    
     with conn.cursor() as cur:
         for i, r in enumerate(filas, start=2):  # +2 por encabezado
-            try:
-                sku, nombre, bodega, alias = r.get("sku",""), r.get("nombre",""), r.get("bodega",""), r.get("alias","")
-                
-                if not (sku or nombre):
-                    om += 1; continue
-                if not bodega:
-                    errores.append(f"Fila {i}: bodega vacía.")
-                    om += 1; continue
-                
-                # Buscar o crear producto (evita duplicados por SKU)
-                pid = _buscar_o_crear_producto(cur, sku, nombre)
-                if not pid:
-                    errores.append(f"Fila {i}: no se pudo crear/obtener producto (SKU='{sku}', nombre='{nombre}').")
-                    om += 1; continue
-                
-                # Agregar alias si existe
-                if alias and alias.strip():
-                    print(f"DEBUG: Agregando alias '{alias}' para producto ID {pid}, cliente ID {cliente_id}")
-                    if _agregar_alias_producto(cur, pid, cliente_id, alias):
-                        alias_agregados += 1
-                        print(f"DEBUG: Alias agregado exitosamente")
-                    else:
-                        print(f"DEBUG: Alias ya existía o hubo error")
-                
-                # update si existe, sino insert
+            sku, nombre, bodega = r.get("sku",""), r.get("nombre",""), r.get("bodega","")
+            
+            if not (sku or nombre):
+                om += 1; continue
+            if not bodega:
+                errores.append(f"Fila {i}: bodega vacía.")
+                om += 1; continue
+            pid = _asegurar_producto(cur, sku, nombre)
+            if not pid:
+                errores.append(f"Fila {i}: no existe producto y falta SKU para crearlo (nombre='{nombre}').")
+                om += 1; continue
+            
+            # Los alias ahora se gestionan desde el modal de alias en el frontend
+            
+            # update si existe, sino insert
+            cur.execute("""
+                SELECT id FROM bodegas_producto_por_cliente
+                WHERE cliente_id = %s AND producto_id = %s;
+            """, (cliente_id, pid))
+            row = cur.fetchone()
+            if row:
                 cur.execute("""
-                    SELECT id FROM bodegas_producto_por_cliente
-                    WHERE cliente_id = %s AND producto_id = %s;
-                """, (cliente_id, pid))
-                row = cur.fetchone()
-                if row:
-                    cur.execute("""
-                        UPDATE bodegas_producto_por_cliente
-                           SET bodega = %s
-                         WHERE id = %s;
-                    """, (bodega, int(row[0])))
-                    act += 1
-                else:
-                    cur.execute("""
-                        INSERT INTO bodegas_producto_por_cliente (cliente_id, producto_id, bodega)
-                        VALUES (%s, %s, %s);
-                    """, (cliente_id, pid, bodega))
-                    ins += 1
-                    
-            except Exception as e:
-                errores.append(f"Fila {i}: Error procesando fila - {str(e)}")
-                om += 1
-                continue
-    
-    # Agregar información de alias al resultado
-    if alias_agregados > 0:
-        errores.append(f"INFO: Se agregaron {alias_agregados} alias nuevos.")
-    
+                    UPDATE bodegas_producto_por_cliente
+                       SET bodega = %s
+                     WHERE id = %s;
+                """, (bodega, int(row[0])))
+                act += 1
+            else:
+                cur.execute("""
+                    INSERT INTO bodegas_producto_por_cliente (cliente_id, producto_id, bodega)
+                    VALUES (%s, %s, %s);
+                """, (cliente_id, pid, bodega))
+                ins += 1
     return ins, act, om, errores
 
 def _upsert_bodega_por_sucursal(conn, sucursal_id: int, filas: Iterable[Dict[str,str]]) -> Tuple[int,int,int,List[str]]:
     ins = act = om = 0
     errores: List[str] = []
-    alias_agregados = 0
-    
     with conn.cursor() as cur:
         # Verificar que la sucursal existe
         cur.execute("SELECT cliente_id FROM sucursales WHERE id = %s;", (sucursal_id,))
@@ -198,62 +134,40 @@ def _upsert_bodega_por_sucursal(conn, sucursal_id: int, filas: Iterable[Dict[str
         if not cliente_result:
             raise RuntimeError("Sucursal no encontrada.")
         
-        cliente_id = cliente_result[0]
-        
         for i, r in enumerate(filas, start=2):
-            try:
-                sku, nombre, bodega, alias = r.get("sku",""), r.get("nombre",""), r.get("bodega",""), r.get("alias","")
-                
-                if not (sku or nombre):
-                    om += 1; continue
-                if not bodega:
-                    errores.append(f"Fila {i}: bodega vacía.")
-                    om += 1; continue
-                
-                # Buscar o crear producto (evita duplicados por SKU)
-                pid = _buscar_o_crear_producto(cur, sku, nombre)
-                if not pid:
-                    errores.append(f"Fila {i}: no se pudo crear/obtener producto (SKU='{sku}', nombre='{nombre}').")
-                    om += 1; continue
-                
-                # Agregar alias si existe
-                if alias and alias.strip():
-                    print(f"DEBUG: Agregando alias '{alias}' para producto ID {pid}, cliente ID {cliente_id}")
-                    if _agregar_alias_producto(cur, pid, cliente_id, alias):
-                        alias_agregados += 1
-                        print(f"DEBUG: Alias agregado exitosamente")
-                    else:
-                        print(f"DEBUG: Alias ya existía o hubo error")
-                
-                # update/insert
+            sku, nombre, bodega = r.get("sku",""), r.get("nombre",""), r.get("bodega","")
+            
+            if not (sku or nombre):
+                om += 1; continue
+            if not bodega:
+                errores.append(f"Fila {i}: bodega vacía.")
+                om += 1; continue
+            pid = _asegurar_producto(cur, sku, nombre)
+            if not pid:
+                errores.append(f"Fila {i}: no existe producto y falta SKU para crearlo (nombre='{nombre}').")
+                om += 1; continue
+            
+            # Los alias ahora se gestionan desde el modal de alias en el frontend
+            
+            # update/insert
+            cur.execute("""
+                SELECT id FROM bodegas_producto_por_sucursal
+                WHERE sucursal_id = %s AND producto_id = %s;
+            """, (sucursal_id, pid))
+            row = cur.fetchone()
+            if row:
                 cur.execute("""
-                    SELECT id FROM bodegas_producto_por_sucursal
-                    WHERE sucursal_id = %s AND producto_id = %s;
-                """, (sucursal_id, pid))
-                row = cur.fetchone()
-                if row:
-                    cur.execute("""
-                        UPDATE bodegas_producto_por_sucursal
-                           SET bodega = %s
-                         WHERE id = %s;
-                    """, (bodega, int(row[0])))
-                    act += 1
-                else:
-                    cur.execute("""
-                        INSERT INTO bodegas_producto_por_sucursal (sucursal_id, producto_id, bodega)
-                        VALUES (%s, %s, %s);
-                    """, (sucursal_id, pid, bodega))
-                    ins += 1
-                    
-            except Exception as e:
-                errores.append(f"Fila {i}: Error procesando fila - {str(e)}")
-                om += 1
-                continue
-    
-    # Agregar información de alias al resultado
-    if alias_agregados > 0:
-        errores.append(f"INFO: Se agregaron {alias_agregados} alias nuevos.")
-    
+                    UPDATE bodegas_producto_por_sucursal
+                       SET bodega = %s
+                     WHERE id = %s;
+                """, (bodega, int(row[0])))
+                act += 1
+            else:
+                cur.execute("""
+                    INSERT INTO bodegas_producto_por_sucursal (sucursal_id, producto_id, bodega)
+                    VALUES (%s, %s, %s);
+                """, (sucursal_id, pid, bodega))
+                ins += 1
     return ins, act, om, errores
 
 def _verificar_modalidad_cliente(cur, cliente_id: int) -> bool:

@@ -40,22 +40,10 @@
                 <!-- Sidebar izquierda -->
                 <aside class="left-side">
                     <section class="side-wrapper">
-                        <h3 class="side-title">Opciones</h3>
-                        <div class="side-menu">
-                            <div style="display: flex; align-items: center; justify-content: space-between;">
-                                <span style="color: var(--theme-color); font-size: 14px;">Modo edición</span>
-                                <label class='toggle' for='toggleEdicion'>
-                                    <input type='checkbox' name='toggleEdicion' id='toggleEdicion' class='toggle-input' />
-                                    <span class='switch'></span>
-                                </label>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="side-wrapper">
                         <h3 class="side-title">Acciones</h3>
                         <div class="side-menu">
-                            <button id="btnSubirArchivos" class="btn-editar-cliente" style="width: 100%; margin: 0;">📁 Subir productos</button>
+                            <button id="btnSubirArchivos" class="glass-btn glass-btn-primary" style="width: 100%; margin: 0; background: var(--hover-menu-bg); color: var(--theme-color); border-color: var(--border-color);">Subir productos</button>
+                            <button id="btnEditarProductos" class="glass-btn glass-btn-primary" style="width: 100%; margin: 10px 0 0 0; background: var(--hover-menu-bg); color: var(--theme-color); border-color: var(--border-color);">Editar</button>
                         </div>
                     </section>
                 </aside>
@@ -142,7 +130,24 @@
           width: min(300px, 30vw);
         }
 
-    .celda-editable { outline: 1px dashed var(--border-color); border-radius: 6px; }
+    .celda-editable { 
+      outline: 1px dashed var(--border-color); 
+      border-radius: 6px; 
+      width: 100%;
+      min-height: 20px;
+      padding: 4px 8px;
+      display: inline-block;
+      box-sizing: border-box;
+      transition: all 0.2s ease;
+    }
+    .celda-editable:hover {
+      outline-color: var(--theme-color);
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .celda-editable:focus {
+      outline: 2px solid var(--theme-color);
+      background: rgba(102, 126, 234, 0.1);
+    }
     .marcada-borrado { opacity:.55; filter: grayscale(.4); }
     .btn-mini {
       appearance: none; cursor: pointer;
@@ -171,6 +176,33 @@
       filter: brightness(1.1);
       background: rgba(102, 126, 234, 0.2);
     }
+    
+    /* Asegurar que todos los botones de editar tengan el mismo tamaño */
+    .btn-editar {
+      width: 24px !important;
+      height: 24px !important;
+      min-width: 24px !important;
+      max-width: 24px !important;
+      min-height: 24px !important;
+      max-height: 24px !important;
+      font-size: 12px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      margin: 0 auto !important;
+    }
+    
+    /* Estilo específico para el botón de subir productos */
+    #btnSubirArchivos:hover {
+      filter: brightness(1.1);
+      background: rgba(102, 126, 234, 0.2) !important;
+    }
+    
+    /* Estilo específico para el botón de editar productos */
+    #btnEditarProductos:hover {
+      filter: brightness(1.1);
+      background: rgba(102, 126, 234, 0.2) !important;
+    }
   </style>
 
         <script>
@@ -198,10 +230,13 @@
       }
     }
 
-    const toggleEdicion   = $$("#toggleEdicion");
+    const btnEditarProductos = $$("#btnEditarProductos");
     const inputBusqueda   = $$("#busquedaRapida");
     const contPorCliente  = $$("#listaPorCliente");
     const contPorSucursal = $$("#listaPorSucursal");
+    
+    // Variable para controlar el estado de edición
+    let modoEdicion = false;
 
     // ============================
     // Datalist (catálogo productos)
@@ -238,7 +273,7 @@
         tr.dataset.productoId = row.producto_id ?? "";
         tr.dataset.clienteId = clienteId ?? "";
         
-        // Agregar clase para filas clickeables si tiene alias activado
+        // Agregar clase para filas clickeables si tiene alias activado Y no está en modo de edición
         if(mostrarAlias && !editable) {
             tr.classList.add("fila-clickeable");
         }
@@ -276,16 +311,79 @@
         }
         
         // Event listener para hacer toda la fila clickeable (abrir modal de alias)
+        // Solo si tiene alias activado Y no está en modo de edición
         if(mostrarAlias && !editable) {
             tr.addEventListener("click", (e) => {
                 // No abrir modal si se clickea en el botón de borrar
                 if(e.target.closest(".btn-editar")) return;
+                // Verificar que no esté en modo de edición antes de abrir el modal
+                if(modoEdicion) return;
                 abrirModalAlias(row.producto_id, row.nombre_producto, clienteId);
             });
         }
         
-        tr.querySelector(".btn-editar[data-accion='borrar']").addEventListener("click", ()=>{
-          tr.classList.toggle("marcada-borrado");
+        tr.querySelector(".btn-editar[data-accion='borrar']").addEventListener("click", async ()=>{
+          const sku = tr.querySelector(".sku")?.textContent?.trim() || "";
+          const nombre = tr.querySelector(".nombre")?.textContent?.trim() || "";
+          const productoInfo = sku ? `SKU: ${sku}` : (nombre ? `Producto: ${nombre}` : "este producto");
+          
+          if(confirm(`¿Está seguro de que desea eliminar ${productoInfo}?`)) {
+            try {
+              // Obtener información necesaria para la eliminación
+              const mapeoId = tr.dataset.mapeoId;
+              const tabla = tr.closest('table');
+              const clienteId = tabla.dataset.clienteId;
+              const sucursalId = tabla.dataset.sucursalId;
+              
+              if (mapeoId) {
+                // Determinar el endpoint según el tipo de tabla
+                let endpoint = "";
+                let body = {};
+                
+                if (sucursalId) {
+                  // Es una tabla por sucursal
+                  endpoint = "/api/productos_por_sucursal/bulk";
+                  body = {
+                    cambios: [{
+                      sucursal_id: Number(sucursalId),
+                      mapeo_id: Number(mapeoId),
+                      borrar: true
+                    }]
+                  };
+                } else {
+                  // Es una tabla por cliente
+                  endpoint = "/api/productos_por_cliente/bulk";
+                  body = {
+                    cambios: [{
+                      cliente_id: Number(clienteId),
+                      mapeo_id: Number(mapeoId),
+                      borrar: true
+                    }]
+                  };
+                }
+                
+                // Enviar petición de eliminación
+                const resp = await fetch(endpoint, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(body)
+                });
+                
+                if (!resp.ok) {
+                  throw new Error("Error al eliminar el producto");
+                }
+                
+                // Si todo salió bien, eliminar la fila de la tabla
+                tr.remove();
+              } else {
+                // Si no tiene mapeo_id, es una fila nueva que solo existe en el frontend
+                tr.remove();
+              }
+            } catch (error) {
+              console.error("Error eliminando producto:", error);
+              alert("Error al eliminar el producto: " + error.message);
+            }
+          }
         });
         return tr;
         }
@@ -295,12 +393,11 @@
         tr.className = "fila-nueva";
         
         // No mostramos columna de alias en filas nuevas - los alias se gestionan después con el popup
-        const celdaAlias = mostrarAlias ? '<td data-label="Alias" class="col-alias"></td>' : '';
+        // Removemos completamente la lógica de mostrarAlias para las filas nuevas
         
         tr.innerHTML = `
             <td data-label="SKU"><span contenteditable="true" class="sku celda-editable" list="dlSkus"></span></td>
             <td data-label="Nombre del Producto"><span contenteditable="true" class="nombre celda-editable" list="dlNombres"></span></td>
-            ${celdaAlias}
             <td data-label="Bodega" class="col-bodega"><span contenteditable="true" class="bodega celda-editable"></span></td>
             <td class="col-editar">
                 <button class="btn-editar" data-accion="agregar" title="Agregar producto">＋</button>
@@ -355,7 +452,7 @@
             const mostrarAlias = tabla.dataset.aliasActivados === 'true';
             
             const nueva = construirFilaProducto({sku, nombre_producto:nombre, bodega}, true, mostrarAlias, clienteId);
-            tr.before(nueva);
+            tr.after(nueva);
             const skuSpanClear = tr.querySelector(".sku");
             const nombreSpanClear = tr.querySelector(".nombre");
             const bodegaSpanClear = tr.querySelector(".bodega");
@@ -402,10 +499,10 @@
       const tbody = wrap.querySelector("tbody");
       
       // Agregar fila nueva al inicio si edición activa
-      if(toggleEdicion.checked) agregarFilaNueva(tbody, mostrarAlias);
+      if(modoEdicion) agregarFilaNueva(tbody, mostrarAlias);
       
       for(const r of (bloque.filas||[])){
-        tbody.appendChild(construirFilaProducto(r, toggleEdicion.checked, mostrarAlias, bloque.cliente.id));
+        tbody.appendChild(construirFilaProducto(r, modoEdicion, mostrarAlias, bloque.cliente.id));
       }
 
       // Cargar estado persistente del acordeón
@@ -483,10 +580,10 @@
         const tbody = tabla.tBodies[0];
         
         // Agregar fila nueva al inicio si edición activa
-        if(toggleEdicion.checked) agregarFilaNueva(tbody, mostrarAlias);
+        if(modoEdicion) agregarFilaNueva(tbody, mostrarAlias);
         
         for(const r of (data.filas||[])){
-          tbody.appendChild(construirFilaProducto(r, toggleEdicion.checked, mostrarAlias, grupo.cliente.id));
+          tbody.appendChild(construirFilaProducto(r, modoEdicion, mostrarAlias, grupo.cliente.id));
         }
         cont.appendChild(tabla);
       }
@@ -674,6 +771,22 @@
     }
 
     function activarEdicionUI(habilitar){
+        // Actualizar la variable de estado
+        modoEdicion = habilitar;
+        
+        // Actualizar el botón
+        if(habilitar){
+          btnEditarProductos.textContent = "Guardar cambios";
+          btnEditarProductos.style.background = "rgba(76, 175, 80, 0.2)";
+          btnEditarProductos.style.borderColor = "rgba(76, 175, 80, 0.5)";
+          btnEditarProductos.style.color = "#4caf50";
+        } else {
+          btnEditarProductos.textContent = "Editar";
+          btnEditarProductos.style.background = "";
+          btnEditarProductos.style.borderColor = "";
+          btnEditarProductos.style.color = "";
+        }
+        
         // Agregar/quitar clase modo-edicion al contenedor principal
         const app = $$(".app");
         if(habilitar){
@@ -701,6 +814,17 @@
                 sp.removeAttribute("list");
                 }
             });
+            
+            // Manejar la clase fila-clickeable según el estado de edición
+            if(mostrarAlias) {
+                if(habilitar) {
+                    // Si está en modo de edición, remover la clase clickeable
+                    tr.classList.remove("fila-clickeable");
+                } else {
+                    // Si no está en modo de edición, agregar la clase clickeable
+                    tr.classList.add("fila-clickeable");
+                }
+            }
             }
             const existe = tbody.querySelector(".fila-nueva");
             if(habilitar){
@@ -725,21 +849,22 @@
       }
     }
 
-    toggleEdicion.addEventListener("change", async ()=>{
-      if(!toggleEdicion.checked){
-        // Al apagar edición, guardamos
+    btnEditarProductos.addEventListener("click", async ()=>{
+      if(!modoEdicion){
+        // Entrar en modo de edición
+        activarEdicionUI(true);
+      } else {
+        // Salir del modo de edición y guardar
         try{
           await guardarCambios();
           await inicializar(); // recargar para refrescar IDs
+          activarEdicionUI(false);
         }catch(e){
           console.error(e);
           alert(e.message || "Error al guardar.");
-          toggleEdicion.checked = true;
-          activarEdicionUI(true);
-          return;
+          // Mantener el modo de edición activo si hay error
         }
       }
-      activarEdicionUI(toggleEdicion.checked);
     });
 
     inputBusqueda.addEventListener("input", ()=>{

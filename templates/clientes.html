@@ -37,22 +37,10 @@
         <!-- Sidebar izquierda -->
         <aside class="left-side">
           <section class="side-wrapper">
-            <h3 class="side-title">Opciones</h3>
-            <div class="side-menu">
-              <div style="display: flex; align-items: center; justify-content: space-between;">
-                <span style="color: var(--theme-color); font-size: 14px;">Modo edición</span>
-                <label class='toggle' for='toggleEdicion'>
-                  <input type='checkbox' name='toggleEdicion' id='toggleEdicion' class='toggle-input' />
-                  <span class='switch'></span>
-                </label>
-              </div>
-            </div>
-          </section>
-
-          <section class="side-wrapper">
             <h3 class="side-title">Acciones</h3>
             <div class="side-menu">
-              <button id="btnSubirSucursales" class="glass-btn glass-btn-primary" style="width: 100%; margin: 0; background: var(--hover-menu-bg); color: var(--theme-color); border-color: var(--border-color);">📁 Subir sucursales</button>
+              <button id="btnSubirSucursales" class="glass-btn glass-btn-primary" style="width: 100%; margin: 0; background: var(--hover-menu-bg); color: var(--theme-color); border-color: var(--border-color);">Subir sucursales</button>
+              <button id="btnEditarClientes" class="glass-btn glass-btn-primary" style="width: 100%; margin: 10px 0 0 0; background: var(--hover-menu-bg); color: var(--theme-color); border-color: var(--border-color);">Editar</button>
             </div>
           </section>
 
@@ -199,7 +187,10 @@
       const $$$ = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
 
       const listaClientes = $$("#listaClientes");
-      const toggleEdicion = $$("#toggleEdicion");
+      const btnEditarClientes = $$("#btnEditarClientes");
+      
+      // Variable para controlar el estado de edición
+      let modoEdicion = false;
       const inputBusqueda = $$("#busquedaRapida");
 
       // Normalizar texto para búsquedas
@@ -276,7 +267,7 @@
             id: null, // se creará en backend
             nombre, alias, encargado, direccion, ruc, ciudad
           }, /*editable=*/true, mostrarAlias, mostrarRuc);
-          tr.before(nueva);
+          tr.after(nueva);
           // limpiar la fila vacía
           celdas.forEach(td=>td.textContent = "");
         });
@@ -306,9 +297,47 @@
         const celdasEditables = (mostrarAlias ? 1 : 0) + (mostrarRuc ? 1 : 0) + 4; // nombre, encargado, direccion, ciudad + alias + ruc
         $$$("td", tr).slice(0, celdasEditables).forEach(td=>configurarCeldaEditable(td, editable));
         
-        // borrar (solo marca; se eliminará al guardar)
-        tr.querySelector(".btn-editar[data-accion='borrar']").addEventListener("click", ()=>{
-          tr.classList.toggle("marcada-borrado");
+        // borrar (confirmación y eliminación inmediata)
+        tr.querySelector(".btn-editar[data-accion='borrar']").addEventListener("click", async ()=>{
+          const nombre = tr.querySelector("td[data-label='Nombre (sistema)']")?.textContent?.trim() || "";
+          const sucursalInfo = nombre ? `la sucursal "${nombre}"` : "esta sucursal";
+          
+          if(confirm(`¿Está seguro de que desea eliminar ${sucursalInfo}?`)) {
+            try {
+              // Obtener información necesaria para la eliminación
+              const sucursalId = tr.dataset.sucursalId;
+              const tabla = tr.closest('table');
+              const clienteId = tabla.dataset.clienteId;
+              
+              if (sucursalId) {
+                // Enviar petición de eliminación
+                const resp = await fetch("/api/sucursales/bulk", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    cambios: [{
+                      cliente_id: Number(clienteId),
+                      sucursal_id: Number(sucursalId),
+                      borrar: true
+                    }]
+                  })
+                });
+                
+                if (!resp.ok) {
+                  throw new Error("Error al eliminar la sucursal");
+                }
+                
+                // Si todo salió bien, eliminar la fila de la tabla
+                tr.remove();
+              } else {
+                // Si no tiene sucursal_id, es una fila nueva que solo existe en el frontend
+                tr.remove();
+              }
+            } catch (error) {
+              console.error("Error eliminando sucursal:", error);
+              alert("Error al eliminar la sucursal: " + error.message);
+            }
+          }
         });
         return tr;
       }
@@ -370,12 +399,12 @@
         const tbody = $$("tbody", wrap);
         
         // Agregar fila vacía al inicio si edición activa
-        if(toggleEdicion.checked){
+        if(modoEdicion){
           agregarFilaVacia(tbody, cliente);
         }
         
         for(const s of (cliente.sucursales || [])){
-          tbody.appendChild(construirFilaSucursal(s, /*editable=*/toggleEdicion.checked, mostrarAlias, mostrarRuc));
+          tbody.appendChild(construirFilaSucursal(s, /*editable=*/modoEdicion, mostrarAlias, mostrarRuc));
         }
 
         // Cargar estado persistente del acordeón
@@ -475,6 +504,22 @@
 
       // Activar/Desactivar edición (UI)
       function activarEdicionUI(habilitar){
+        // Actualizar la variable de estado
+        modoEdicion = habilitar;
+        
+        // Actualizar el botón
+        if(habilitar){
+          btnEditarClientes.textContent = "Guardar cambios";
+          btnEditarClientes.style.background = "rgba(76, 175, 80, 0.2)";
+          btnEditarClientes.style.borderColor = "rgba(76, 175, 80, 0.5)";
+          btnEditarClientes.style.color = "#4caf50";
+        } else {
+          btnEditarClientes.textContent = "Editar";
+          btnEditarClientes.style.background = "";
+          btnEditarClientes.style.borderColor = "";
+          btnEditarClientes.style.color = "";
+        }
+        
         // Agregar/quitar clase modo-edicion al contenedor principal
         const app = $$(".app");
         if(habilitar){
@@ -621,23 +666,23 @@
         }
       }
 
-      toggleEdicion.addEventListener("change", async ()=>{
-        if(!toggleEdicion.checked){
-          // Se desactiva edición => guardamos
+      btnEditarClientes.addEventListener("click", async ()=>{
+        if(!modoEdicion){
+          // Entrar en modo de edición
+          activarEdicionUI(true);
+        } else {
+          // Salir del modo de edición y guardar
           try{
             const r = await guardarCambios();
             // Tras guardar, recargamos para reflejar IDs creados y limpiar marcas
             await inicializar();
+            activarEdicionUI(false);
           }catch(e){
             console.error(e);
             alert(e.message || "Error al guardar.");
-            // Si falla el guardado, mantenemos edición encendida para corregir
-            toggleEdicion.checked = true;
-            activarEdicionUI(true);
-            return;
+            // Mantener el modo de edición activo si hay error
           }
         }
-        activarEdicionUI(toggleEdicion.checked);
       });
 
       inputBusqueda.addEventListener("input", ()=>{
@@ -738,7 +783,7 @@
             }
             
             // Reemplazar la fila con la nueva estructura
-            const nuevaFila = construirFilaSucursal(sucursal, toggleEdicion.checked, mostrarAlias, mostrarRuc);
+            const nuevaFila = construirFilaSucursal(sucursal, modoEdicion, mostrarAlias, mostrarRuc);
             tr.parentNode.replaceChild(nuevaFila, tr);
           }
         });
