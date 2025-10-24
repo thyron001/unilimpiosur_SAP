@@ -1425,17 +1425,19 @@ Sección 2: CSS  (static/css/glass.css)
         if(!iso) return "-";
         
         // Si la fecha viene en formato YYYY-MM-DDTHH:MM:SS (sin zona horaria)
-        // asumir que está en hora de Ecuador (GMT-5)
-        let fechaStr = iso;
-        if (fechaStr.includes('T') && !fechaStr.includes('+') && !fechaStr.includes('Z')) {
-          // Agregar offset de Ecuador (GMT-5) para que JavaScript lo interprete correctamente
-          fechaStr = fechaStr + '-05:00';
+        // tratarla como si ya estuviera en hora local (Ecuador), no hacer conversiones
+        if (iso.includes('T') && !iso.includes('+') && !iso.includes('Z')) {
+          // Parsear manualmente sin usar Date() para evitar conversiones de zona horaria
+          const partes = iso.split('T');
+          const [year, month, day] = partes[0].split('-');
+          const [hours, minutes] = partes[1].split(':');
+          return `${day}/${month}/${year} ${hours}:${minutes}`;
         }
         
-        const d = new Date(fechaStr);
+        // Si tiene zona horaria, usar Date normal
+        const d = new Date(iso);
         if(isNaN(d)) return iso;
         
-        // Formato dd/mm/yyyy HH:MM usando zona horaria local (Ecuador GMT-5)
         const day = String(d.getDate()).padStart(2, '0');
         const month = String(d.getMonth() + 1).padStart(2, '0');
         const year = d.getFullYear();

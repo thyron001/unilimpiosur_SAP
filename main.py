@@ -34,10 +34,12 @@ def fecha_ecuador(fecha):
     """Formatea una fecha en la zona horaria de Ecuador (GMT-5)"""
     if not fecha:
         return ''
-    # Si la fecha no tiene zona horaria, asumir que está en UTC y convertir a Ecuador
+    # Si la fecha no tiene zona horaria, asumir que YA está en hora de Ecuador (GMT-5)
+    # porque las guardamos con esa zona horaria
     if fecha.tzinfo is None:
-        fecha = fecha.replace(tzinfo=timezone.utc)
-    # Convertir a zona horaria de Ecuador
+        # NO convertir, solo formatear directamente
+        return fecha.strftime('%d/%m/%Y %H:%M')
+    # Si tiene zona horaria, convertir a Ecuador
     fecha_ecuador = fecha.astimezone(ECUADOR_TZ)
     return fecha_ecuador.strftime('%d/%m/%Y %H:%M')
 
