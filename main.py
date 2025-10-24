@@ -844,10 +844,20 @@ def api_pedidos_por_estado(estado: str):
         query += " ORDER BY p.id DESC LIMIT 200;"
         
         cur.execute(query, params)
-        filas = [
-            {"id": i, "numero_pedido": n, "fecha": f.strftime('%Y-%m-%d %H:%M:%S') if f else None, "sucursal": s, "estado": e, "cliente_nombre": cn}
-            for (i, n, f, s, e, cn) in cur.fetchall()
-        ]
+        filas = []
+        for (i, n, f, s, e, cn) in cur.fetchall():
+            if f:
+                # Convertir fecha a zona horaria de Ecuador si tiene timezone info
+                if f.tzinfo is not None:
+                    fecha_ecuador = f.astimezone(ECUADOR_TZ)
+                else:
+                    # Si no tiene timezone info, asumir que es UTC y convertir
+                    fecha_utc = f.replace(tzinfo=timezone.utc)
+                    fecha_ecuador = fecha_utc.astimezone(ECUADOR_TZ)
+                fecha_str = fecha_ecuador.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                fecha_str = None
+            filas.append({"id": i, "numero_pedido": n, "fecha": fecha_str, "sucursal": s, "estado": e, "cliente_nombre": cn})
     return jsonify({"pedidos": filas, "estado": estado})
 
 @app.route("/api/generar_sap", methods=["POST"])
@@ -1067,7 +1077,7 @@ def api_detalle_pedido(pedido_id: int):
     return jsonify({
         "id": pedido_id,
         "numero_pedido": numero_pedido,
-        "fecha": fecha.strftime('%Y-%m-%d %H:%M:%S') if fecha else None,
+        "fecha": fecha.astimezone(ECUADOR_TZ).strftime('%Y-%m-%d %H:%M:%S') if fecha else None,
         "sucursal": sucursal,
         "tiene_error_sucursal": tiene_error_sucursal,
         "cliente_id": cliente_id,
