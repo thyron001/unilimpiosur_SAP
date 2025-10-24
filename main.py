@@ -294,10 +294,20 @@ def ver_pedidos():
             ORDER BY id DESC
             LIMIT 200;
         """, (estado,))
-        filas = [
-            {"id": i, "numero_pedido": n, "fecha": f, "sucursal": s, "estado": e}
-            for (i, n, f, s, e) in cur.fetchall()
-        ]
+        filas = []
+        for (i, n, f, s, e) in cur.fetchall():
+            if f:
+                # Convertir fecha a zona horaria de Ecuador si tiene timezone info
+                if f.tzinfo is not None:
+                    fecha_ecuador = f.astimezone(ECUADOR_TZ)
+                else:
+                    # Si no tiene timezone info, asumir que es UTC y convertir
+                    fecha_utc = f.replace(tzinfo=timezone.utc)
+                    fecha_ecuador = fecha_utc.astimezone(ECUADOR_TZ)
+                fecha_convertida = fecha_ecuador
+            else:
+                fecha_convertida = None
+            filas.append({"id": i, "numero_pedido": n, "fecha": fecha_convertida, "sucursal": s, "estado": e})
     return render_template("orders.html", orders=filas, estado_actual=estado, now=obtener_fecha_local())
 
 
