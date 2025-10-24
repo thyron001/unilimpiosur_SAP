@@ -28,6 +28,19 @@ app.secret_key = os.environ.get('SECRET_KEY', 'clave-secreta-por-defecto-cambiar
 from datetime import timedelta
 app.permanent_session_lifetime = timedelta(hours=8)
 
+# Filtro personalizado para formatear fechas en zona horaria de Ecuador
+@app.template_filter('fecha_ecuador')
+def fecha_ecuador(fecha):
+    """Formatea una fecha en la zona horaria de Ecuador (GMT-5)"""
+    if not fecha:
+        return ''
+    # Si la fecha no tiene zona horaria, asumir que está en UTC y convertir a Ecuador
+    if fecha.tzinfo is None:
+        fecha = fecha.replace(tzinfo=timezone.utc)
+    # Convertir a zona horaria de Ecuador
+    fecha_ecuador = fecha.astimezone(ECUADOR_TZ)
+    return fecha_ecuador.strftime('%d/%m/%Y %H:%M')
+
 # ========= UTILIDADES DE PERSISTENCIA (quedan aquí) =========
 
 # Zona horaria de Ecuador (GMT-5)

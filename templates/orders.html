@@ -176,7 +176,7 @@ Sección 2: CSS  (static/css/glass.css)
                         <td class="mono" data-label="# Pedido">{{ o.numero_pedido }}</td>
                         <td data-label="Cliente">Roldan</td>
                         <td data-label="Sucursal">{{ o.sucursal or '-' }}</td>
-                        <td data-label="Fecha">{{ o.fecha.strftime('%d/%m/%Y %H:%M') if o.fecha else '' }}</td>
+                        <td data-label="Fecha">{{ o.fecha | fecha_ecuador }}</td>
                         <td data-label="Origen">Email</td>
                       </tr>
                       {% endfor %}
@@ -1423,8 +1423,18 @@ Sección 2: CSS  (static/css/glass.css)
       const fmtMoney = (n) => (n===null || n===undefined) ? "-" : n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
       const fmtDate  = (iso) => {
         if(!iso) return "-";
-        const d = new Date(iso);
+        
+        // Si la fecha viene en formato YYYY-MM-DDTHH:MM:SS (sin zona horaria)
+        // asumir que está en hora de Ecuador (GMT-5)
+        let fechaStr = iso;
+        if (fechaStr.includes('T') && !fechaStr.includes('+') && !fechaStr.includes('Z')) {
+          // Agregar offset de Ecuador (GMT-5) para que JavaScript lo interprete correctamente
+          fechaStr = fechaStr + '-05:00';
+        }
+        
+        const d = new Date(fechaStr);
         if(isNaN(d)) return iso;
+        
         // Formato dd/mm/yyyy HH:MM usando zona horaria local (Ecuador GMT-5)
         const day = String(d.getDate()).padStart(2, '0');
         const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -2246,16 +2256,7 @@ Sección 2: CSS  (static/css/glass.css)
               <td class="mono" data-label="# Pedido">${pedido.numero_pedido}</td>
                 <td data-label="Cliente">${pedido.cliente_nombre || 'Roldan'}</td>
               <td data-label="Sucursal">${pedido.sucursal || '-'}</td>
-              <td data-label="Fecha">${pedido.fecha ? (() => {
-                // Crear fecha usando zona horaria local (Ecuador GMT-5)
-                const d = new Date(pedido.fecha + (pedido.fecha.includes('T') ? '' : 'T00:00:00'));
-                const day = String(d.getDate()).padStart(2, '0');
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const year = d.getFullYear();
-                const hours = String(d.getHours()).padStart(2, '0');
-                const minutes = String(d.getMinutes()).padStart(2, '0');
-                return `${day}/${month}/${year} ${hours}:${minutes}`;
-              })() : ''}</td>
+              <td data-label="Fecha">${pedido.fecha ? fmtDate(pedido.fecha) : ''}</td>
               <td data-label="Origen">Email</td>
             `;
             
