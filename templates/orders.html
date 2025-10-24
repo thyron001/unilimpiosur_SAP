@@ -1431,6 +1431,12 @@ Sección 2: CSS  (static/css/glass.css)
           const [year, month, day] = partes[0].split('-');
           const timePart = partes[1] ? partes[1].substring(0, 5) : '00:00'; // HH:MM
           return `${day}/${month}/${year} ${timePart}`;
+        } else if (iso.includes('-') && iso.includes(' ')) {
+          // Si viene en formato YYYY-MM-DD HH:MM:SS, extraer fecha y hora
+          const [datePart, timePart] = iso.split(' ');
+          const [year, month, day] = datePart.split('-');
+          const time = timePart ? timePart.substring(0, 5) : '00:00'; // HH:MM
+          return `${day}/${month}/${year} ${time}`;
         } else if (iso.includes('-')) {
           // Si viene en formato YYYY-MM-DD, agregar hora por defecto
           const [year, month, day] = iso.split('-');
