@@ -1424,26 +1424,26 @@ Sección 2: CSS  (static/css/glass.css)
       const fmtDate  = (iso) => {
         if(!iso) return "-";
         
-        // Si la fecha viene en formato YYYY-MM-DDTHH:MM:SS (sin zona horaria)
-        // tratarla como si ya estuviera en hora local (Ecuador), no hacer conversiones
-        if (iso.includes('T') && !iso.includes('+') && !iso.includes('Z')) {
-          // Parsear manualmente sin usar Date() para evitar conversiones de zona horaria
+        // Solo mostrar fecha (día/mes/año), sin hora
+        if (iso.includes('T')) {
+          // Si viene en formato YYYY-MM-DDTHH:MM:SS, extraer solo la fecha
           const partes = iso.split('T');
           const [year, month, day] = partes[0].split('-');
-          const [hours, minutes] = partes[1].split(':');
-          return `${day}/${month}/${year} ${hours}:${minutes}`;
+          return `${day}/${month}/${year}`;
+        } else if (iso.includes('-')) {
+          // Si viene en formato YYYY-MM-DD, convertir a DD/MM/YYYY
+          const [year, month, day] = iso.split('-');
+          return `${day}/${month}/${year}`;
         }
         
-        // Si tiene zona horaria, usar Date normal
+        // Si tiene zona horaria, usar Date normal pero solo mostrar fecha
         const d = new Date(iso);
         if(isNaN(d)) return iso;
         
         const day = String(d.getDate()).padStart(2, '0');
         const month = String(d.getMonth() + 1).padStart(2, '0');
         const year = d.getFullYear();
-        const hours = String(d.getHours()).padStart(2, '0');
-        const minutes = String(d.getMinutes()).padStart(2, '0');
-        return `${day}/${month}/${year} ${hours}:${minutes}`;
+        return `${day}/${month}/${year}`;
       };
 
       function abrirModal(){ overlay.classList.remove("hidden"); modal.classList.remove("hidden"); }

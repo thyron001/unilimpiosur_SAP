@@ -50,20 +50,14 @@ handler = logging.StreamHandler()
 handler.setFormatter(EcuadorFormatter('[%(asctime)s] %(message)s'))
 werkzeug_logger.handlers = [handler]
 
-# Filtro personalizado para formatear fechas en zona horaria de Ecuador
+# Filtro personalizado para formatear fechas (solo fecha, sin hora)
 @app.template_filter('fecha_ecuador')
 def fecha_ecuador(fecha):
-    """Formatea una fecha en la zona horaria de Ecuador (GMT-5)"""
+    """Formatea una fecha mostrando solo día/mes/año (sin hora)"""
     if not fecha:
         return ''
-    # Si la fecha no tiene zona horaria, asumir que YA está en hora de Ecuador (GMT-5)
-    # porque las guardamos con esa zona horaria
-    if fecha.tzinfo is None:
-        # NO convertir, solo formatear directamente
-        return fecha.strftime('%d/%m/%Y %H:%M')
-    # Si tiene zona horaria, convertir a Ecuador
-    fecha_ecuador = fecha.astimezone(ECUADOR_TZ)
-    return fecha_ecuador.strftime('%d/%m/%Y %H:%M')
+    # Solo mostrar fecha, sin hora
+    return fecha.strftime('%d/%m/%Y')
 
 # ========= UTILIDADES DE PERSISTENCIA (quedan aquí) =========
 
@@ -1073,7 +1067,7 @@ def api_detalle_pedido(pedido_id: int):
     return jsonify({
         "id": pedido_id,
         "numero_pedido": numero_pedido,
-        "fecha": fecha.strftime('%Y-%m-%dT%H:%M:%S') if fecha else None,
+        "fecha": fecha.strftime('%Y-%m-%d') if fecha else None,
         "sucursal": sucursal,
         "tiene_error_sucursal": tiene_error_sucursal,
         "cliente_id": cliente_id,
