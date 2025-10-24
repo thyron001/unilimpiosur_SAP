@@ -140,12 +140,13 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
 
     log_imap(f"📧 Se encontraron {len(nuevos_uids)} correos nuevos (UIDs: {nuevos_uids})")
 
-    # Traemos ENVELOPE y RFC822 (cuerpo crudo)
-    respuesta = cliente.fetch(nuevos_uids, ["ENVELOPE", "RFC822"])
+    # Traemos ENVELOPE, RFC822 (cuerpo crudo) y INTERNALDATE (fecha de llegada al servidor)
+    respuesta = cliente.fetch(nuevos_uids, ["ENVELOPE", "RFC822", "INTERNALDATE"])
 
     for uid in sorted(nuevos_uids):
         sobre = respuesta[uid].get(b"ENVELOPE")
         crudo = respuesta[uid].get(b"RFC822", b"")
+        fecha_llegada = respuesta[uid].get(b"INTERNALDATE")
         if not sobre:
             continue
 
@@ -173,13 +174,25 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
         log_imap(f"📬 Correo recibido UID {uid}:")
         log_imap(f"   De: {remitente}")
         log_imap(f"   Asunto: {asunto}")
-        log_imap(f"   Fecha: {sobre.date or datetime.now()}")
+        log_imap(f"   Fecha del correo: {sobre.date or 'No disponible'}")
+        log_imap(f"   Fecha de llegada al servidor: {fecha_llegada or 'No disponible'}")
 
         nombre_pdf, bytes_pdf = extraer_primer_pdf(crudo)
 
+        # Usar la fecha de llegada al servidor como prioridad, luego la fecha del correo, y finalmente la fecha actual
+        if fecha_llegada:
+            fecha_correo = fecha_llegada
+            log_imap(f"   ✅ Usando fecha de llegada al servidor: {fecha_correo}")
+        elif sobre.date:
+            fecha_correo = sobre.date
+            log_imap(f"   ✅ Usando fecha del correo: {fecha_correo}")
+        else:
+            fecha_correo = datetime.now()
+            log_imap(f"   ⚠️  Usando fecha actual como fallback: {fecha_correo}")
+        
         meta = {
             "uid": int(uid),
-            "fecha": sobre.date or datetime.now(),  # datetime | None -> fallback ahora
+            "fecha": fecha_correo,  # Usar fecha de llegada al servidor, fecha del correo, o fecha actual
             "asunto": asunto,                       # str
             "remitente": remitente,                 # str
         }
@@ -290,7 +303,7 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
         # No se encontró coincidencia en el alias - marcar como error
         print(f"❌ ERROR: No se encontró sucursal con alias '{sucursal_alias_pdf}' en la base de datos")
         pedido = {
-            "fecha": meta.get("fecha") or datetime.now(),
+            "fecha": meta.get("fecha"),
             "sucursal": f"ERROR: Alias '{sucursal_alias_pdf}' no encontrado",
             "orden_compra": resumen.get("orden_compra"),  # número de orden de compra del PDF
         }
@@ -304,7 +317,7 @@ def _pipeline_guardar(meta: Dict[str, Any], nombre_pdf: str, bytes_pdf: bytes) -
     # 5) Guardar en PostgreSQL
     sucursal_txt = suc.get("nombre") if suc else "SUCURSAL DESCONOCIDA"
     pedido = {
-        "fecha": meta.get("fecha") or datetime.now(),
+        "fecha": meta.get("fecha"),
         "sucursal": sucursal_txt,
         "orden_compra": resumen.get("orden_compra"),  # número de orden de compra del PDF
     }
