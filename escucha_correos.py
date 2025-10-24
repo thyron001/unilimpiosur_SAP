@@ -10,7 +10,7 @@ import tempfile
 import fcntl
 import sys
 from typing import Callable, Dict, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from imapclient import IMAPClient
 from email import message_from_bytes
 from email.header import decode_header, make_header
@@ -46,9 +46,17 @@ REMITENTES_PERMITIDOS = [r.strip().lower() for r in REMITENTES_PERMITIDOS_STR.sp
 # Directorio para archivos de bloqueo
 LOCK_DIR = tempfile.gettempdir()
 
+def obtener_fecha_local() -> datetime:
+    """Obtiene la fecha y hora local actual en la zona horaria del servidor"""
+    return datetime.now()
+
+def obtener_timestamp_local() -> str:
+    """Obtiene un timestamp formateado en la zona horaria local"""
+    return obtener_fecha_local().strftime("%Y-%m-%d %H:%M:%S")
+
 def log_imap(mensaje: str) -> None:
     """Función de logging que fuerza el flush para Docker"""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = obtener_timestamp_local()
     mensaje_completo = f"[{timestamp}] [IMAP] {mensaje}"
     print(mensaje_completo, flush=True)
     sys.stdout.flush()
@@ -67,7 +75,7 @@ def _marcar_correo_procesado(uid: int) -> None:
     archivo_lock = _obtener_archivo_bloqueo(uid)
     try:
         with open(archivo_lock, 'w') as f:
-            f.write(f"Procesado el {datetime.now().isoformat()}")
+            f.write(f"Procesado el {obtener_fecha_local().isoformat()}")
     except Exception as e:
         print(f"⚠️  No se pudo crear archivo de bloqueo para UID {uid}: {e}")
 
@@ -187,7 +195,7 @@ def _revisar_nuevos(cliente: IMAPClient, ultimo_uid: int, al_encontrar_pdf: Call
             fecha_correo = sobre.date
             log_imap(f"   ✅ Usando fecha del correo: {fecha_correo}")
         else:
-            fecha_correo = datetime.now()
+            fecha_correo = obtener_fecha_local()
             log_imap(f"   ⚠️  Usando fecha actual como fallback: {fecha_correo}")
         
         meta = {

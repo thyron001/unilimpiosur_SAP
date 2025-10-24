@@ -1,7 +1,7 @@
 # main.py — limpio, usando procesamiento_pedidos.py
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 import bcrypt
 from functools import wraps
@@ -29,6 +29,14 @@ from datetime import timedelta
 app.permanent_session_lifetime = timedelta(hours=8)
 
 # ========= UTILIDADES DE PERSISTENCIA (quedan aquí) =========
+
+def obtener_fecha_local() -> datetime:
+    """Obtiene la fecha y hora local actual en la zona horaria del servidor"""
+    return datetime.now()
+
+def obtener_timestamp_local() -> str:
+    """Obtiene un timestamp formateado en la zona horaria local"""
+    return obtener_fecha_local().strftime("%Y-%m-%d %H:%M:%S")
 
 def a_decimal(valor) -> Decimal | None:
     if valor is None:
@@ -125,7 +133,7 @@ def obtener_saludo_aleatorio(nombre_usuario: str) -> str:
 # ========= CALLBACK DEL ESCUCHADOR =========
 
 def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = obtener_timestamp_local()
     print(f"\n[{timestamp}] === 📬 NUEVO CORREO (callback Flask) ===", flush=True)
     print(f"[{timestamp}] De:      {meta.get('remitente','')}", flush=True)
     print(f"[{timestamp}] Asunto:  {meta.get('asunto','')}", flush=True)
@@ -256,7 +264,7 @@ def ver_pedidos():
             {"id": i, "numero_pedido": n, "fecha": f, "sucursal": s, "estado": e}
             for (i, n, f, s, e) in cur.fetchall()
         ]
-    return render_template("orders.html", orders=filas, estado_actual=estado, now=datetime.utcnow())
+    return render_template("orders.html", orders=filas, estado_actual=estado, now=obtener_fecha_local())
 
 
 @app.route("/clientes")
@@ -834,9 +842,9 @@ def api_generar_sap():
         if odrf_path and drf1_path:
             # Si se especifica un tipo de archivo, devolver solo ese archivo
             if tipo_archivo == 'odrf':
-                return send_file(odrf_path, as_attachment=True, download_name=f"ODRF_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+                return send_file(odrf_path, as_attachment=True, download_name=f"ODRF_{obtener_fecha_local().strftime('%Y%m%d_%H%M%S')}.txt")
             elif tipo_archivo == 'drf1':
-                return send_file(drf1_path, as_attachment=True, download_name=f"DRF1_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+                return send_file(drf1_path, as_attachment=True, download_name=f"DRF1_{obtener_fecha_local().strftime('%Y%m%d_%H%M%S')}.txt")
             else:
                 # Devolver información de los archivos generados
                 return jsonify({
@@ -889,7 +897,7 @@ def api_generar_sap_completo():
             archivos_sap_temporales[session_id] = {
                 'odrf': odrf_path,
                 'drf1': drf1_path,
-                'timestamp': datetime.now()
+                'timestamp': obtener_fecha_local()
             }
             
             return jsonify({

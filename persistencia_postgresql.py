@@ -2,7 +2,7 @@
 # Utilidades para guardar pedidos y sus ítems en PostgreSQL (incluye sucursal y totales).
 
 import psycopg
-from datetime import datetime
+from datetime import datetime, timezone
 
 # ========================
 #  CONEXIÓN
@@ -11,6 +11,10 @@ from datetime import datetime
 def obtener_conexion():
     """Crea conexión a PostgreSQL usando variables de entorno PGHOST, PGUSER, etc."""
     return psycopg.connect()
+
+def obtener_fecha_local() -> datetime:
+    """Obtiene la fecha y hora local actual en la zona horaria del servidor"""
+    return datetime.now()
 
 # ========================
 #  CONVERSIÓN
@@ -44,9 +48,9 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
         try:
             fecha = datetime.fromisoformat(fecha)
         except Exception:
-            fecha = datetime.now()
+            fecha = obtener_fecha_local()
     elif not isinstance(fecha, datetime):
-        fecha = datetime.now()
+        fecha = obtener_fecha_local()
 
 
     sucursal = (pedido.get("sucursal") or "").strip() or None
