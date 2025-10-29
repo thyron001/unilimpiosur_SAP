@@ -1,16 +1,35 @@
 # persistencia_postgresql.py
 # Utilidades para guardar pedidos y sus ítems en PostgreSQL (incluye sucursal y totales).
 
+import os
 import psycopg
 from datetime import datetime, timezone, timedelta
+
+# Cargar variables de entorno desde .env
+from dotenv import load_dotenv
+load_dotenv(override=True)  # override=True para que sobrescriba las variables del sistema
 
 # ========================
 #  CONEXIÓN
 # ========================
 
 def obtener_conexion():
-    """Crea conexión a PostgreSQL usando variables de entorno PGHOST, PGUSER, etc."""
-    return psycopg.connect()
+    """
+    Crea conexión a PostgreSQL usando variables de entorno PGHOST, PGUSER, etc.
+    En local, usa las credenciales del archivo .env
+    """
+    # Obtener variables de entorno (funcionan tanto en local como en producción)
+    # usar os.environ.get en lugar de os.getenv para evitar problemas con variables del sistema
+    host = os.environ.get('PGHOST', 'localhost')
+    port = os.environ.get('PGPORT', '5432')
+    database = os.environ.get('PGDATABASE', 'pedidos')
+    user = os.environ.get('PGUSER', 'postgres')
+    password = os.environ.get('PGPASSWORD', '')
+    
+    # Construir connection string para forzar el uso de las variables cargadas
+    conninfo = f"host={host} port={port} dbname={database} user={user} password={password}"
+    
+    return psycopg.connect(conninfo)
 
 # Zona horaria de Ecuador (GMT-5)
 ECUADOR_TZ = timezone(timedelta(hours=-5))

@@ -8,7 +8,7 @@ from functools import wraps
 
 # Cargar variables de entorno desde .env
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)  # override=True para que sobrescriba las variables del sistema en local
 
 import psycopg
 from threading import Thread

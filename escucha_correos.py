@@ -16,7 +16,7 @@ from email.header import decode_header, make_header
 
 # Cargar variables de entorno desde .env
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)  # override=True para que sobrescriba las variables del sistema en local
 
 # --- módulos del proyecto ---
 from procesamiento_pedidos import (
