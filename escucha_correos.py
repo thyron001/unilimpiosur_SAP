@@ -7,7 +7,6 @@ import os
 import ssl
 import time
 import tempfile
-import fcntl
 import sys
 from typing import Callable, Dict, Any, Tuple
 from datetime import datetime, timezone, timedelta
