@@ -41,8 +41,7 @@ def obtener_pedidos_por_procesar() -> List[Dict[str, Any]]:
                 s.almacen,
                 s.ruc as sucursal_ruc,
                 s.ciudad,
-                p.orden_compra,
-                s.encargado
+                p.orden_compra
             FROM pedidos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
             LEFT JOIN sucursales s ON s.id = p.sucursal_id
@@ -67,8 +66,7 @@ def obtener_pedidos_por_procesar() -> List[Dict[str, Any]]:
                 "almacen": row[11],
                 "sucursal_ruc": row[12],
                 "ciudad": row[13],
-                "orden_compra": row[14],
-                "encargado": row[15]
+                "orden_compra": row[14]
             })
         
         return pedidos
@@ -329,8 +327,7 @@ def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
                 s.almacen,
                 s.ruc as sucursal_ruc,
                 s.ciudad,
-                p.orden_compra,
-                s.encargado
+                p.orden_compra
             FROM pedidos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
             LEFT JOIN sucursales s ON s.id = p.sucursal_id
@@ -355,8 +352,7 @@ def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
                 "almacen": row[11],
                 "sucursal_ruc": row[12],
                 "ciudad": row[13],
-                "orden_compra": row[14],
-                "encargado": row[15]
+                "orden_compra": row[14]
             })
         
         return pedidos

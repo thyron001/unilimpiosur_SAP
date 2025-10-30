@@ -188,13 +188,12 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
     # 2) Sucursal (del PDF)
     resumen = proc.extraer_sucursal(pdf_en_bytes)
 
-    # 3) Emparejar contra BD (cliente fijo: Roldan), usando el alias, RUC y encargado de sucursal del PDF
+    # 3) Emparejar contra BD (cliente fijo: Roldan), usando el alias y RUC de sucursal del PDF
     filas_enriquecidas, suc, cliente_id = proc.emparejar_filas_con_bd(
         filas,
         cliente_nombre="Roldan",
         sucursal_alias=resumen.get("sucursal"),
-        sucursal_ruc=resumen.get("ruc"),
-        sucursal_encargado=resumen.get("encargado")
+        sucursal_ruc=resumen.get("ruc")
     )
 
     # 4) Verificar si se encontró la sucursal por alias
@@ -206,6 +205,7 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
             "fecha": meta.get("fecha"),
             "sucursal": f"ERROR: Alias '{sucursal_alias_pdf}' no encontrado",
             "orden_compra": resumen.get("orden_compra"),  # número de orden de compra del PDF
+            "responsable": resumen.get("encargado"),  # responsable extraído del PDF
         }
         try:
             pedido_id, numero_pedido, estado = db.guardar_pedido(pedido, filas_enriquecidas, cliente_id, None)
@@ -219,6 +219,7 @@ def al_encontrar_pdf(meta: dict, nombre_pdf: str, pdf_en_bytes: bytes) -> None:
         "fecha": meta.get("fecha"),
         "sucursal": suc.get("nombre") if suc else "SUCURSAL DESCONOCIDA",  # nombre del sistema si se encontró
         "orden_compra": resumen.get("orden_compra"),  # número de orden de compra del PDF
+        "responsable": resumen.get("encargado"),  # responsable extraído del PDF
     }
 
     # 6) Guardar en PostgreSQL (usa tu función existente)
@@ -375,16 +376,16 @@ def api_clientes_con_sucursales():
 
         if clientes:
             cur.execute("""
-                SELECT s.id, s.cliente_id, s.alias, s.nombre, s.encargado, s.direccion, s.activo, s.ruc, s.ciudad
+                SELECT s.id, s.cliente_id, s.alias, s.nombre, s.direccion, s.activo, s.ruc, s.ciudad
                 FROM sucursales s
                 WHERE s.activo = TRUE
                 ORDER BY upper(s.nombre);
             """)
-            for (sid, cliente_id, alias, nombre, encargado, direccion, activo, ruc, ciudad) in cur.fetchall():
+            for (sid, cliente_id, alias, nombre, direccion, activo, ruc, ciudad) in cur.fetchall():
                 if cliente_id in idx:
                     idx[cliente_id]["sucursales"].append({
                         "id": sid, "alias": alias, "nombre": nombre,
-                        "encargado": encargado, "direccion": direccion, "ruc": ruc, "ciudad": ciudad
+                        "direccion": direccion, "ruc": ruc, "ciudad": ciudad
                     })
 
     return jsonify(list(idx.values()))
@@ -467,7 +468,6 @@ def api_sucursales_bulk():
             sucursal_id = c.get("sucursal_id")
             nombre      = (c.get("nombre") or "").strip()
             alias       = (c.get("alias") or "").strip() or None
-            encargado   = (c.get("encargado") or "").strip() or None
             direccion   = (c.get("direccion") or "").strip() or None
             ruc         = (c.get("ruc") or "").strip() or None
             ciudad      = (c.get("ciudad") or "").strip() or None
@@ -485,16 +485,16 @@ def api_sucursales_bulk():
             if sucursal_id:
                 cur.execute("""
                     UPDATE sucursales
-                       SET nombre = %s, alias = %s, encargado = %s, direccion = %s, ruc = %s, ciudad = %s
+                       SET nombre = %s, alias = %s, direccion = %s, ruc = %s, ciudad = %s
                      WHERE id = %s;
-                """, (nombre, alias, encargado, direccion, ruc, ciudad, sucursal_id))
+                """, (nombre, alias, direccion, ruc, ciudad, sucursal_id))
                 resultados["actualizados"] += (cur.rowcount or 0)
             else:
                 cur.execute("""
-                    INSERT INTO sucursales (cliente_id, nombre, alias, encargado, direccion, ruc, ciudad, activo)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE)
+                    INSERT INTO sucursales (cliente_id, nombre, alias, direccion, ruc, ciudad, activo)
+                    VALUES (%s, %s, %s, %s, %s, %s, TRUE)
                     RETURNING id;
-                """, (cliente_id, nombre, alias, encargado, direccion, ruc, ciudad))
+                """, (cliente_id, nombre, alias, direccion, ruc, ciudad))
                 nuevo_id = cur.fetchone()[0]
                 resultados["insertados"] += 1
 
@@ -1046,10 +1046,10 @@ def api_detalle_pedido(pedido_id: int):
                 p.cliente_id, 
                 p.sucursal_id,
                 p.orden_compra,
+                p.responsable,
                 c.nombre as cliente_nombre,
                 c.ruc as cliente_ruc,
                 s.nombre as sucursal_nombre,
-                s.encargado,
                 s.ruc as sucursal_ruc
             FROM pedidos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
@@ -1060,8 +1060,8 @@ def api_detalle_pedido(pedido_id: int):
         if not row:
             return abort(404)
 
-        (numero_pedido, fecha, sucursal, cliente_id, sucursal_id, orden_compra,
-         cliente_nombre, cliente_ruc, sucursal_nombre, encargado, sucursal_ruc) = row
+        (numero_pedido, fecha, sucursal, cliente_id, sucursal_id, orden_compra, responsable,
+         cliente_nombre, cliente_ruc, sucursal_nombre, sucursal_ruc) = row
 
         cur.execute("""
             SELECT descripcion, sku, bodega, cantidad
@@ -1096,7 +1096,7 @@ def api_detalle_pedido(pedido_id: int):
         "orden_compra": orden_compra,
         "cliente_ruc": cliente_ruc,
         "sucursal_ruc": sucursal_ruc,
-        "encargado": encargado,
+        "responsable": responsable,
         "items": items
     })
 
@@ -1145,7 +1145,7 @@ def api_verificar_pedido(pedido_id: int):
                     
                     # Verificar que la sucursal existe y pertenece al cliente
                     cur.execute("""
-                        SELECT id, nombre, encargado, direccion, ruc
+                        SELECT id, nombre, direccion, ruc
                         FROM sucursales 
                         WHERE id = %s AND cliente_id = %s AND activo = TRUE;
                     """, (sucursal_id_enviado, cliente_id))
@@ -1154,7 +1154,7 @@ def api_verificar_pedido(pedido_id: int):
                     if not sucursal_data:
                         return jsonify({"exito": False, "error": f"No se encontró la sucursal con ID {sucursal_id_enviado} para este cliente"}), 400
                     
-                    sucursal_id_actualizado, nombre_sucursal, encargado, direccion, ruc = sucursal_data
+                    sucursal_id_actualizado, nombre_sucursal, direccion, ruc = sucursal_data
                     
                     # Actualizar pedido con todos los datos de la sucursal
                     cur.execute("""
@@ -1164,7 +1164,7 @@ def api_verificar_pedido(pedido_id: int):
                     """, (nombre_sucursal, sucursal_id_actualizado, pedido_id))
                     
                     print(f"[OK] Pedido {pedido_id} actualizado con sucursal por ID: {nombre_sucursal} (ID: {sucursal_id_actualizado})")
-                    print(f"   Encargado: {encargado}, RUC: {ruc}")
+                    print(f"   RUC: {ruc}")
                     
                 else:
                     # Método anterior: buscar por nombre (para compatibilidad)
@@ -1173,7 +1173,7 @@ def api_verificar_pedido(pedido_id: int):
                     
                     # Buscar la sucursal por nombre en las sucursales del cliente
                     cur.execute("""
-                        SELECT id, nombre, encargado, direccion, ruc
+                        SELECT id, nombre, direccion, ruc
                         FROM sucursales 
                         WHERE cliente_id = %s AND activo = TRUE 
                         AND (nombre = %s OR alias = %s)
@@ -1184,7 +1184,7 @@ def api_verificar_pedido(pedido_id: int):
                     if not sucursal_data:
                         return jsonify({"exito": False, "error": f"No se encontró la sucursal '{sucursal}' para este cliente"}), 400
                     
-                    sucursal_id_actualizado, nombre_sucursal, encargado, direccion, ruc = sucursal_data
+                    sucursal_id_actualizado, nombre_sucursal, direccion, ruc = sucursal_data
                     
                     # Actualizar pedido con todos los datos de la sucursal
                     cur.execute("""
@@ -1194,7 +1194,7 @@ def api_verificar_pedido(pedido_id: int):
                     """, (nombre_sucursal, sucursal_id_actualizado, pedido_id))
                     
                     print(f"[OK] Pedido {pedido_id} actualizado con sucursal por nombre: {nombre_sucursal} (ID: {sucursal_id_actualizado})")
-                    print(f"   Encargado: {encargado}, RUC: {ruc}")
+                    print(f"   RUC: {ruc}")
                 
             else:
                 # Si no hay error de sucursal, usar la sucursal actual
@@ -1488,7 +1488,7 @@ def api_sucursales_cliente(cliente_id: int):
     try:
         with db.obtener_conexion() as conn, conn.cursor() as cur:
             cur.execute("""
-                SELECT s.id, s.nombre, s.alias, s.encargado, s.direccion, s.ruc, s.ciudad
+                SELECT s.id, s.nombre, s.alias, s.direccion, s.ruc, s.ciudad
                 FROM sucursales s
                 WHERE s.cliente_id = %s AND s.activo = TRUE
                 ORDER BY upper(s.nombre);
@@ -1500,10 +1500,9 @@ def api_sucursales_cliente(cliente_id: int):
                     "id": row[0],
                     "nombre": row[1],
                     "alias": row[2],
-                    "encargado": row[3],
-                    "direccion": row[4],
-                    "ruc": row[5],
-                    "ciudad": row[6]
+                    "direccion": row[3],
+                    "ruc": row[4],
+                    "ciudad": row[5]
                 })
             
             return jsonify({"sucursales": sucursales})

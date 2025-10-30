@@ -77,6 +77,7 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
 
     sucursal = (pedido.get("sucursal") or "").strip() or None
     orden_compra = (pedido.get("orden_compra") or "").strip() or None
+    responsable = (pedido.get("responsable") or "").strip() or None
 
     # Detectar errores en productos y sucursal
     tiene_errores = False
@@ -118,12 +119,12 @@ def guardar_pedido(pedido: dict, items: list[dict], cliente_id: int = None, sucu
             cur.execute(
                 """
                 INSERT INTO pedidos
-                  (fecha, sucursal, estado, cliente_id, sucursal_id, numero_pedido, orden_compra)
+                  (fecha, sucursal, estado, cliente_id, sucursal_id, numero_pedido, orden_compra, responsable)
                 VALUES
-                  (%s,    %s,       %s,     %s,         %s,          %s,           %s)
+                  (%s,    %s,       %s,     %s,         %s,          %s,           %s,          %s)
                 RETURNING id;
                 """,
-                (fecha, sucursal, estado, cliente_id, sucursal_id, siguiente_numero, orden_compra)
+                (fecha, sucursal, estado, cliente_id, sucursal_id, siguiente_numero, orden_compra, responsable)
             )
             pedido_id = cur.fetchone()[0]
             numero_pedido = siguiente_numero

@@ -215,7 +215,7 @@ Sección 2: CSS  (static/css/glass.css)
           <div><strong>Fecha:</strong> <span id="m-fecha">-</span></div>
           <div><strong>Orden de Compra:</strong> <span id="m-orden-compra">-</span></div>
           <div><strong>RUC:</strong> <span id="m-ruc">-</span></div>
-          <div><strong>Encargado:</strong> <span id="m-encargado">-</span></div>
+          <div><strong>Responsable:</strong> <span id="m-responsable">-</span></div>
         </div>
 
         <div class="glass-modal-body">
@@ -1583,12 +1583,10 @@ Sección 2: CSS  (static/css/glass.css)
               const sucursalesFiltradas = todasLasSucursales.filter(sucursal => {
                 const nombre = (sucursal.nombre || "").toLowerCase();
                 const alias = (sucursal.alias || "").toLowerCase();
-                const encargado = (sucursal.encargado || "").toLowerCase();
                 const direccion = (sucursal.direccion || "").toLowerCase();
                 
                 return nombre.includes(termino) || 
                        alias.includes(termino) || 
-                       encargado.includes(termino) || 
                        direccion.includes(termino);
               });
               mostrarSucursales(sucursalesFiltradas, sucursalActual);
@@ -1638,8 +1636,7 @@ Sección 2: CSS  (static/css/glass.css)
             <div class="sucursal-nombre">${sucursal.nombre}</div>
             ${sucursal.alias ? `<div class="sucursal-alias">Alias: ${sucursal.alias}</div>` : ''}
             <div class="sucursal-encargado">
-              ${sucursal.encargado ? `Encargado: ${sucursal.encargado}` : 'Sin encargado asignado'}
-              ${sucursal.direccion ? ` • Dirección: ${sucursal.direccion}` : ''}
+              ${sucursal.direccion ? `Dirección: ${sucursal.direccion}` : ''}
               ${sucursal.ruc ? ` • RUC: ${sucursal.ruc}` : ''}
             </div>
           `;
@@ -1708,10 +1705,6 @@ Sección 2: CSS  (static/css/glass.css)
         const rucCliente = window.pedidoActualData?.cliente_ruc || "No asignado";
         const ruc = rucSucursal !== "No asignado" ? rucSucursal : rucCliente;
         $$("#m-ruc").textContent = ruc;
-        
-        // Actualizar encargado
-        const encargado = sucursal.encargado || "No asignado";
-        $$("#m-encargado").textContent = encargado;
         
         // Actualizar el nombre de la sucursal en el popup (mantener el botón)
         const sucursalElement = $$("#m-sucursal");
@@ -1959,9 +1952,9 @@ Sección 2: CSS  (static/css/glass.css)
         const ruc = data.sucursal_ruc || data.cliente_ruc || "No asignado";
         $$("#m-ruc").textContent = ruc;
         
-        // Mostrar encargado
-        const encargado = data.encargado || "No asignado";
-        $$("#m-encargado").textContent = encargado;
+        // Mostrar responsable
+        const responsable = data.responsable || "No asignado";
+        $$("#m-responsable").textContent = responsable;
 
         const tb = $$("#m-items");
         tb.innerHTML = "";
