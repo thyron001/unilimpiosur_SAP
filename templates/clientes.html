@@ -373,9 +373,50 @@
         const mostrarRuc = cliente.ruc_por_sucursal || false;
         const headerAlias = mostrarAlias ? '<th>Alias (PDF)</th>' : '';
         const headerRuc = mostrarRuc ? '<th>RUC</th>' : '';
+
+        // Definir colgroup para anchos estables (coincide con el CSS)
+        let colgroup = '';
+        if (mostrarAlias && mostrarRuc) {
+          colgroup = `
+            <colgroup>
+              <col style="width:25%">  <!-- Nombre -->
+              <col style="width:20%">  <!-- Alias  -->
+              <col style="width:25%">  <!-- Dirección -->
+              <col style="width:15%">  <!-- RUC -->
+              <col style="width:15%">  <!-- Ciudad -->
+              <col style="width:80px"> <!-- Editar -->
+            </colgroup>`;
+        } else if (mostrarAlias && !mostrarRuc) {
+          colgroup = `
+            <colgroup>
+              <col style="width:25%">  <!-- Nombre -->
+              <col style="width:25%">  <!-- Alias  -->
+              <col style="width:30%">  <!-- Dirección -->
+              <col style="width:20%">  <!-- Ciudad -->
+              <col style="width:80px"> <!-- Editar -->
+            </colgroup>`;
+        } else if (!mostrarAlias && mostrarRuc) {
+          colgroup = `
+            <colgroup>
+              <col style="width:30%">  <!-- Nombre -->
+              <col style="width:30%">  <!-- Dirección -->
+              <col style="width:15%">  <!-- RUC -->
+              <col style="width:25%">  <!-- Ciudad -->
+              <col style="width:80px"> <!-- Editar -->
+            </colgroup>`;
+        } else {
+          colgroup = `
+            <colgroup>
+              <col style="width:35%">  <!-- Nombre -->
+              <col style="width:40%">  <!-- Dirección -->
+              <col style="width:25%">  <!-- Ciudad -->
+              <col style="width:80px"> <!-- Editar -->
+            </colgroup>`;
+        }
         
         wrap.innerHTML = `
           <table class="glass-table tabla-sucursales" data-cliente-id="${cliente.id}" data-mostrar-alias="${mostrarAlias}" data-mostrar-ruc="${mostrarRuc}">
+            ${colgroup}
             <thead>
               <tr>
                 <th>Nombre (sistema)</th>
@@ -734,6 +775,53 @@
           <th>Ciudad</th>
           <th class="col-editar">Editar</th>
         `;
+
+        // Reconstruir/actualizar colgroup para mantener anchos
+        let nuevoColgroupHtml = '';
+        if (mostrarAlias && mostrarRuc) {
+          nuevoColgroupHtml = `
+            <colgroup>
+              <col style="width:25%">
+              <col style="width:20%">
+              <col style="width:25%">
+              <col style="width:15%">
+              <col style="width:15%">
+              <col style="width:80px">
+            </colgroup>`;
+        } else if (mostrarAlias && !mostrarRuc) {
+          nuevoColgroupHtml = `
+            <colgroup>
+              <col style="width:25%">
+              <col style="width:25%">
+              <col style="width:30%">
+              <col style="width:20%">
+              <col style="width:80px">
+            </colgroup>`;
+        } else if (!mostrarAlias && mostrarRuc) {
+          nuevoColgroupHtml = `
+            <colgroup>
+              <col style="width:30%">
+              <col style="width:30%">
+              <col style="width:15%">
+              <col style="width:25%">
+              <col style="width:80px">
+            </colgroup>`;
+        } else {
+          nuevoColgroupHtml = `
+            <colgroup>
+              <col style="width:35%">
+              <col style="width:40%">
+              <col style="width:25%">
+              <col style="width:80px">
+            </colgroup>`;
+        }
+
+        const existenteColgroup = tabla.querySelector('colgroup');
+        if (existenteColgroup) {
+          existenteColgroup.outerHTML = nuevoColgroupHtml;
+        } else {
+          tabla.insertAdjacentHTML('afterbegin', nuevoColgroupHtml);
+        }
         
         // Reconstruir todas las filas existentes
         const filasExistentes = $$$('tr', tbody).filter(tr => !tr.classList.contains('fila-nueva'));
