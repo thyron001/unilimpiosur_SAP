@@ -896,9 +896,9 @@ def api_generar_sap():
         if odrf_path and drf1_path:
             # Si se especifica un tipo de archivo, devolver solo ese archivo
             if tipo_archivo == 'odrf':
-                return send_file(odrf_path, as_attachment=True, download_name=f"ODRF_{obtener_fecha_local().strftime('%Y%m%d_%H%M%S')}.txt")
+                return send_file(odrf_path, as_attachment=True, download_name=f"Document_{obtener_fecha_local().strftime('%Y%m%d_%H%M%S')}.txt")
             elif tipo_archivo == 'drf1':
-                return send_file(drf1_path, as_attachment=True, download_name=f"DRF1_{obtener_fecha_local().strftime('%Y%m%d_%H%M%S')}.txt")
+                return send_file(drf1_path, as_attachment=True, download_name=f"Document_Lines_{obtener_fecha_local().strftime('%Y%m%d_%H%M%S')}.txt")
             else:
                 # Devolver información de los archivos generados
                 return jsonify({

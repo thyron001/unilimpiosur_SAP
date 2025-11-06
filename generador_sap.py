@@ -382,14 +382,14 @@ def generar_archivos_sap(carpeta_salida: str | Path = None) -> Tuple[str, str]:
     # Usar archivos temporales si no se especifica carpeta
     if carpeta_salida is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        odrf_path = Path(tempfile.gettempdir()) / f"ODRF_{timestamp}.txt"
-        drf1_path = Path(tempfile.gettempdir()) / f"DRF1_{timestamp}.txt"
+        odrf_path = Path(tempfile.gettempdir()) / f"Document_{timestamp}.txt"
+        drf1_path = Path(tempfile.gettempdir()) / f"Document_Lines_{timestamp}.txt"
     else:
         carpeta_salida = Path(carpeta_salida)
         carpeta_salida.mkdir(exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        odrf_path = carpeta_salida / f"ODRF_{timestamp}.txt"
-        drf1_path = carpeta_salida / f"DRF1_{timestamp}.txt"
+        odrf_path = carpeta_salida / f"Document_{timestamp}.txt"
+        drf1_path = carpeta_salida / f"Document_Lines_{timestamp}.txt"
     
     generar_archivo_odrf(pedidos, odrf_path)
     generar_archivo_drf1(pedidos, drf1_path)
@@ -446,14 +446,14 @@ def generar_archivos_sap_por_ids(pedidos_ids: List[int], carpeta_salida: str | P
     # Usar archivos temporales si no se especifica carpeta
     if carpeta_salida is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        odrf_path = Path(tempfile.gettempdir()) / f"ODRF_{timestamp}.txt"
-        drf1_path = Path(tempfile.gettempdir()) / f"DRF1_{timestamp}.txt"
+        odrf_path = Path(tempfile.gettempdir()) / f"Document_{timestamp}.txt"
+        drf1_path = Path(tempfile.gettempdir()) / f"Document_Lines_{timestamp}.txt"
     else:
         carpeta_salida = Path(carpeta_salida)
         carpeta_salida.mkdir(exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        odrf_path = carpeta_salida / f"ODRF_{timestamp}.txt"
-        drf1_path = carpeta_salida / f"DRF1_{timestamp}.txt"
+        odrf_path = carpeta_salida / f"Document_{timestamp}.txt"
+        drf1_path = carpeta_salida / f"Document_Lines_{timestamp}.txt"
     
     generar_archivo_odrf(pedidos, odrf_path)
     generar_archivo_drf1(pedidos, drf1_path)
