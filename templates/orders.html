@@ -2407,7 +2407,8 @@ Sección 2: CSS  (static/css/glass.css)
           if (resp.ok) {
             // Obtener el nombre del archivo del header Content-Disposition
             const contentDisposition = resp.headers.get('Content-Disposition');
-            let filename = `${tipoArchivo.toUpperCase()}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.txt`;
+            const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
+            let filename = `${tipoArchivo === 'odrf' ? 'Document' : 'Document_Lines'}_${timestamp}.txt`;
             
             if (contentDisposition) {
               const filenameMatch = contentDisposition.match(/filename="(.+)"/);
@@ -2428,7 +2429,7 @@ Sección 2: CSS  (static/css/glass.css)
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
             
-            console.log(`✅ Archivo ${tipoArchivo.toUpperCase()} descargado: ${filename}`);
+            console.log(`✅ Archivo ${tipoArchivo === 'odrf' ? 'Document' : 'Document_Lines'} descargado: ${filename}`);
             return true;
           } else {
             const errorData = await resp.json();

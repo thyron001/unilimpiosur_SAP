@@ -1,5 +1,5 @@
 # generador_sap.py
-# Generador de archivos ODRF.txt y DRF1.txt para SAP
+# Generador de archivos Document.txt y Document_Lines.txt para SAP
 
 import psycopg
 from datetime import datetime
@@ -175,7 +175,7 @@ def encontrar_producto_especifico(cur, sku: str, descripcion_pedido: str, client
     return None
 
 def generar_archivo_odrf(pedidos: List[Dict[str, Any]], ruta_salida: str | Path) -> None:
-    """Genera el archivo ODRF.txt con los encabezados y datos de pedidos"""
+    """Genera el archivo Document.txt con los encabezados y datos de pedidos"""
     ruta_salida = Path(ruta_salida)
     
     with open(ruta_salida, 'w', encoding='utf-8') as f:
@@ -251,7 +251,7 @@ def generar_archivo_odrf(pedidos: List[Dict[str, Any]], ruta_salida: str | Path)
             f.write(f"{comments}\n")                 # Comments
 
 def generar_archivo_drf1(pedidos: List[Dict[str, Any]], ruta_salida: str | Path) -> None:
-    """Genera el archivo DRF1.txt con los encabezados y datos de items"""
+    """Genera el archivo Document_Lines.txt con los encabezados y datos de items"""
     ruta_salida = Path(ruta_salida)
     
     with open(ruta_salida, 'w', encoding='utf-8') as f:
@@ -359,7 +359,7 @@ def obtener_pedidos_por_ids(pedidos_ids: List[int]) -> List[Dict[str, Any]]:
 
 def generar_archivos_sap(carpeta_salida: str | Path = None) -> Tuple[str, str]:
     """
-    Función principal que genera los archivos ODRF.txt y DRF1.txt
+    Función principal que genera los archivos Document.txt y Document_Lines.txt
     para todos los pedidos en estado 'por_procesar'
     
     Args:
@@ -407,7 +407,7 @@ def generar_archivos_sap(carpeta_salida: str | Path = None) -> Tuple[str, str]:
 
 def generar_archivos_sap_por_ids(pedidos_ids: List[int], carpeta_salida: str | Path = None) -> Tuple[str, str]:
     """
-    Función que genera los archivos ODRF.txt y DRF1.txt
+    Función que genera los archivos Document.txt y Document_Lines.txt
     para pedidos específicos por sus IDs
     
     Args:
