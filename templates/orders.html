@@ -2466,15 +2466,15 @@ Sección 2: CSS  (static/css/glass.css)
           span.textContent = "Generando...";
           const sessionId = await generarArchivosSAPCompletos(idsSeleccionados);
           
-          // Descargar archivo ODRF
-          span.textContent = "Descargando ODRF...";
+          // Descargar archivo Document
+          span.textContent = "Descargando Document...";
           await descargarArchivoSAP("odrf", sessionId);
           
           // Pequeña pausa entre descargas
           await new Promise(resolve => setTimeout(resolve, 1000));
           
-          // Descargar archivo DRF1
-          span.textContent = "Descargando DRF1...";
+          // Descargar archivo Document_Lines
+          span.textContent = "Descargando Document_Lines...";
           await descargarArchivoSAP("drf1", sessionId);
           
           // Recargar pedidos por procesar

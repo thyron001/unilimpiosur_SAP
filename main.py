@@ -1008,7 +1008,10 @@ def api_descargar_sap(tipo_archivo):
         
         # Generar nombre de archivo
         timestamp = archivos['timestamp'].strftime('%Y%m%d_%H%M%S')
-        nombre_archivo = f"{tipo_archivo.upper()}_{timestamp}.txt"
+        if tipo_archivo == 'odrf':
+            nombre_archivo = f"Document_{timestamp}.txt"
+        else:
+            nombre_archivo = f"Document_Lines_{timestamp}.txt"
         
         # Enviar archivo
         response = send_file(archivo_path, as_attachment=True, download_name=nombre_archivo)

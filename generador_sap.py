@@ -399,8 +399,8 @@ def generar_archivos_sap(carpeta_salida: str | Path = None) -> Tuple[str, str]:
     actualizar_estado_pedidos(pedido_ids, "procesado")
     
     print(f"OK: Archivos SAP generados:")
-    print(f"   -> ODRF: {odrf_path}")
-    print(f"   -> DRF1: {drf1_path}")
+    print(f"   -> Document: {odrf_path}")
+    print(f"   -> Document_Lines: {drf1_path}")
     print(f"   -> {len(pedidos)} pedidos marcados como 'procesado'")
     
     return str(odrf_path), str(drf1_path)
@@ -463,8 +463,8 @@ def generar_archivos_sap_por_ids(pedidos_ids: List[int], carpeta_salida: str | P
     actualizar_estado_pedidos(pedidos_procesados_ids, "procesado")
     
     print(f"OK: Archivos SAP generados:")
-    print(f"   -> ODRF: {odrf_path}")
-    print(f"   -> DRF1: {drf1_path}")
+    print(f"   -> Document: {odrf_path}")
+    print(f"   -> Document_Lines: {drf1_path}")
     print(f"   -> {len(pedidos)} de {len(pedidos_ids)} pedidos procesados (solo los que estaban en estado 'por_procesar')")
     
     return str(odrf_path), str(drf1_path)
